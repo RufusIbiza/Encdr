@@ -1,0 +1,22 @@
+[package]
+name = "encdr-view"
+version = "0.1.0"
+edition = "2021"
+description = "WebView-based screen renderer for encdr controller screens"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+encdr = { path = "../encdr" }
+wry = "0.55"
+tao = "0.34"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+crossbeam-channel = "0.5"
+
+# Linux: GTK + WebKitGTK for snapshot capture
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
+webkit2gtk = "2.0"
+cairo-rs = "0.18"

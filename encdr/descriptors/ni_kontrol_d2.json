@@ -1,0 +1,218 @@
+{
+  "name": "NI Kontrol D2",
+  "manufacturer": "Native Instruments",
+  "vendor_id": "0x17cc",
+  "product_id": "0x1400",
+
+  "interfaces": [
+    {
+      "id": "control",
+      "number": 0,
+      "endpoints": {
+        "in":  { "address": "0x81", "type": "interrupt" },
+        "out": { "address": "0x01", "type": "interrupt" }
+      }
+    },
+    {
+      "id": "screen",
+      "number": 1,
+      "endpoints": {
+        "out": { "address": "0x02", "type": "bulk" }
+      }
+    }
+  ],
+
+  "input_packets": [
+    {
+      "id": "buttons",
+      "interface": "control",
+      "size": 17,
+      "items": [
+        { "type": "button", "name": "deck_a",               "byte": 5,  "mask": "0x01" },
+        { "type": "button", "name": "deck_b",               "byte": 5,  "mask": "0x02" },
+        { "type": "button", "name": "deck_c",               "byte": 5,  "mask": "0x04" },
+        { "type": "button", "name": "deck_d",               "byte": 5,  "mask": "0x08" },
+        { "type": "button", "name": "fx_1",                 "byte": 2,  "mask": "0x80" },
+        { "type": "button", "name": "fx_2",                 "byte": 3,  "mask": "0x04" },
+        { "type": "button", "name": "fx_3",                 "byte": 3,  "mask": "0x02" },
+        { "type": "button", "name": "fx_4",                 "byte": 3,  "mask": "0x01" },
+        { "type": "touch",  "name": "fx_dial_touch_1",      "byte": 9,  "mask": "0x40" },
+        { "type": "touch",  "name": "fx_dial_touch_2",      "byte": 9,  "mask": "0x80" },
+        { "type": "touch",  "name": "fx_dial_touch_3",      "byte": 10, "mask": "0x10" },
+        { "type": "touch",  "name": "fx_dial_touch_4",      "byte": 10, "mask": "0x20" },
+        { "type": "button", "name": "fx_select",            "byte": 2,  "mask": "0x40" },
+        { "type": "button", "name": "screen_left_1",        "byte": 2,  "mask": "0x20" },
+        { "type": "button", "name": "screen_left_2",        "byte": 2,  "mask": "0x10" },
+        { "type": "button", "name": "screen_left_3",        "byte": 2,  "mask": "0x01" },
+        { "type": "button", "name": "screen_left_4",        "byte": 4,  "mask": "0x40" },
+        { "type": "button", "name": "screen_right_1",       "byte": 3,  "mask": "0x08" },
+        { "type": "button", "name": "screen_right_2",       "byte": 3,  "mask": "0x10" },
+        { "type": "button", "name": "screen_right_3",       "byte": 3,  "mask": "0x20" },
+        { "type": "button", "name": "screen_right_4",       "byte": 3,  "mask": "0x40" },
+        { "type": "touch",  "name": "screen_encoder_touch_1", "byte": 9,  "mask": "0x02" },
+        { "type": "touch",  "name": "screen_encoder_touch_2", "byte": 9,  "mask": "0x04" },
+        { "type": "touch",  "name": "screen_encoder_touch_3", "byte": 9,  "mask": "0x08" },
+        { "type": "touch",  "name": "screen_encoder_touch_4", "byte": 9,  "mask": "0x10" },
+        { "type": "button", "name": "encoder_browse_press",   "byte": 2,  "mask": "0x08" },
+        { "type": "touch",  "name": "encoder_browse_touch",   "byte": 9,  "mask": "0x20" },
+        { "type": "button", "name": "back",                 "byte": 4,  "mask": "0x80" },
+        { "type": "button", "name": "capture",              "byte": 4,  "mask": "0x20" },
+        { "type": "button", "name": "edit",                 "byte": 4,  "mask": "0x01" },
+        { "type": "button", "name": "encoder_loop_press",   "byte": 6,  "mask": "0x10" },
+        { "type": "touch",  "name": "encoder_loop_touch",   "byte": 9,  "mask": "0x01" },
+        { "type": "button", "name": "on_1",                 "byte": 4,  "mask": "0x10" },
+        { "type": "button", "name": "on_2",                 "byte": 4,  "mask": "0x08" },
+        { "type": "button", "name": "on_3",                 "byte": 4,  "mask": "0x04" },
+        { "type": "button", "name": "on_4",                 "byte": 4,  "mask": "0x02" },
+        { "type": "touch",  "name": "fader_touch_1",        "byte": 10, "mask": "0x01" },
+        { "type": "touch",  "name": "fader_touch_2",        "byte": 10, "mask": "0x02" },
+        { "type": "touch",  "name": "fader_touch_3",        "byte": 10, "mask": "0x04" },
+        { "type": "touch",  "name": "fader_touch_4",        "byte": 10, "mask": "0x08" },
+        { "type": "button", "name": "pad_1",                "byte": 7,  "mask": "0x08", "category": "pad" },
+        { "type": "button", "name": "pad_2",                "byte": 7,  "mask": "0x01", "category": "pad" },
+        { "type": "button", "name": "pad_3",                "byte": 6,  "mask": "0x01", "category": "pad" },
+        { "type": "button", "name": "pad_4",                "byte": 6,  "mask": "0x02", "category": "pad" },
+        { "type": "button", "name": "pad_5",                "byte": 7,  "mask": "0x20", "category": "pad" },
+        { "type": "button", "name": "pad_6",                "byte": 7,  "mask": "0x40", "category": "pad" },
+        { "type": "button", "name": "pad_7",                "byte": 7,  "mask": "0x80", "category": "pad" },
+        { "type": "button", "name": "pad_8",                "byte": 7,  "mask": "0x02", "category": "pad" },
+        { "type": "button", "name": "hotcue",               "byte": 8,  "mask": "0x08" },
+        { "type": "button", "name": "loop",                 "byte": 8,  "mask": "0x04" },
+        { "type": "button", "name": "freeze",               "byte": 8,  "mask": "0x02" },
+        { "type": "button", "name": "remix",                "byte": 8,  "mask": "0x01" },
+        { "type": "button", "name": "flux",                 "byte": 7,  "mask": "0x10" },
+        { "type": "button", "name": "deck",                 "byte": 7,  "mask": "0x04" },
+        { "type": "button", "name": "shift",                "byte": 8,  "mask": "0x80" },
+        { "type": "button", "name": "sync",                 "byte": 8,  "mask": "0x40" },
+        { "type": "button", "name": "cue",                  "byte": 8,  "mask": "0x20" },
+        { "type": "button", "name": "play",                 "byte": 8,  "mask": "0x10" },
+
+        { "type": "encoder", "name": "browse", "byte": 1, "bits": 4, "bit_offset": 4, "encoding": "wrap16" },
+        { "type": "encoder", "name": "loop_enc", "byte": 1, "bits": 4, "bit_offset": 0, "encoding": "wrap16" },
+
+        { "type": "touch",  "name": "touchstrip_touch", "bytes": [13, 14] },
+        { "type": "slider", "name": "touchstrip", "bytes": [13, 14], "bits": 16, "normalize": true, "max_value": 1024 }
+      ]
+    },
+    {
+      "id": "sliders",
+      "interface": "control",
+      "size": 25,
+      "items": [
+        { "type": "encoder_fine", "name": "screen_encoder_1", "bytes": [1, 2], "encoding": "signed16", "scale": 999.0 },
+        { "type": "encoder_fine", "name": "screen_encoder_2", "bytes": [3, 4], "encoding": "signed16", "scale": 999.0 },
+        { "type": "encoder_fine", "name": "screen_encoder_3", "bytes": [5, 6], "encoding": "signed16", "scale": 999.0 },
+        { "type": "encoder_fine", "name": "screen_encoder_4", "bytes": [7, 8], "encoding": "signed16", "scale": 999.0 },
+
+        { "type": "slider", "name": "fader_1",   "bytes": [9, 10],  "bits": 12, "normalize": true, "max_value": 4078 },
+        { "type": "slider", "name": "fader_2",   "bytes": [11, 12], "bits": 12, "normalize": true, "max_value": 4078 },
+        { "type": "slider", "name": "fader_3",   "bytes": [13, 14], "bits": 12, "normalize": true, "max_value": 4078 },
+        { "type": "slider", "name": "fader_4",   "bytes": [15, 16], "bits": 12, "normalize": true, "max_value": 4078 },
+        { "type": "slider", "name": "fx_dial_1", "bytes": [17, 18], "bits": 12, "normalize": true, "max_value": 4078 },
+        { "type": "slider", "name": "fx_dial_2", "bytes": [19, 20], "bits": 12, "normalize": true, "max_value": 4078 },
+        { "type": "slider", "name": "fx_dial_3", "bytes": [21, 22], "bits": 12, "normalize": true, "max_value": 4078 },
+        { "type": "slider", "name": "fx_dial_4", "bytes": [23, 24], "bits": 12, "normalize": true, "max_value": 4078 }
+      ]
+    }
+  ],
+
+  "leds": {
+    "interface": "control",
+    "buffer_size": 122,
+    "prefix_byte": "0x80",
+    "items": [
+      { "type": "rgb",    "name": "pad_1",  "offsets": { "r": 2,  "g": 1,  "b": 0  } },
+      { "type": "rgb",    "name": "pad_2",  "offsets": { "r": 5,  "g": 4,  "b": 3  } },
+      { "type": "rgb",    "name": "pad_3",  "offsets": { "r": 8,  "g": 7,  "b": 6  } },
+      { "type": "rgb",    "name": "pad_4",  "offsets": { "r": 11, "g": 10, "b": 9  } },
+      { "type": "rgb",    "name": "pad_5",  "offsets": { "r": 14, "g": 13, "b": 12 } },
+      { "type": "rgb",    "name": "pad_6",  "offsets": { "r": 17, "g": 16, "b": 15 } },
+      { "type": "rgb",    "name": "pad_7",  "offsets": { "r": 20, "g": 19, "b": 18 } },
+      { "type": "rgb",    "name": "pad_8",  "offsets": { "r": 23, "g": 22, "b": 21 } },
+
+      { "type": "single", "name": "fx_select",       "offset": 24 },
+      { "type": "single", "name": "fx_1",             "offset": 25 },
+      { "type": "single", "name": "fx_2",             "offset": 26 },
+      { "type": "single", "name": "fx_3",             "offset": 27 },
+      { "type": "single", "name": "fx_4",             "offset": 28 },
+
+      { "type": "single", "name": "screen_left_1",    "offset": 29 },
+      { "type": "single", "name": "screen_left_2",    "offset": 30 },
+      { "type": "single", "name": "screen_left_3",    "offset": 31 },
+      { "type": "single", "name": "screen_left_4",    "offset": 32 },
+      { "type": "single", "name": "screen_right_1",   "offset": 33 },
+      { "type": "single", "name": "screen_right_2",   "offset": 34 },
+      { "type": "single", "name": "screen_right_3",   "offset": 35 },
+      { "type": "single", "name": "screen_right_4",   "offset": 36 },
+
+      { "type": "single", "name": "back",             "offset": 37 },
+      { "type": "single", "name": "capture",          "offset": 38 },
+      { "type": "single", "name": "edit",             "offset": 39 },
+
+      { "type": "single", "name": "on_1",             "offset": 40 },
+      { "type": "single", "name": "on_2",             "offset": 41 },
+      { "type": "single", "name": "on_3",             "offset": 42 },
+      { "type": "single", "name": "on_4",             "offset": 43 },
+
+      { "type": "single", "name": "hotcue_white",      "offset": 44 },
+      { "type": "single", "name": "hotcue_blue",       "offset": 45 },
+      { "type": "single", "name": "loop_white",        "offset": 46 },
+      { "type": "single", "name": "loop_blue",         "offset": 47 },
+      { "type": "single", "name": "freeze_white",      "offset": 48 },
+      { "type": "single", "name": "freeze_blue",       "offset": 49 },
+      { "type": "single", "name": "remix_white",       "offset": 50 },
+      { "type": "single", "name": "remix_blue",        "offset": 51 },
+      { "type": "single", "name": "flux",              "offset": 52 },
+      { "type": "single", "name": "deck_white",        "offset": 53 },
+      { "type": "single", "name": "deck_blue",         "offset": 54 },
+      { "type": "single", "name": "shift",             "offset": 55 },
+      { "type": "single", "name": "sync_green",        "offset": 56 },
+      { "type": "single", "name": "sync_red",          "offset": 57 },
+      { "type": "single", "name": "cue",               "offset": 58 },
+      { "type": "single", "name": "play",              "offset": 59 },
+
+      { "type": "single", "name": "loop_circle_1_white", "offset": 60 },
+      { "type": "single", "name": "loop_circle_2_white", "offset": 61 },
+      { "type": "single", "name": "loop_circle_3_white", "offset": 62 },
+      { "type": "single", "name": "loop_circle_4_white", "offset": 63 },
+      { "type": "single", "name": "loop_circle_1_blue",  "offset": 64 },
+      { "type": "single", "name": "loop_circle_2_blue",  "offset": 65 },
+      { "type": "single", "name": "loop_circle_3_blue",  "offset": 66 },
+      { "type": "single", "name": "loop_circle_4_blue",  "offset": 67 },
+
+      { "type": "strip",  "name": "touchstrip_blue",   "offset": 68, "count": 25 },
+      { "type": "strip",  "name": "touchstrip_orange", "offset": 93, "count": 25 },
+
+      { "type": "single", "name": "deck_a",            "offset": 118 },
+      { "type": "single", "name": "deck_b",            "offset": 119 },
+      { "type": "single", "name": "deck_c",            "offset": 120 },
+      { "type": "single", "name": "deck_d",            "offset": 121 }
+    ]
+  },
+
+  "screens": [
+    {
+      "name": "main",
+      "interface": "screen",
+      "width": 480,
+      "height": 272,
+      "pixel_format": "bgr565_be",
+      "full_blit": {
+        "header": "0x84,0x00,0x00,0x60,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01,0xe0,0x01,0x10,0x00,0x00,0xff,0x00",
+        "footer": "0x03,0x00,0x00,0x00,0x40,0x00,0x00,0x00"
+      },
+      "partial_blit": {
+        "supported": true,
+        "x_align": 4,
+        "y_align": 2,
+        "header_template": "0x84,0x00,0x00,0x60,0x00,0x00,0x00,0x00,{x_hi},{x_lo},{y_hi},{y_lo},{w_hi},{w_lo},{h_hi},{h_lo},0x00,0x00,{px_half_hi},{px_half_lo}",
+        "footer": "0x03,0x00,0x00,0x00,0x40,0x00,0x00,0x00"
+      }
+    }
+  ],
+
+  "quirks": {
+    "dual_handle": true,
+    "detach_kernel_driver": true
+  }
+}

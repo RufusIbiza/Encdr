@@ -1,0 +1,33 @@
+[package]
+name = "encdr"
+version = "0.1.0"
+edition = "2021"
+description = "Lightweight Rust crate for proprietary USB HID controller hardware"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# USB transport
+nusb = "0.1"
+
+# GPU compute (format conversion + frame diff)
+wgpu = "23"
+bytemuck = { version = "1", features = ["derive"] }
+
+# Lock-free event channel
+crossbeam-channel = "0.5"
+
+# Descriptor parsing
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Logging
+tracing = "0.1"
+
+# Error handling
+thiserror = "2"
+
+# Async executor (internal, lightweight)
+futures-lite = "2"
+
+# String interning for control names
+once_cell = "1"

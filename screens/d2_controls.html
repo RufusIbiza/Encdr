@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 480px;
+    height: 272px;
+    overflow: hidden;
+    background: #0a0a0a;
+    font-family: -apple-system, 'Segoe UI', sans-serif;
+    color: #ccc;
+  }
+
+  .container {
+    display: flex;
+    flex-direction: column;
+    width: 480px;
+    height: 272px;
+  }
+
+  /* Top row: FX dials + buttons */
+  .top-row {
+    display: flex;
+    justify-content: space-evenly;
+    align-items: center;
+    height: 86px;
+    padding: 4px 16px;
+    border-bottom: 1px solid #1a1a1a;
+  }
+
+  /* Center: side buttons + status */
+  .center {
+    flex: 1;
+    display: flex;
+    align-items: stretch;
+  }
+
+  /* Side button columns — flush to screen edges */
+  .side-buttons {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-evenly;
+    padding: 4px 0;
+    width: 14px;
+    flex-shrink: 0;
+  }
+
+  .side-btn {
+    width: 10px;
+    height: 16px;
+    border-radius: 2px;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    transition: background 0.05s;
+  }
+
+  .side-buttons.left .side-btn {
+    margin-left: 2px;
+  }
+
+  .side-buttons.right .side-btn {
+    margin-left: auto;
+    margin-right: 2px;
+  }
+
+  .side-btn.active {
+    background: #ff4500;
+    border-color: #ff6030;
+    box-shadow: 0 0 6px rgba(255, 69, 0, 0.4);
+  }
+
+  .center-content {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .status-label {
+    font-size: 11px;
+    color: #444;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  .status-value {
+    font-size: 20px;
+    font-weight: 600;
+    color: #ff4500;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Bottom row: screen encoders + ON buttons */
+  .bottom-row {
+    display: flex;
+    justify-content: space-evenly;
+    align-items: center;
+    height: 96px;
+    padding: 2px 16px 4px;
+    border-top: 1px solid #1a1a1a;
+  }
+
+  /* Knob cell */
+  .knob-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    width: 100px;
+  }
+
+  .knob-label {
+    font-size: 9px;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    text-align: center;
+  }
+
+  .knob-value {
+    font-size: 10px;
+    color: #888;
+    font-variant-numeric: tabular-nums;
+    font-family: monospace;
+  }
+
+  /* Button indicator (FX buttons, ON buttons) */
+  .btn-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    transition: background 0.05s;
+  }
+
+  .btn-indicator.active {
+    background: #ff4500;
+    border-color: #ff6030;
+    box-shadow: 0 0 6px rgba(255, 69, 0, 0.4);
+  }
+
+  /* ON button row below each encoder */
+  .on-btn-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 1px;
+  }
+
+  .on-label {
+    font-size: 8px;
+    color: #555;
+    text-transform: uppercase;
+  }
+
+  .on-label.active {
+    color: #ff4500;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Top row: FX dials + FX buttons -->
+  <div class="top-row">
+    <div class="knob-cell">
+      <svg id="fx1-knob" viewBox="0 0 40 40" width="48" height="48"></svg>
+      <div class="btn-indicator" id="fx1-btn"></div>
+      <div class="knob-label">FX 1</div>
+    </div>
+    <div class="knob-cell">
+      <svg id="fx2-knob" viewBox="0 0 40 40" width="48" height="48"></svg>
+      <div class="btn-indicator" id="fx2-btn"></div>
+      <div class="knob-label">FX 2</div>
+    </div>
+    <div class="knob-cell">
+      <svg id="fx3-knob" viewBox="0 0 40 40" width="48" height="48"></svg>
+      <div class="btn-indicator" id="fx3-btn"></div>
+      <div class="knob-label">FX 3</div>
+    </div>
+    <div class="knob-cell">
+      <svg id="fx4-knob" viewBox="0 0 40 40" width="48" height="48"></svg>
+      <div class="btn-indicator" id="fx4-btn"></div>
+      <div class="knob-label">FX 4</div>
+    </div>
+  </div>
+
+  <!-- Center: side buttons flush to edges + status -->
+  <div class="center">
+    <div class="side-buttons left">
+      <div class="side-btn" id="sl1"></div>
+      <div class="side-btn" id="sl2"></div>
+      <div class="side-btn" id="sl3"></div>
+      <div class="side-btn" id="sl4"></div>
+    </div>
+
+    <div class="center-content">
+      <div style="text-align:center">
+        <div class="status-label">Encdr</div>
+        <div class="status-value" id="status-text">D2 Test</div>
+        <div class="status-label" style="margin-top:4px" id="last-event">waiting...</div>
+      </div>
+    </div>
+
+    <div class="side-buttons right">
+      <div class="side-btn" id="sr1"></div>
+      <div class="side-btn" id="sr2"></div>
+      <div class="side-btn" id="sr3"></div>
+      <div class="side-btn" id="sr4"></div>
+    </div>
+  </div>
+
+  <!-- Bottom row: screen encoders + ON buttons -->
+  <div class="bottom-row">
+    <div class="knob-cell">
+      <svg id="enc1-knob" viewBox="0 0 40 40" width="48" height="48"></svg>
+      <div class="knob-value" id="enc1-val">0.500</div>
+      <div class="on-btn-row">
+        <div class="btn-indicator" id="on1-btn"></div>
+        <div class="on-label" id="on1-label">ON</div>
+      </div>
+    </div>
+    <div class="knob-cell">
+      <svg id="enc2-knob" viewBox="0 0 40 40" width="48" height="48"></svg>
+      <div class="knob-value" id="enc2-val">0.500</div>
+      <div class="on-btn-row">
+        <div class="btn-indicator" id="on2-btn"></div>
+        <div class="on-label" id="on2-label">ON</div>
+      </div>
+    </div>
+    <div class="knob-cell">
+      <svg id="enc3-knob" viewBox="0 0 40 40" width="48" height="48"></svg>
+      <div class="knob-value" id="enc3-val">0.500</div>
+      <div class="on-btn-row">
+        <div class="btn-indicator" id="on3-btn"></div>
+        <div class="on-label" id="on3-label">ON</div>
+      </div>
+    </div>
+    <div class="knob-cell">
+      <svg id="enc4-knob" viewBox="0 0 40 40" width="48" height="48"></svg>
+      <div class="knob-value" id="enc4-val">0.500</div>
+      <div class="on-btn-row">
+        <div class="btn-indicator" id="on4-btn"></div>
+        <div class="on-label" id="on4-label">ON</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// Knob renderer — ported from Steyr's Svelte Knob.svelte
+const CX = 20, CY = 20, R = 15;
+const START = -Math.PI * 0.75;  // -135°
+const END   =  Math.PI * 0.75;  // +135°
+
+function polar(angle) {
+  return { x: CX + R * Math.sin(angle), y: CY - R * Math.cos(angle) };
+}
+
+function arcPath(a1, a2, sweep) {
+  const p1 = polar(a1), p2 = polar(a2);
+  const delta = Math.abs(a2 - a1);
+  if (delta < 0.001) return '';
+  const large = delta > Math.PI ? 1 : 0;
+  return `M ${p1.x.toFixed(3)} ${p1.y.toFixed(3)} A ${R} ${R} 0 ${large} ${sweep} ${p2.x.toFixed(3)} ${p2.y.toFixed(3)}`;
+}
+
+function renderKnob(svgEl, value, { min = 0, max = 1, color = '#ff4500', touched = false } = {}) {
+  const clamped = Math.max(min, Math.min(max, value));
+  const angle = START + ((clamped - min) / (max - min)) * (END - START);
+
+  const bgArc = arcPath(START, END, 1);
+  const valArc = arcPath(START, angle, 1);
+
+  const indX1 = CX + R * 0.35 * Math.sin(angle);
+  const indY1 = CY - R * 0.35 * Math.cos(angle);
+  const indX2 = CX + R * 0.85 * Math.sin(angle);
+  const indY2 = CY - R * 0.85 * Math.cos(angle);
+
+  svgEl.innerHTML = `
+    <circle cx="${CX}" cy="${CY}" r="${R + 2}" fill="none"
+            stroke="${touched ? color : 'transparent'}" stroke-width="1" opacity="0.3" />
+    <circle cx="${CX}" cy="${CY}" r="${R}" fill="#1a1a1a" stroke="#2a2a2a" stroke-width="0.5" />
+    ${bgArc ? `<path d="${bgArc}" fill="none" stroke="#2a2a2a" stroke-width="2.5" stroke-linecap="round" />` : ''}
+    ${valArc ? `<path d="${valArc}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" />` : ''}
+    <line x1="${indX1}" y1="${indY1}" x2="${indX2}" y2="${indY2}"
+          stroke="#e0e0e0" stroke-width="1.5" stroke-linecap="round" />
+  `;
+}
+
+// State
+const state = {
+  fx_dial_1: 0, fx_dial_2: 0, fx_dial_3: 0, fx_dial_4: 0,
+  fx_1: false, fx_2: false, fx_3: false, fx_4: false,
+  fx_dial_touch_1: false, fx_dial_touch_2: false, fx_dial_touch_3: false, fx_dial_touch_4: false,
+  screen_encoder_1: 0.5, screen_encoder_2: 0.5, screen_encoder_3: 0.5, screen_encoder_4: 0.5,
+  screen_encoder_touch_1: false, screen_encoder_touch_2: false,
+  screen_encoder_touch_3: false, screen_encoder_touch_4: false,
+  screen_left_1: false, screen_left_2: false, screen_left_3: false, screen_left_4: false,
+  screen_right_1: false, screen_right_2: false, screen_right_3: false, screen_right_4: false,
+  on_1: false, on_2: false, on_3: false, on_4: false,
+};
+
+function setActive(el, active) {
+  el.classList.toggle('active', !!active);
+}
+
+function render() {
+  // FX knobs
+  renderKnob(document.getElementById('fx1-knob'), state.fx_dial_1, { touched: state.fx_dial_touch_1 });
+  renderKnob(document.getElementById('fx2-knob'), state.fx_dial_2, { touched: state.fx_dial_touch_2 });
+  renderKnob(document.getElementById('fx3-knob'), state.fx_dial_3, { touched: state.fx_dial_touch_3 });
+  renderKnob(document.getElementById('fx4-knob'), state.fx_dial_4, { touched: state.fx_dial_touch_4 });
+
+  // FX buttons
+  setActive(document.getElementById('fx1-btn'), state.fx_1);
+  setActive(document.getElementById('fx2-btn'), state.fx_2);
+  setActive(document.getElementById('fx3-btn'), state.fx_3);
+  setActive(document.getElementById('fx4-btn'), state.fx_4);
+
+  // Screen encoders
+  renderKnob(document.getElementById('enc1-knob'), state.screen_encoder_1, { touched: state.screen_encoder_touch_1 });
+  renderKnob(document.getElementById('enc2-knob'), state.screen_encoder_2, { touched: state.screen_encoder_touch_2 });
+  renderKnob(document.getElementById('enc3-knob'), state.screen_encoder_3, { touched: state.screen_encoder_touch_3 });
+  renderKnob(document.getElementById('enc4-knob'), state.screen_encoder_4, { touched: state.screen_encoder_touch_4 });
+
+  document.getElementById('enc1-val').textContent = state.screen_encoder_1.toFixed(3);
+  document.getElementById('enc2-val').textContent = state.screen_encoder_2.toFixed(3);
+  document.getElementById('enc3-val').textContent = state.screen_encoder_3.toFixed(3);
+  document.getElementById('enc4-val').textContent = state.screen_encoder_4.toFixed(3);
+
+  // Side buttons
+  setActive(document.getElementById('sl1'), state.screen_left_1);
+  setActive(document.getElementById('sl2'), state.screen_left_2);
+  setActive(document.getElementById('sl3'), state.screen_left_3);
+  setActive(document.getElementById('sl4'), state.screen_left_4);
+  setActive(document.getElementById('sr1'), state.screen_right_1);
+  setActive(document.getElementById('sr2'), state.screen_right_2);
+  setActive(document.getElementById('sr3'), state.screen_right_3);
+  setActive(document.getElementById('sr4'), state.screen_right_4);
+
+  // ON buttons below encoders
+  for (let i = 1; i <= 4; i++) {
+    const on = state['on_' + i];
+    setActive(document.getElementById('on' + i + '-btn'), on);
+    setActive(document.getElementById('on' + i + '-label'), on);
+  }
+}
+
+// Encdr bridge — receives state from Rust
+window.encdr = {
+  onMessage(channel, data) {
+    if (channel === 'controls') {
+      Object.assign(state, data);
+      render();
+    }
+    if (channel === 'event') {
+      document.getElementById('last-event').textContent = data;
+    }
+  },
+  _dirty: false,
+  _rafId: null,
+  requestCapture() {
+    if (!this._dirty) {
+      this._dirty = true;
+      if (!this._rafId) {
+        this._rafId = requestAnimationFrame(() => {
+          this._rafId = null;
+          if (this._dirty) {
+            this._dirty = false;
+            window.ipc.postMessage('__encdr_frame_ready');
+          }
+        });
+      }
+    }
+  }
+};
+
+// Initial render
+render();
+</script>
+</body>
+</html>
