@@ -9,6 +9,7 @@ license = "MIT OR Apache-2.0"
 encdr = { path = "../encdr" }
 wry = "0.55"
 tao = "0.34"
+raw-window-handle = "0.6"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"
@@ -20,3 +21,28 @@ crossbeam-channel = "0.5"
 gtk = "0.18"
 webkit2gtk = "2.0"
 cairo-rs = "0.18"
+
+# macOS: objc2 ecosystem for WKWebView snapshot capture
+# (these are already transitive deps of wry — we add explicit deps for snapshot features)
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = [
+    "NSData", "NSError", "NSObject", "NSArray",
+] }
+objc2-app-kit = { version = "0.3", features = [
+    "NSImage", "NSImageRep", "NSBitmapImageRep",
+    "NSGraphicsContext", "NSColorSpace",
+] }
+objc2-web-kit = { version = "0.3", features = [
+    "WKWebView", "WKSnapshotConfiguration",
+] }
+block2 = "0.6"
+
+# Windows: WebView2 CapturePreview + PNG decode
+[target.'cfg(target_os = "windows")'.dependencies]
+webview2-com = "0.38"
+windows = { version = "0.61", features = [
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+] }
+png = "0.17"

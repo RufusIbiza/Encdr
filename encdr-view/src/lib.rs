@@ -2,15 +2,31 @@
 //!
 //! WebView-based screen renderer for hardware controller screens.
 //!
-//! Renders HTML/CSS/Canvas content via an offscreen WebView (wry + WebKitGTK),
-//! captures the rendered pixels, and feeds them through encdr's GPU pipeline
-//! for format conversion, frame diffing, and USB transfer.
+//! Renders HTML/CSS/Canvas content via an offscreen WebView, captures the
+//! rendered pixels, and feeds them through encdr's GPU pipeline for format
+//! conversion, frame diffing, and USB transfer.
+//!
+//! Supported platforms:
+//! - **Linux**: GTK + WebKitGTK snapshot capture
+//! - **macOS**: tao + wry + WKWebView `takeSnapshot` capture
+//! - **Windows**: tao + wry + WebView2 `CapturePreview` capture
 
 pub mod bridge;
+
 #[cfg(target_os = "linux")]
 pub mod capture;
 #[cfg(target_os = "linux")]
 pub mod webview;
+
+#[cfg(target_os = "macos")]
+pub mod capture_macos;
+#[cfg(target_os = "macos")]
+pub mod webview_macos;
+
+#[cfg(target_os = "windows")]
+pub mod capture_windows;
+#[cfg(target_os = "windows")]
+pub mod webview_windows;
 
 use encdr::core::descriptor::PixelFormat;
 use encdr::core::event::DeviceId;
@@ -45,6 +61,10 @@ impl ScreenContent {
 pub struct ScreenView {
     #[cfg(target_os = "linux")]
     inner: webview::ManagedWebView,
+    #[cfg(target_os = "macos")]
+    inner: webview_macos::ManagedWebView,
+    #[cfg(target_os = "windows")]
+    inner: webview_windows::ManagedWebView,
     device_id: DeviceId,
     screen_name: String,
 }
@@ -53,8 +73,8 @@ impl ScreenView {
     /// Create a new WebView-backed screen for a connected device.
     ///
     /// The WebView is sized to match the device screen's native resolution.
-    /// If `visible` is true, the GTK window is shown on the desktop (useful
-    /// for debugging). Otherwise it renders headless off-screen.
+    /// If `visible` is true, a desktop window is shown (useful for debugging).
+    /// Otherwise it renders headless off-screen.
     pub fn new(
         encdr: &Encdr,
         device_id: DeviceId,
@@ -62,7 +82,6 @@ impl ScreenView {
         content: ScreenContent,
         visible: bool,
     ) -> Result<Self, String> {
-        // Look up the screen descriptor to get dimensions
         let descriptor = encdr
             .device_descriptor(device_id)
             .ok_or_else(|| format!("Device {:?} not connected", device_id))?;
@@ -78,87 +97,72 @@ impl ScreenView {
         let html = content.to_html()?;
 
         #[cfg(target_os = "linux")]
-        {
-            let inner = webview::ManagedWebView::new(width, height, &html, visible)?;
+        let inner = webview::ManagedWebView::new(width, height, &html, visible)?;
 
-            Ok(Self {
-                inner,
-                device_id,
-                screen_name: screen_name.to_string(),
-            })
-        }
+        #[cfg(target_os = "macos")]
+        let inner = webview_macos::ManagedWebView::new(width, height, &html, visible)?;
 
-        #[cfg(not(target_os = "linux"))]
-        {
-            let _ = (width, height, html);
-            Err("encdr-view currently only supports Linux (WebKitGTK)".to_string())
-        }
+        #[cfg(target_os = "windows")]
+        let inner = webview_windows::ManagedWebView::new(width, height, &html, visible)?;
+
+        Ok(Self {
+            inner,
+            device_id,
+            screen_name: screen_name.to_string(),
+        })
     }
 
     /// Push a state update to the WebView.
     ///
     /// Calls `window.encdr.onMessage(channel, data)` in the WebView's JS context.
-    /// After the DOM updates, the bridge automatically requests a pixel capture
-    /// on the next animation frame.
     pub fn send(&self, channel: &str, data: Value) {
         let js = bridge::build_send_js(channel, &data);
-
-        #[cfg(target_os = "linux")]
-        {
-            if let Err(e) = self.inner.eval(&js) {
-                tracing::warn!("Failed to send to WebView: {}", e);
-            }
+        if let Err(e) = self.inner.eval(&js) {
+            tracing::warn!("Failed to send to WebView: {}", e);
         }
     }
 
     /// Capture the current WebView contents and submit to encdr for USB transfer.
-    ///
-    /// This is called automatically when the WebView signals a dirty frame,
-    /// but can also be called manually to force a capture.
     pub fn capture_and_submit(&self, encdr: &Encdr) -> Result<(), String> {
         #[cfg(target_os = "linux")]
-        {
-            let (_w, _h, rgba) = capture::capture_webview_pixels(
-                &self.inner.webkit_view,
-                self.inner.width,
-                self.inner.height,
-            )?;
+        let (_w, _h, rgba) = capture::capture_webview_pixels(
+            &self.inner.webkit_view,
+            self.inner.width,
+            self.inner.height,
+        )?;
 
-            encdr.submit_screen_with_format(
-                self.device_id,
-                &self.screen_name,
-                &rgba,
-                PixelFormat::Rgba8888,
-            );
+        #[cfg(target_os = "macos")]
+        let (_w, _h, rgba) = capture_macos::capture_webview_pixels(
+            &self.inner.webview,
+            self.inner.width,
+            self.inner.height,
+        )?;
 
-            self.inner.clear_frame_ready();
-            Ok(())
-        }
+        #[cfg(target_os = "windows")]
+        let (_w, _h, rgba) = capture_windows::capture_webview_pixels(
+            &self.inner.webview,
+            self.inner.width,
+            self.inner.height,
+        )?;
 
-        #[cfg(not(target_os = "linux"))]
-        {
-            let _ = encdr;
-            Err("Capture not supported on this platform".to_string())
-        }
+        encdr.submit_screen_with_format(
+            self.device_id,
+            &self.screen_name,
+            &rgba,
+            PixelFormat::Rgba8888,
+        );
+
+        self.inner.clear_frame_ready();
+        Ok(())
     }
 
     /// Check if the WebView has signaled that new content is ready for capture.
     pub fn is_frame_ready(&self) -> bool {
-        #[cfg(target_os = "linux")]
-        {
-            self.inner.is_frame_ready()
-        }
-
-        #[cfg(not(target_os = "linux"))]
-        {
-            false
-        }
+        self.inner.is_frame_ready()
     }
 
     /// Process pending frames: if the WebView has rendered new content,
     /// capture and submit it to encdr.
-    ///
-    /// Call this in your main loop. It's a no-op if no new frame is ready.
     pub fn poll(&self, encdr: &Encdr) {
         if self.is_frame_ready() {
             if let Err(e) = self.capture_and_submit(encdr) {
@@ -167,17 +171,30 @@ impl ScreenView {
         }
     }
 
-    /// Pump the GTK event loop (Linux only).
+    /// Pump the platform event loop.
     ///
     /// Must be called periodically to allow the WebView to process events
-    /// and render. Returns `true` if GTK wants to quit.
+    /// and render. On Linux this drives GTK, on macOS/Windows it drives
+    /// the tao event loop.
     pub fn pump_events() -> bool {
         #[cfg(target_os = "linux")]
         {
             gtk::main_iteration_do(false)
         }
 
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(target_os = "macos")]
+        {
+            webview_macos::pump_events();
+            false
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            webview_windows::pump_events();
+            false
+        }
+
+        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
         {
             false
         }
@@ -185,30 +202,12 @@ impl ScreenView {
 
     /// Load new HTML content into the WebView, replacing the current page.
     pub fn load_html(&self, html: &str) -> Result<(), String> {
-        #[cfg(target_os = "linux")]
-        {
-            self.inner.load_html(html)
-        }
-
-        #[cfg(not(target_os = "linux"))]
-        {
-            let _ = html;
-            Err("Not supported on this platform".to_string())
-        }
+        self.inner.load_html(html)
     }
 
     /// Execute arbitrary JavaScript in the WebView.
     pub fn eval(&self, js: &str) -> Result<(), String> {
-        #[cfg(target_os = "linux")]
-        {
-            self.inner.eval(js)
-        }
-
-        #[cfg(not(target_os = "linux"))]
-        {
-            let _ = js;
-            Err("Not supported on this platform".to_string())
-        }
+        self.inner.eval(js)
     }
 
     /// Get the device ID this view is attached to.
