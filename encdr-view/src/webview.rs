@@ -37,20 +37,24 @@ impl ManagedWebView {
             return Err("Failed to initialize GTK".to_string());
         }
 
-        // Create a GTK window — must be shown for WebKitGTK to composite
-        let window = gtk::Window::new(gtk::WindowType::Toplevel);
+        // Create a GTK window — must be shown (realized) for WebKitGTK to composite.
+        // Headless: use Popup type so it never appears in taskbar on any compositor.
+        // Visible: use Toplevel for a normal debug window.
+        let window_type = if visible {
+            gtk::WindowType::Toplevel
+        } else {
+            gtk::WindowType::Popup
+        };
+        let window = gtk::Window::new(window_type);
         window.set_default_size(width as i32, height as i32);
         window.set_decorated(false);
         window.set_resizable(false);
 
         if !visible {
-            // On Wayland, move_() is ignored — clients can't position windows.
-            // Instead, make the window fully transparent and hidden from taskbar/pager.
             window.set_opacity(0.0);
             window.set_skip_taskbar_hint(true);
             window.set_skip_pager_hint(true);
             window.set_accept_focus(false);
-            // Also try off-screen positioning for X11 fallback
             window.move_(-10000, -10000);
         } else {
             window.set_title("encdr-view");

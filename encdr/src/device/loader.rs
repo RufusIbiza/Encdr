@@ -24,6 +24,8 @@ impl DescriptorRegistry {
         // Embedded at compile time
         let d2_json = include_str!("../../descriptors/ni_kontrol_d2.json");
         self.load_json(d2_json)?;
+        let mk3_json = include_str!("../../descriptors/ni_maschine_mk3.json");
+        self.load_json(mk3_json)?;
         Ok(())
     }
 
@@ -97,7 +99,7 @@ impl DescriptorRegistry {
                 map.insert(name.to_owned(), interned);
             }
         }
-        if let Some(leds) = &desc.leds {
+        for leds in &desc.leds {
             for item in &leds.items {
                 let name = item.name();
                 let interned = self.intern(name);
@@ -125,7 +127,7 @@ mod tests {
         assert_eq!(desc.name, "NI Kontrol D2");
         assert_eq!(desc.interfaces.len(), 2);
         assert_eq!(desc.input_packets.len(), 2);
-        assert!(desc.leds.is_some());
+        assert!(!desc.leds.is_empty());
         assert_eq!(desc.screens.len(), 1);
         assert_eq!(desc.screens[0].width, 480);
         assert_eq!(desc.screens[0].height, 272);

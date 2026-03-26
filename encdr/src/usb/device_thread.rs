@@ -136,11 +136,15 @@ fn run_device(
         .map(|ep| ep.address.0 as u8)
         .unwrap_or(0x81);
 
-    // Build LED controller
-    let led_builder = descriptor.leds.as_ref().and_then(|led_desc| {
-        let iface = descriptor.interface_by_id(&led_desc.interface)?;
-        Some(LedBuilder::new(led_desc, iface))
-    });
+    // Build LED controllers (one per LED group)
+    let led_builders: Vec<LedBuilder> = descriptor
+        .leds
+        .iter()
+        .filter_map(|led_desc| {
+            let iface = descriptor.interface_by_id(&led_desc.interface)?;
+            Some(LedBuilder::new(led_desc, iface))
+        })
+        .collect();
 
     // Build screen managers
     let mut screen_managers: HashMap<String, ScreenManager> = HashMap::new();
@@ -152,7 +156,7 @@ fn run_device(
     // Build packet parser
     let mut parser = PacketParser::new(device_id, &descriptor, names);
     let mut hook: Box<dyn PacketHook> = Box::new(NoopHook);
-    let mut led_builder = led_builder;
+    let mut led_builders = led_builders;
 
     // Send blank screen on connect (splash)
     for (screen_name, _sm) in &screen_managers {
@@ -209,13 +213,17 @@ fn run_device(
                         break;
                     }
                     Ok(DeviceCmd::SetLed { name, value }) => {
-                        if let Some(ref mut lb) = led_builder {
-                            lb.set(&name, value);
+                        for lb in &mut led_builders {
+                            if lb.set(&name, value) {
+                                break;
+                            }
                         }
                     }
                     Ok(DeviceCmd::SetLedStrip { name, values }) => {
-                        if let Some(ref mut lb) = led_builder {
-                            lb.set_strip(&name, &values);
+                        for lb in &mut led_builders {
+                            if lb.set_strip(&name, &values) {
+                                break;
+                            }
                         }
                     }
                     Ok(DeviceCmd::SubmitScreen { screen, pixels, format }) => {
@@ -252,7 +260,7 @@ fn run_device(
             }
 
             // Flush dirty LEDs
-            if let Some(ref mut lb) = led_builder {
+            for lb in &mut led_builders {
                 if let Some(wire_buf) = lb.flush() {
                     let ep = lb.endpoint();
                     let _ = control_iface.interrupt_out(ep, wire_buf).await;
@@ -311,7 +319,7 @@ fn run_device(
     });
 
     // Cleanup: clear LEDs and screen
-    if let Some(ref mut lb) = led_builder {
+    for lb in &mut led_builders {
         lb.clear();
         if let Some(wire_buf) = lb.flush() {
             let ep = lb.endpoint();

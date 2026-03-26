@@ -56,11 +56,12 @@ fn main() {
         );
 
         // LEDs
-        if let Some(ref leds) = desc.leds {
+        for leds in &desc.leds {
             println!(
-                "    LEDs: {} items, {} byte buffer",
+                "    LEDs: {} items, {} byte buffer (prefix 0x{:02x})",
                 leds.items.len(),
-                leds.buffer_size
+                leds.buffer_size,
+                leds.prefix_byte.0
             );
         }
 

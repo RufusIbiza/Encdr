@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use serde::Deserializer;
 
 /// Top-level device descriptor, parsed from JSON.
 #[derive(Debug, Clone, Deserialize)]
@@ -9,8 +10,8 @@ pub struct DeviceDescriptor {
     pub product_id: HexU16,
     pub interfaces: Vec<InterfaceDesc>,
     pub input_packets: Vec<InputPacketDesc>,
-    #[serde(default)]
-    pub leds: Option<LedLayoutDesc>,
+    #[serde(default, deserialize_with = "deserialize_leds")]
+    pub leds: Vec<LedLayoutDesc>,
     #[serde(default)]
     pub screens: Vec<ScreenDesc>,
     #[serde(default)]
@@ -34,6 +35,23 @@ impl DeviceDescriptor {
     /// Iterate all input item descriptors across all packets.
     pub fn all_inputs(&self) -> impl Iterator<Item = &InputItemDesc> {
         self.input_packets.iter().flat_map(|p| &p.items)
+    }
+}
+
+/// Deserialize `leds` as either a single object or an array of objects.
+fn deserialize_leds<'de, D>(deserializer: D) -> Result<Vec<LedLayoutDesc>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMany {
+        One(LedLayoutDesc),
+        Many(Vec<LedLayoutDesc>),
+    }
+    match OneOrMany::deserialize(deserializer)? {
+        OneOrMany::One(single) => Ok(vec![single]),
+        OneOrMany::Many(vec) => Ok(vec),
     }
 }
 

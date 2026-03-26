@@ -344,7 +344,7 @@ for screen in &desc.screens {
         screen.name, screen.width, screen.height, screen.pixel_format);
 }
 
-if let Some(leds) = &desc.leds {
+for leds in &desc.leds {
     for led in &leds.items {
         println!("  LED: {}", led.name());
     }
