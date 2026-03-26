@@ -365,7 +365,10 @@ cargo run -p encdr --example probe
 cargo run -p encdr --example monitor
 
 # Show D2 knob/button positions on the screen (requires D2 plugged in)
-cargo run -p encdr-view --example screen_test
+cargo run -p encdr-view --example d2_screen_test
+
+# Show Maschine Mk3 encoder/button state on dual screens (requires Mk3 plugged in)
+cargo run -p encdr-view --example mk3_screen_test
 ```
 
 ---

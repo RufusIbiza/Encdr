@@ -1,0 +1,268 @@
+{
+  "name": "NI Maschine Mk3",
+  "manufacturer": "Native Instruments",
+  "vendor_id": "0x17cc",
+  "product_id": "0x1600",
+
+  "interfaces": [
+    {
+      "id": "control",
+      "number": 4,
+      "endpoints": {
+        "in":  { "address": "0x83", "type": "interrupt" },
+        "out": { "address": "0x03", "type": "interrupt" }
+      }
+    },
+    {
+      "id": "screen",
+      "number": 5,
+      "endpoints": {
+        "out": { "address": "0x04", "type": "bulk" }
+      }
+    }
+  ],
+
+  "input_packets": [
+    {
+      "id": "buttons",
+      "interface": "control",
+      "size": 42,
+      "items": [
+        { "type": "button", "name": "encoder_press",    "byte": 1,  "mask": "0x01" },
+        { "type": "button", "name": "encoder_right",    "byte": 1,  "mask": "0x08" },
+        { "type": "button", "name": "encoder_up",       "byte": 1,  "mask": "0x04" },
+        { "type": "button", "name": "encoder_left",     "byte": 1,  "mask": "0x20" },
+        { "type": "button", "name": "encoder_down",     "byte": 1,  "mask": "0x10" },
+        { "type": "button", "name": "shift",            "byte": 1,  "mask": "0x40" },
+        { "type": "button", "name": "top_8",            "byte": 1,  "mask": "0x80" },
+
+        { "type": "button", "name": "group_a",          "byte": 2,  "mask": "0x01" },
+        { "type": "button", "name": "group_b",          "byte": 2,  "mask": "0x02" },
+        { "type": "button", "name": "group_c",          "byte": 2,  "mask": "0x04" },
+        { "type": "button", "name": "group_d",          "byte": 2,  "mask": "0x08" },
+        { "type": "button", "name": "group_e",          "byte": 2,  "mask": "0x10" },
+        { "type": "button", "name": "group_f",          "byte": 2,  "mask": "0x20" },
+        { "type": "button", "name": "group_g",          "byte": 2,  "mask": "0x40" },
+        { "type": "button", "name": "group_h",          "byte": 2,  "mask": "0x80" },
+
+        { "type": "button", "name": "notes",            "byte": 3,  "mask": "0x01" },
+        { "type": "button", "name": "volume",           "byte": 3,  "mask": "0x02" },
+        { "type": "button", "name": "swing",            "byte": 3,  "mask": "0x04" },
+        { "type": "button", "name": "tempo",            "byte": 3,  "mask": "0x08" },
+        { "type": "button", "name": "note_repeat",      "byte": 3,  "mask": "0x10" },
+        { "type": "button", "name": "lock",             "byte": 3,  "mask": "0x20" },
+
+        { "type": "button", "name": "pad_mode",         "byte": 4,  "mask": "0x01" },
+        { "type": "button", "name": "keyboard",         "byte": 4,  "mask": "0x02" },
+        { "type": "button", "name": "chords",           "byte": 4,  "mask": "0x04" },
+        { "type": "button", "name": "step",             "byte": 4,  "mask": "0x08" },
+        { "type": "button", "name": "fixed_vel",        "byte": 4,  "mask": "0x10" },
+        { "type": "button", "name": "scene",            "byte": 4,  "mask": "0x20" },
+        { "type": "button", "name": "pattern",          "byte": 4,  "mask": "0x40" },
+        { "type": "button", "name": "events",           "byte": 4,  "mask": "0x80" },
+
+        { "type": "button", "name": "variations",       "byte": 5,  "mask": "0x02" },
+        { "type": "button", "name": "duplicate",        "byte": 5,  "mask": "0x04" },
+        { "type": "button", "name": "select",           "byte": 5,  "mask": "0x08" },
+        { "type": "button", "name": "solo",             "byte": 5,  "mask": "0x10" },
+        { "type": "button", "name": "mute",             "byte": 5,  "mask": "0x20" },
+        { "type": "button", "name": "pitch",            "byte": 5,  "mask": "0x40" },
+        { "type": "button", "name": "mod",              "byte": 5,  "mask": "0x80" },
+
+        { "type": "button", "name": "perform",          "byte": 6,  "mask": "0x01" },
+        { "type": "button", "name": "restart",          "byte": 6,  "mask": "0x02" },
+        { "type": "button", "name": "erase",            "byte": 6,  "mask": "0x04" },
+        { "type": "button", "name": "tap",              "byte": 6,  "mask": "0x08" },
+        { "type": "button", "name": "follow",           "byte": 6,  "mask": "0x10" },
+        { "type": "button", "name": "play",             "byte": 6,  "mask": "0x20" },
+        { "type": "button", "name": "rec",              "byte": 6,  "mask": "0x40" },
+        { "type": "button", "name": "stop",             "byte": 6,  "mask": "0x80" },
+
+        { "type": "button", "name": "macro",            "byte": 7,  "mask": "0x01" },
+        { "type": "button", "name": "settings",         "byte": 7,  "mask": "0x02" },
+        { "type": "button", "name": "arrow_right",      "byte": 7,  "mask": "0x04" },
+        { "type": "button", "name": "sampling",         "byte": 7,  "mask": "0x08" },
+        { "type": "button", "name": "mixer",            "byte": 7,  "mask": "0x10" },
+        { "type": "button", "name": "plugin",           "byte": 7,  "mask": "0x20" },
+
+        { "type": "button", "name": "channel",          "byte": 8,  "mask": "0x01" },
+        { "type": "button", "name": "arranger",         "byte": 8,  "mask": "0x02" },
+        { "type": "button", "name": "browser",          "byte": 8,  "mask": "0x04" },
+        { "type": "button", "name": "arrow_left",       "byte": 8,  "mask": "0x08" },
+        { "type": "button", "name": "file",             "byte": 8,  "mask": "0x10" },
+        { "type": "button", "name": "auto",             "byte": 8,  "mask": "0x20" },
+
+        { "type": "button", "name": "top_1",            "byte": 9,  "mask": "0x01" },
+        { "type": "button", "name": "top_2",            "byte": 9,  "mask": "0x02" },
+        { "type": "button", "name": "top_3",            "byte": 9,  "mask": "0x04" },
+        { "type": "button", "name": "top_4",            "byte": 9,  "mask": "0x08" },
+        { "type": "button", "name": "top_5",            "byte": 9,  "mask": "0x10" },
+        { "type": "button", "name": "top_6",            "byte": 9,  "mask": "0x20" },
+        { "type": "button", "name": "top_7",            "byte": 9,  "mask": "0x40" },
+
+        { "type": "touch",  "name": "encoder_touch",    "byte": 9,  "mask": "0x80" },
+        { "type": "touch",  "name": "encoder_touch_1",  "byte": 10, "mask": "0x80" },
+        { "type": "touch",  "name": "encoder_touch_2",  "byte": 10, "mask": "0x40" },
+        { "type": "touch",  "name": "encoder_touch_3",  "byte": 10, "mask": "0x20" },
+        { "type": "touch",  "name": "encoder_touch_4",  "byte": 10, "mask": "0x10" },
+        { "type": "touch",  "name": "encoder_touch_5",  "byte": 10, "mask": "0x08" },
+        { "type": "touch",  "name": "encoder_touch_6",  "byte": 10, "mask": "0x04" },
+        { "type": "touch",  "name": "encoder_touch_7",  "byte": 10, "mask": "0x02" },
+        { "type": "touch",  "name": "encoder_touch_8",  "byte": 10, "mask": "0x01" },
+
+        { "type": "encoder",      "name": "main_encoder",     "byte": 11, "bits": 4, "bit_offset": 0, "encoding": "wrap16" },
+        { "type": "encoder_fine", "name": "screen_encoder_1", "bytes": [12, 13], "encoding": "signed16", "scale": 1000.0 },
+        { "type": "encoder_fine", "name": "screen_encoder_2", "bytes": [14, 15], "encoding": "signed16", "scale": 1000.0 },
+        { "type": "encoder_fine", "name": "screen_encoder_3", "bytes": [16, 17], "encoding": "signed16", "scale": 1000.0 },
+        { "type": "encoder_fine", "name": "screen_encoder_4", "bytes": [18, 19], "encoding": "signed16", "scale": 1000.0 },
+        { "type": "encoder_fine", "name": "screen_encoder_5", "bytes": [20, 21], "encoding": "signed16", "scale": 1000.0 },
+        { "type": "encoder_fine", "name": "screen_encoder_6", "bytes": [22, 23], "encoding": "signed16", "scale": 1000.0 },
+        { "type": "encoder_fine", "name": "screen_encoder_7", "bytes": [24, 25], "encoding": "signed16", "scale": 1000.0 },
+        { "type": "encoder_fine", "name": "screen_encoder_8", "bytes": [26, 27], "encoding": "signed16", "scale": 1000.0 },
+
+        { "type": "touch",  "name": "touchstrip_touch", "bytes": [30, 31] },
+        { "type": "slider", "name": "touchstrip",       "bytes": [30, 31], "bits": 16, "normalize": true, "max_value": 1024 }
+      ]
+    },
+    {
+      "_comment": "Pad data uses double-pumped format requiring a PacketHook to decode. 16 pressure-sensitive pads, each with 16-bit pressure values.",
+      "id": "pads",
+      "interface": "control",
+      "size": 128,
+      "items": []
+    }
+  ],
+
+  "leds": [
+    {
+      "id": "button_leds",
+      "interface": "control",
+      "buffer_size": 62,
+      "prefix_byte": "0x80",
+      "items": [
+        { "type": "single", "name": "channel",       "offset": 0 },
+        { "type": "single", "name": "plugin",        "offset": 1 },
+        { "type": "single", "name": "arranger",      "offset": 2 },
+        { "type": "single", "name": "mixer",         "offset": 3 },
+        { "type": "single", "name": "browser",       "offset": 4 },
+        { "type": "single", "name": "sampling",      "offset": 5 },
+        { "type": "single", "name": "arrow_left",    "offset": 6 },
+        { "type": "single", "name": "arrow_right",   "offset": 7 },
+        { "type": "single", "name": "file",          "offset": 8 },
+        { "type": "single", "name": "settings",      "offset": 9 },
+        { "type": "single", "name": "auto",          "offset": 10 },
+        { "type": "single", "name": "macro",         "offset": 11 },
+
+        { "type": "single", "name": "top_1",         "offset": 12 },
+        { "type": "single", "name": "top_2",         "offset": 13 },
+        { "type": "single", "name": "top_3",         "offset": 14 },
+        { "type": "single", "name": "top_4",         "offset": 15 },
+        { "type": "single", "name": "top_5",         "offset": 16 },
+        { "type": "single", "name": "top_6",         "offset": 17 },
+        { "type": "single", "name": "top_7",         "offset": 18 },
+        { "type": "single", "name": "top_8",         "offset": 19 },
+
+        { "type": "single", "name": "volume",        "offset": 20 },
+        { "type": "single", "name": "swing",         "offset": 21 },
+        { "type": "single", "name": "note_repeat",   "offset": 22 },
+        { "type": "single", "name": "tempo",         "offset": 23 },
+        { "type": "single", "name": "lock",          "offset": 24 },
+        { "type": "single", "name": "pitch",         "offset": 25 },
+        { "type": "single", "name": "mod",           "offset": 26 },
+        { "type": "single", "name": "perform",       "offset": 27 },
+        { "type": "single", "name": "notes",         "offset": 28 },
+
+        { "type": "single", "name": "group_a",       "offset": 29 },
+        { "type": "single", "name": "group_b",       "offset": 30 },
+        { "type": "single", "name": "group_c",       "offset": 31 },
+        { "type": "single", "name": "group_d",       "offset": 32 },
+        { "type": "single", "name": "group_e",       "offset": 33 },
+        { "type": "single", "name": "group_f",       "offset": 34 },
+        { "type": "single", "name": "group_g",       "offset": 35 },
+        { "type": "single", "name": "group_h",       "offset": 36 },
+
+        { "type": "single", "name": "restart",       "offset": 37 },
+        { "type": "single", "name": "erase",         "offset": 38 },
+        { "type": "single", "name": "tap",           "offset": 39 },
+        { "type": "single", "name": "follow",        "offset": 40 },
+        { "type": "single", "name": "play",          "offset": 41 },
+        { "type": "single", "name": "rec",           "offset": 42 },
+        { "type": "single", "name": "stop",          "offset": 43 },
+        { "type": "single", "name": "shift",         "offset": 44 },
+
+        { "type": "single", "name": "fixed_vel",     "offset": 45 },
+        { "type": "single", "name": "pad_mode",      "offset": 46 },
+        { "type": "single", "name": "keyboard",      "offset": 47 },
+        { "type": "single", "name": "chords",        "offset": 48 },
+        { "type": "single", "name": "step",          "offset": 49 },
+        { "type": "single", "name": "scene",         "offset": 50 },
+        { "type": "single", "name": "pattern",       "offset": 51 },
+        { "type": "single", "name": "events",        "offset": 52 },
+        { "type": "single", "name": "variations",    "offset": 53 },
+        { "type": "single", "name": "duplicate",     "offset": 54 },
+        { "type": "single", "name": "select",        "offset": 55 },
+        { "type": "single", "name": "solo",          "offset": 56 },
+        { "type": "single", "name": "mute",          "offset": 57 },
+
+        { "type": "single", "name": "encoder_up",    "offset": 58 },
+        { "type": "single", "name": "encoder_left",  "offset": 59 },
+        { "type": "single", "name": "encoder_right", "offset": 60 },
+        { "type": "single", "name": "encoder_down",  "offset": 61 }
+      ]
+    },
+    {
+      "_comment": "Pad LEDs (prefix 0x81) contain 25 touchstrip LEDs + 16 RGB pad LEDs. Pad LED control requires custom handling for HSV encoding.",
+      "id": "pad_leds",
+      "interface": "control",
+      "buffer_size": 79,
+      "prefix_byte": "0x81",
+      "items": [
+        { "type": "strip", "name": "touchstrip", "offset": 0, "count": 25 }
+      ]
+    }
+  ],
+
+  "screens": [
+    {
+      "name": "left",
+      "interface": "screen",
+      "width": 480,
+      "height": 272,
+      "pixel_format": "bgr565_be",
+      "full_blit": {
+        "header": "0x84,0x00,0x00,0x60,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01,0xe0,0x01,0x10,0x00,0x00,0xff,0x00",
+        "footer": "0x03,0x00,0x00,0x00,0x40,0x00,0x00,0x00"
+      },
+      "partial_blit": {
+        "supported": true,
+        "x_align": 4,
+        "y_align": 2,
+        "header_template": "0x84,0x00,0x00,0x60,0x00,0x00,0x00,0x00,{x_hi},{x_lo},{y_hi},{y_lo},{w_hi},{w_lo},{h_hi},{h_lo},0x00,0x00,{px_half_hi},{px_half_lo}",
+        "footer": "0x03,0x00,0x00,0x00,0x40,0x00,0x00,0x00"
+      }
+    },
+    {
+      "name": "right",
+      "interface": "screen",
+      "width": 480,
+      "height": 272,
+      "pixel_format": "bgr565_be",
+      "full_blit": {
+        "header": "0x84,0x00,0x01,0x60,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01,0xe0,0x01,0x10,0x00,0x00,0xff,0x00",
+        "footer": "0x03,0x00,0x00,0x00,0x40,0x00,0x00,0x00"
+      },
+      "partial_blit": {
+        "supported": true,
+        "x_align": 4,
+        "y_align": 2,
+        "header_template": "0x84,0x00,0x01,0x60,0x00,0x00,0x00,0x00,{x_hi},{x_lo},{y_hi},{y_lo},{w_hi},{w_lo},{h_hi},{h_lo},0x00,0x00,{px_half_hi},{px_half_lo}",
+        "footer": "0x03,0x00,0x00,0x00,0x40,0x00,0x00,0x00"
+      }
+    }
+  ],
+
+  "quirks": {
+    "dual_handle": true,
+    "detach_kernel_driver": true
+  }
+}

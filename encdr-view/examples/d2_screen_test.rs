@@ -1,7 +1,7 @@
 //! D2 screen test: renders knob/button positions on the D2 screen via encdr-view.
 //!
-//! Run with: cargo run -p encdr-view --example screen_test
-//! Show desktop window: cargo run -p encdr-view --example screen_test -- --visible
+//! Run with: cargo run -p encdr-view --example d2_screen_test
+//! Show desktop window: cargo run -p encdr-view --example d2_screen_test -- --visible
 
 use std::collections::HashMap;
 use std::time::Duration;

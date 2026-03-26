@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 480px;
+    height: 272px;
+    overflow: hidden;
+    background: #0a0a0a;
+    font-family: -apple-system, 'Segoe UI', sans-serif;
+    color: #ccc;
+  }
+</style>
+</head>
+<body>
+<canvas id="c" width="480" height="272"></canvas>
+<script>
+const W = 480, H = 272;
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+const ACCENT = '#ff6600';
+const DIM = '#1a1a1a';
+const BORDER = '#2a2a2a';
+const TEXT = '#888';
+const TEXT_DIM = '#555';
+
+// State — right screen shows encoders 5-8, top buttons 5-8, transport
+const state = {
+  screen_encoder_5: 0.5, screen_encoder_6: 0.5,
+  screen_encoder_7: 0.5, screen_encoder_8: 0.5,
+  encoder_touch_5: false, encoder_touch_6: false,
+  encoder_touch_7: false, encoder_touch_8: false,
+  top_5: false, top_6: false, top_7: false, top_8: false,
+  play: false, rec: false, stop: false,
+  restart: false, erase: false, tap: false, follow: false,
+  touchstrip: 0,
+  event: '',
+};
+
+function drawKnob(cx, cy, r, value, touched) {
+  const startAngle = Math.PI * 0.75;
+  const endAngle = Math.PI * 2.25;
+  const valAngle = startAngle + value * (endAngle - startAngle);
+
+  if (touched) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + 3, 0, Math.PI * 2);
+    ctx.strokeStyle = ACCENT;
+    ctx.globalAlpha = 0.3;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = DIM;
+  ctx.fill();
+  ctx.strokeStyle = BORDER;
+  ctx.lineWidth = 0.5;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, startAngle, endAngle);
+  ctx.strokeStyle = BORDER;
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  if (value > 0.001) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, startAngle, valAngle);
+    ctx.strokeStyle = ACCENT;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  }
+
+  const ix1 = cx + r * 0.35 * Math.cos(valAngle);
+  const iy1 = cy + r * 0.35 * Math.sin(valAngle);
+  const ix2 = cx + r * 0.85 * Math.cos(valAngle);
+  const iy2 = cy + r * 0.85 * Math.sin(valAngle);
+  ctx.beginPath();
+  ctx.moveTo(ix1, iy1);
+  ctx.lineTo(ix2, iy2);
+  ctx.strokeStyle = '#e0e0e0';
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+}
+
+function drawButton(x, y, w, h, active, label) {
+  ctx.fillStyle = active ? ACCENT : DIM;
+  ctx.strokeStyle = active ? ACCENT : BORDER;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 3);
+  ctx.fill();
+  ctx.stroke();
+
+  if (label) {
+    ctx.fillStyle = active ? '#000' : TEXT_DIM;
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x + w / 2, y + h / 2);
+  }
+}
+
+function drawTouchstrip(x, y, w, h, value) {
+  // Background
+  ctx.fillStyle = DIM;
+  ctx.strokeStyle = BORDER;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 3);
+  ctx.fill();
+  ctx.stroke();
+
+  // Position indicator
+  if (value > 0) {
+    const posX = x + 2 + value * (w - 4);
+    ctx.fillStyle = ACCENT;
+    ctx.beginPath();
+    ctx.roundRect(posX - 3, y + 1, 6, h - 2, 2);
+    ctx.fill();
+  }
+}
+
+function render() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0a0a0a';
+  ctx.fillRect(0, 0, W, H);
+
+  // Top buttons row
+  const btnW = 90, btnH = 28, btnY = 10;
+  const btnStartX = (W - 4 * btnW - 3 * 12) / 2;
+  for (let i = 0; i < 4; i++) {
+    const x = btnStartX + i * (btnW + 12);
+    drawButton(x, btnY, btnW, btnH, state['top_' + (i + 5)], 'TOP ' + (i + 5));
+  }
+
+  // Separator
+  ctx.strokeStyle = '#1a1a1a';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(16, 48);
+  ctx.lineTo(W - 16, 48);
+  ctx.stroke();
+
+  // Title
+  ctx.fillStyle = TEXT_DIM;
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('MASCHINE MK3 — RIGHT', W / 2, 64);
+
+  // Last event
+  ctx.fillStyle = TEXT_DIM;
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(state.event || 'waiting...', W / 2, 80);
+
+  // Transport row
+  const tBtns = [
+    ['restart', 'RST'], ['erase', 'ERASE'], ['tap', 'TAP'], ['follow', 'FOLLOW'],
+    ['play', 'PLAY'], ['rec', 'REC'], ['stop', 'STOP'],
+  ];
+  const tBtnW = 52, tBtnH = 22, tGap = 6;
+  const tStartX = (W - tBtns.length * tBtnW - (tBtns.length - 1) * tGap) / 2;
+  const tY = 92;
+  for (let i = 0; i < tBtns.length; i++) {
+    const [key, label] = tBtns[i];
+    const x = tStartX + i * (tBtnW + tGap);
+    const color = key === 'play' ? '#00cc44' : key === 'rec' ? '#ff2222' : ACCENT;
+    const active = state[key];
+    ctx.fillStyle = active ? color : DIM;
+    ctx.strokeStyle = active ? color : BORDER;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(x, tY, tBtnW, tBtnH, 3);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = active ? '#000' : TEXT_DIM;
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x + tBtnW / 2, tY + tBtnH / 2);
+  }
+
+  // Touchstrip
+  drawTouchstrip(40, 122, W - 80, 10, state.touchstrip);
+
+  // Separator
+  ctx.beginPath();
+  ctx.moveTo(16, 140);
+  ctx.lineTo(W - 16, 140);
+  ctx.strokeStyle = '#1a1a1a';
+  ctx.stroke();
+
+  // Encoders row
+  const encR = 28;
+  const encY = 192;
+  const encStartX = W / 8;
+  const encSpacing = W / 4;
+
+  for (let i = 0; i < 4; i++) {
+    const cx = encStartX + i * encSpacing;
+    const val = state['screen_encoder_' + (i + 5)];
+    const touched = state['encoder_touch_' + (i + 5)];
+
+    drawKnob(cx, encY, encR, val, touched);
+
+    ctx.fillStyle = TEXT;
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(val.toFixed(3), cx, encY + encR + 16);
+
+    ctx.fillStyle = TEXT_DIM;
+    ctx.font = '9px sans-serif';
+    ctx.fillText('ENC ' + (i + 5), cx, encY - encR - 8);
+  }
+}
+
+window.encdr = {
+  onMessage(channel, data) {
+    if (channel === 'controls') {
+      Object.assign(state, data);
+      render();
+    }
+    if (channel === 'event') {
+      state.event = data;
+      render();
+    }
+  }
+};
+
+render();
+</script>
+</body>
+</html>
