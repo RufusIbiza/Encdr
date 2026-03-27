@@ -98,7 +98,9 @@ fn main() {
 encdr/
 ├── encdr/                  Core crate
 │   ├── descriptors/        Built-in JSON device descriptors
-│   │   └── ni_kontrol_d2.json
+│   │   ├── ni_kontrol_d2.json
+│   │   ├── ni_maschine_mk3.json
+│   │   └── ni_kontrol_s8.json
 │   └── src/
 │       ├── lib.rs          Encdr facade + public API
 │       ├── core/           Event types, descriptor model, LED types, errors
@@ -106,27 +108,36 @@ encdr/
 │       ├── screen/         GPU pipeline, format conversion, frame diff, protocol
 │       └── usb/            Device thread, hotplug, transport
 │
-├── encdr-view/             WebView screen renderer (optional)
+├── encdr-view/             WebView screen renderer (Linux, macOS, Windows)
 │   └── src/
 │       ├── lib.rs          ScreenView public API
-│       ├── webview.rs      Offscreen WebView lifecycle (wry + WebKitGTK)
-│       ├── capture.rs      Pixel capture via WebKit snapshot
-│       └── bridge.rs       Rust ↔ JS message passing
+│       ├── bridge.rs       Rust ↔ JS message passing
+│       ├── webview.rs      Linux: GTK + WebKitGTK offscreen WebView
+│       ├── capture.rs      Linux: pixel capture via WebKit snapshot
+│       ├── webview_macos.rs  macOS: tao + wry offscreen WebView
+│       ├── capture_macos.rs  macOS: pixel capture via WKWebView takeSnapshot
+│       ├── webview_windows.rs  Windows: tao + wry offscreen WebView
+│       └── capture_windows.rs  Windows: pixel capture via WebView2 CapturePreview
 │
 ├── encdr/examples/         Core crate examples
 │   ├── probe.rs            List connected devices and all controls
 │   └── monitor.rs          Print all events from all devices
 │
 ├── encdr-view/examples/    WebView examples
-│   └── screen_test.rs      Show knob/button state on D2 screen
+│   ├── d2_screen_test.rs   Show knob/button state on D2 screen
+│   └── mk3_screen_test.rs  Show encoder/button state on Mk3 dual screens
 │
-├── screens/                Example HTML screen templates
-│   └── d2_controls.html    D2 control visualizer
+├── screens/                HTML screen templates
+│   ├── d2_controls.html    D2 control visualizer (DOM/SVG)
+│   ├── mk3_left.html       Mk3 left screen (Canvas)
+│   └── mk3_right.html      Mk3 right screen (Canvas)
 │
 └── docs/                   Detailed documentation
     ├── usage.md            How to use the crate
     └── hardware/
-        └── ni_kontrol_d2.md  D2 hardware reference
+        ├── ni_kontrol_d2.md    D2 hardware reference
+        ├── ni_maschine_mk3.md  Mk3 hardware reference
+        └── ni_kontrol_s8.md    S8 hardware reference
 ```
 
 ## Supported Hardware
@@ -134,7 +145,8 @@ encdr/
 | Device | VID:PID | Status | Controls | LEDs | Screens |
 |--------|---------|--------|----------|------|---------|
 | NI Kontrol D2 | `17cc:1400` | Implemented | 57 buttons/touches, 6 encoders, 9 sliders | 8 RGB pads, 5 singles, 2 strips | 480x272 BGR565 |
-| NI Maschine Mk3 | — | Planned | — | — | — |
+| NI Maschine Mk3 | `17cc:1600` | Implemented | 63 buttons, 10 touches, 9 encoders, 1 slider | 62 singles, 1 strip | 2x 480x272 BGR565 |
+| NI Kontrol S8 | `17cc:1370` | In Progress | Partial (17 of ~100+ mapped) | Partial | 2x 480x272 BGR565 |
 
 ## Dependencies
 
@@ -149,11 +161,17 @@ encdr/
 | Error handling | `thiserror` | Typed errors |
 | Async executor | `futures-lite` | Lightweight internal async |
 | WebView (optional) | `wry` + `tao` | Offscreen HTML rendering |
-| WebKit snapshot | `webkit2gtk` + `cairo-rs` | Linux pixel capture |
+| WebKit snapshot (Linux) | `webkit2gtk` + `cairo-rs` | Pixel capture via WebKit snapshot |
+| Obj-C bridge (macOS) | `objc2` + `block2` | WKWebView `takeSnapshot` pixel capture |
+| COM/WebView2 (Windows) | `webview2-com` + `windows` | WebView2 `CapturePreview` pixel capture |
+| PNG decode (Windows) | `png` | Decode CapturePreview PNG output to RGBA |
 
 ## Documentation
 
-See [docs/usage.md](docs/usage.md) for a comprehensive usage guide and [docs/hardware/ni_kontrol_d2.md](docs/hardware/ni_kontrol_d2.md) for a complete D2 hardware reference.
+- [Usage Guide](docs/usage.md) — comprehensive usage guide
+- [NI Kontrol D2](docs/hardware/ni_kontrol_d2.md) — D2 hardware reference
+- [NI Maschine Mk3](docs/hardware/ni_maschine_mk3.md) — Mk3 hardware reference
+- [NI Kontrol S8](docs/hardware/ni_kontrol_s8.md) — S8 hardware reference (WIP)
 
 ## License
 

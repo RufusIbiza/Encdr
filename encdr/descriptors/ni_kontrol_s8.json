@@ -1,0 +1,287 @@
+{
+  "name": "NI Kontrol S8",
+  "manufacturer": "Native Instruments",
+  "vendor_id": "0x17cc",
+  "product_id": "0x1370",
+
+  "interfaces": [
+    {
+      "id": "control",
+      "number": 0,
+      "endpoints": {
+        "in":  { "address": "0x81", "type": "interrupt" },
+        "out": { "address": "0x01", "type": "interrupt" }
+      }
+    },
+    {
+      "id": "screen_left",
+      "number": 1,
+      "endpoints": {
+        "out": { "address": "0x02", "type": "bulk" }
+      }
+    },
+    {
+      "id": "screen_right",
+      "number": 2,
+      "endpoints": {
+        "out": { "address": "0x03", "type": "bulk" }
+      }
+    }
+  ],
+
+  "input_packets": [
+    {
+      "id": "buttons",
+      "interface": "control",
+      "size": 46,
+      "items": [
+        { "type": "button", "name": "left_fx_select",      "byte": 4,  "mask": "0x40" },
+        { "type": "button", "name": "left_fx_button_1",    "byte": 4,  "mask": "0x80" },
+        { "type": "button", "name": "left_fx_button_2",    "byte": 5,  "mask": "0x04" },
+        { "type": "button", "name": "left_fx_button_3",    "byte": 5,  "mask": "0x02" },
+        { "type": "button", "name": "left_fx_button_4",    "byte": 5,  "mask": "0x01" },
+        
+        { "type": "button", "name": "left_on_button_1",     "byte": 6,  "mask": "0x10" },
+        { "type": "button", "name": "left_on_button_2",     "byte": 6,  "mask": "0x08" },
+        { "type": "button", "name": "left_on_button_3",     "byte": 6,  "mask": "0x04" },
+        { "type": "button", "name": "left_on_button_4",     "byte": 6,  "mask": "0x02" },
+        
+        { "type": "button", "name": "left_screen_button_1", "byte": 4,  "mask": "0x20" },
+        { "type": "button", "name": "left_screen_button_2", "byte": 4,  "mask": "0x10" },
+        { "type": "button", "name": "left_screen_button_3", "byte": 4,  "mask": "0x01" },
+        { "type": "button", "name": "left_screen_button_4", "byte": 6,  "mask": "0x40" },
+        { "type": "button", "name": "left_screen_button_5", "byte": 5,  "mask": "0x08" },
+        { "type": "button", "name": "left_screen_button_6", "byte": 5,  "mask": "0x10" },
+        { "type": "button", "name": "left_screen_button_7", "byte": 5,  "mask": "0x20" },
+        { "type": "button", "name": "left_screen_button_8", "byte": 5,  "mask": "0x40" },
+
+        { "type": "button", "name": "left_play",           "byte": 9,  "mask": "0x10" },
+        { "type": "button", "name": "left_cue",            "byte": 9,  "mask": "0x20" },
+        { "type": "button", "name": "left_sync",           "byte": 9,  "mask": "0x40" },
+        { "type": "button", "name": "left_shift",          "byte": 9,  "mask": "0x80" },
+        { "type": "button", "name": "left_flux",           "byte": 8,  "mask": "0x10" },
+        { "type": "button", "name": "left_deck",           "byte": 8,  "mask": "0x04" },
+        { "type": "button", "name": "left_hotcue",         "byte": 9,  "mask": "0x08" },
+        { "type": "button", "name": "left_loop",           "byte": 9,  "mask": "0x04" },
+        { "type": "button", "name": "left_freeze",         "byte": 9,  "mask": "0x02" },
+        { "type": "button", "name": "left_remix",          "byte": 9,  "mask": "0x01" },
+        { "type": "button", "name": "left_edit",           "byte": 6,  "mask": "0x01" },
+        { "type": "button", "name": "left_capture",        "byte": 6,  "mask": "0x20" },
+        { "type": "button", "name": "left_back",           "byte": 6,  "mask": "0x80" },
+        
+        { "type": "button", "name": "left_pad_1",          "byte": 8,  "mask": "0x08" },
+        { "type": "button", "name": "left_pad_2",          "byte": 8,  "mask": "0x01" },
+        { "type": "button", "name": "left_pad_3",          "byte": 7,  "mask": "0x01" },
+        { "type": "button", "name": "left_pad_4",          "byte": 7,  "mask": "0x02" },
+        { "type": "button", "name": "left_pad_5",          "byte": 8,  "mask": "0x20" },
+        { "type": "button", "name": "left_pad_6",          "byte": 8,  "mask": "0x40" },
+        { "type": "button", "name": "left_pad_7",          "byte": 8,  "mask": "0x80" },
+        { "type": "button", "name": "left_pad_8",          "byte": 8,  "mask": "0x02" },
+
+        { "type": "button", "name": "mixer_cue_a",         "byte": 20, "mask": "0x08" },
+        { "type": "button", "name": "mixer_cue_b",         "byte": 23, "mask": "0x20" },
+        { "type": "button", "name": "mixer_cue_c",         "byte": 20, "mask": "0x04" },
+        { "type": "button", "name": "mixer_cue_d",         "byte": 23, "mask": "0x40" },
+        { "type": "button", "name": "mixer_filter_on_a",   "byte": 20, "mask": "0x02" },
+        { "type": "button", "name": "mixer_filter_on_b",   "byte": 23, "mask": "0x08" },
+        { "type": "button", "name": "mixer_filter_on_c",   "byte": 20, "mask": "0x01" },
+        { "type": "button", "name": "mixer_filter_on_d",   "byte": 23, "mask": "0x10" },
+        { "type": "button", "name": "mixer_fx_a_1",        "byte": 22, "mask": "0x20" },
+        { "type": "button", "name": "mixer_fx_a_2",        "byte": 22, "mask": "0x40" },
+        { "type": "button", "name": "mixer_fx_b_1",        "byte": 25, "mask": "0x10" },
+        { "type": "button", "name": "mixer_fx_b_2",        "byte": 25, "mask": "0x20" },
+        { "type": "button", "name": "mixer_fx_c_1",        "byte": 22, "mask": "0x08" },
+        { "type": "button", "name": "mixer_fx_c_2",        "byte": 22, "mask": "0x10" },
+        { "type": "button", "name": "mixer_fx_d_1",        "byte": 25, "mask": "0x40" },
+        { "type": "button", "name": "mixer_fx_d_2",        "byte": 25, "mask": "0x80" },
+ 
+        { "type": "button", "name": "deck_assign_a",       "byte": 22, "mask": "0x02" },
+        { "type": "button", "name": "deck_assign_b",       "byte": 25, "mask": "0x02" },
+        { "type": "button", "name": "deck_assign_c",       "byte": 22, "mask": "0x01" },
+        { "type": "button", "name": "deck_assign_d",       "byte": 25, "mask": "0x04" },
+ 
+        { "type": "button", "name": "mixer_snap",           "byte": 22, "mask": "0x80" },
+        { "type": "button", "name": "mixer_quantize",       "byte": 25, "mask": "0x08" },
+        { "type": "button", "name": "mixer_mic_1",          "byte": 22, "mask": "0x04" },
+        { "type": "button", "name": "mixer_mic_2",          "byte": 25, "mask": "0x01" },
+
+        { "type": "button", "name": "right_fx_select",     "byte": 12, "mask": "0x40" },
+        { "type": "button", "name": "right_fx_button_1",   "byte": 12, "mask": "0x80" },
+        { "type": "button", "name": "right_fx_button_2",   "byte": 13, "mask": "0x04" },
+        { "type": "button", "name": "right_fx_button_3",   "byte": 13, "mask": "0x02" },
+        { "type": "button", "name": "right_fx_button_4",   "byte": 13, "mask": "0x01" },
+
+        { "type": "button", "name": "right_on_button_1",    "byte": 14, "mask": "0x10" },
+        { "type": "button", "name": "right_on_button_2",    "byte": 14, "mask": "0x08" },
+        { "type": "button", "name": "right_on_button_3",    "byte": 14, "mask": "0x04" },
+        { "type": "button", "name": "right_on_button_4",    "byte": 14, "mask": "0x02" },
+
+        { "type": "button", "name": "right_screen_button_1", "byte": 12, "mask": "0x20" },
+        { "type": "button", "name": "right_screen_button_2", "byte": 12, "mask": "0x10" },
+        { "type": "button", "name": "right_screen_button_3", "byte": 12, "mask": "0x01" },
+        { "type": "button", "name": "right_screen_button_4", "byte": 14, "mask": "0x40" },
+        { "type": "button", "name": "right_screen_button_5", "byte": 13, "mask": "0x08" },
+        { "type": "button", "name": "right_screen_button_6", "byte": 13, "mask": "0x10" },
+        { "type": "button", "name": "right_screen_button_7", "byte": 13, "mask": "0x20" },
+        { "type": "button", "name": "right_screen_button_8", "byte": 13, "mask": "0x40" },
+
+        { "type": "button", "name": "right_play",          "byte": 17, "mask": "0x10" },
+        { "type": "button", "name": "right_cue",           "byte": 17, "mask": "0x20" },
+        { "type": "button", "name": "right_sync",          "byte": 17, "mask": "0x40" },
+        { "type": "button", "name": "right_shift",         "byte": 17, "mask": "0x80" },
+        { "type": "button", "name": "right_flux",          "byte": 16, "mask": "0x10" },
+        { "type": "button", "name": "right_deck",          "byte": 16, "mask": "0x04" },
+        { "type": "button", "name": "right_hotcue",        "byte": 17, "mask": "0x08" },
+        { "type": "button", "name": "right_loop",          "byte": 17, "mask": "0x04" },
+        { "type": "button", "name": "right_freeze",        "byte": 17, "mask": "0x02" },
+        { "type": "button", "name": "right_remix",         "byte": 17, "mask": "0x01" },
+        { "type": "button", "name": "right_edit",          "byte": 14, "mask": "0x01" },
+        { "type": "button", "name": "right_capture",       "byte": 14, "mask": "0x20" },
+        { "type": "button", "name": "right_back",          "byte": 14, "mask": "0x80" },
+
+        { "type": "button", "name": "right_pad_1",         "byte": 16, "mask": "0x08" },
+        { "type": "button", "name": "right_pad_2",         "byte": 16, "mask": "0x01" },
+        { "type": "button", "name": "right_pad_3",         "byte": 15, "mask": "0x01" },
+        { "type": "button", "name": "right_pad_4",         "byte": 15, "mask": "0x02" },
+        { "type": "button", "name": "right_pad_5",         "byte": 16, "mask": "0x20" },
+        { "type": "button", "name": "right_pad_6",         "byte": 16, "mask": "0x40" },
+        { "type": "button", "name": "right_pad_7",         "byte": 16, "mask": "0x80" },
+        { "type": "button", "name": "right_pad_8",         "byte": 16, "mask": "0x02" },
+
+        { "type": "button", "name": "xfader_assign_left_c", "byte": 24, "mask": "0x80" },
+        { "type": "button", "name": "xfader_assign_right_c","byte": 24, "mask": "0x40" },
+        { "type": "button", "name": "xfader_assign_left_a", "byte": 24, "mask": "0x20" },
+        { "type": "button", "name": "xfader_assign_right_a","byte": 24, "mask": "0x10" },
+        { "type": "button", "name": "xfader_assign_left_b", "byte": 24, "mask": "0x08" },
+        { "type": "button", "name": "xfader_assign_right_b","byte": 24, "mask": "0x04" },
+        { "type": "button", "name": "xfader_assign_left_d", "byte": 24, "mask": "0x02" },
+        { "type": "button", "name": "xfader_assign_right_d","byte": 24, "mask": "0x01" }
+      ]
+    },
+    {
+      "id": "sliders",
+      "interface": "control",
+      "size": 176,
+      "items": [
+        { "type": "knob",   "name": "left_perf_knob_1",    "bytes": [1, 2],    "bits": 12, "on_touch": { "byte": 10, "mask": "0x10" } },
+        { "type": "knob",   "name": "left_perf_knob_2",    "bytes": [3, 4],    "bits": 12, "on_touch": { "byte": 10, "mask": "0x20" } },
+        { "type": "knob",   "name": "left_perf_knob_3",    "bytes": [5, 6],    "bits": 12, "on_touch": { "byte": 10, "mask": "0x40" } },
+        { "type": "knob",   "name": "left_perf_knob_4",    "bytes": [7, 8],    "bits": 12, "on_touch": { "byte": 10, "mask": "0x80" } },
+
+        { "type": "knob",   "name": "right_perf_knob_1",   "bytes": [9, 10],   "bits": 12, "on_touch": { "byte": 18, "mask": "0x10" } },
+        { "type": "knob",   "name": "right_perf_knob_2",   "bytes": [11, 12],  "bits": 12, "on_touch": { "byte": 18, "mask": "0x20" } },
+        { "type": "knob",   "name": "right_perf_knob_3",   "bytes": [13, 14],  "bits": 12, "on_touch": { "byte": 18, "mask": "0x40" } },
+        { "type": "knob",   "name": "right_perf_knob_4",   "bytes": [15, 16],  "bits": 12, "on_touch": { "byte": 18, "mask": "0x80" } },
+
+        { "type": "slider", "name": "left_fader_1",        "bytes": [17, 18],  "bits": 12, "normalize": true, "max_value": 4078, "on_touch": { "byte": 11, "mask": "0x01" } },
+        { "type": "slider", "name": "left_fader_2",        "bytes": [19, 20],  "bits": 12, "normalize": true, "max_value": 4078, "on_touch": { "byte": 11, "mask": "0x02" } },
+        { "type": "slider", "name": "left_fader_3",        "bytes": [21, 22],  "bits": 12, "normalize": true, "max_value": 4078, "on_touch": { "byte": 11, "mask": "0x04" } },
+        { "type": "slider", "name": "left_fader_4",        "bytes": [23, 24],  "bits": 12, "normalize": true, "max_value": 4078, "on_touch": { "byte": 11, "mask": "0x08" } },
+
+        { "type": "slider", "name": "right_fader_1",       "bytes": [25, 26],  "bits": 12, "normalize": true, "max_value": 4078, "on_touch": { "byte": 19, "mask": "0x01" } },
+        { "type": "slider", "name": "right_fader_2",       "bytes": [27, 28],  "bits": 12, "normalize": true, "max_value": 4078, "on_touch": { "byte": 19, "mask": "0x02" } },
+        { "type": "slider", "name": "right_fader_3",       "bytes": [29, 30],  "bits": 12, "normalize": true, "max_value": 4078, "on_touch": { "byte": 19, "mask": "0x04" } },
+        { "type": "slider", "name": "right_fader_4",       "bytes": [31, 32],  "bits": 12, "normalize": true, "max_value": 4078, "on_touch": { "byte": 19, "mask": "0x08" } },
+
+        { "type": "slider", "name": "mixer_fader_a",       "bytes": [33, 34],  "bits": 12, "normalize": true, "max_value": 4078 },
+        { "type": "slider", "name": "mixer_fader_b",       "bytes": [35, 36],  "bits": 12, "normalize": true, "max_value": 4078 },
+        { "type": "slider", "name": "mixer_fader_c",       "bytes": [37, 38],  "bits": 12, "normalize": true, "max_value": 4078 },
+        { "type": "slider", "name": "mixer_fader_d",       "bytes": [39, 40],  "bits": 12, "normalize": true, "max_value": 4078 },
+        { "type": "slider", "name": "crossfader",          "bytes": [41, 42],  "bits": 12, "normalize": true, "max_value": 4078 },
+
+        { "type": "knob",   "name": "left_fx_knob_1",      "bytes": [43, 44],  "bits": 12, "on_touch": { "byte": 11, "mask": "0x10" } },
+        { "type": "knob",   "name": "left_fx_knob_2",      "bytes": [45, 46],  "bits": 12, "on_touch": { "byte": 11, "mask": "0x20" } },
+        { "type": "knob",   "name": "left_fx_knob_3",      "bytes": [47, 48],  "bits": 12, "on_touch": { "byte": 11, "mask": "0x40" } },
+        { "type": "knob",   "name": "left_fx_knob_4",      "bytes": [49, 50],  "bits": 12, "on_touch": { "byte": 11, "mask": "0x80" } },
+
+        { "type": "knob",   "name": "right_fx_knob_1",     "bytes": [51, 52],  "bits": 12, "on_touch": { "byte": 19, "mask": "0x10" } },
+        { "type": "knob",   "name": "right_fx_knob_2",     "bytes": [53, 54],  "bits": 12, "on_touch": { "byte": 19, "mask": "0x20" } },
+        { "type": "knob",   "name": "right_fx_knob_3",     "bytes": [55, 56],  "bits": 12, "on_touch": { "byte": 19, "mask": "0x40" } },
+        { "type": "knob",   "name": "right_fx_knob_4",     "bytes": [57, 58],  "bits": 12, "on_touch": { "byte": 19, "mask": "0x80" } }
+      ]
+    }
+  ],
+
+  "leds": {
+    "interface": "control",
+    "buffer_size": 309,
+    "prefixes": ["0x80", "0x81", "0x82"],
+    "items": [
+      { "type": "rgb",    "name": "left_pad_1",             "index": 0,   "layout": "rgb", "prefix": "0x80" },
+      { "type": "rgb",    "name": "left_pad_2",             "index": 3,   "layout": "rgb", "prefix": "0x80" },
+      { "type": "rgb",    "name": "left_pad_3",             "index": 6,   "layout": "rgb", "prefix": "0x80" },
+      { "type": "rgb",    "name": "left_pad_4",             "index": 9,   "layout": "rgb", "prefix": "0x80" },
+      { "type": "rgb",    "name": "left_pad_5",             "index": 12,  "layout": "rgb", "prefix": "0x80" },
+      { "type": "rgb",    "name": "left_pad_6",             "index": 15,  "layout": "rgb", "prefix": "0x80" },
+      { "type": "rgb",    "name": "left_pad_7",             "index": 18,  "layout": "rgb", "prefix": "0x80" },
+      { "type": "rgb",    "name": "left_pad_8",             "index": 21,  "layout": "rgb", "prefix": "0x80" },
+      
+      { "type": "single", "name": "left_fx_select",         "offset": 24, "prefix": "0x80" },
+      { "type": "single", "name": "left_fx_button_1",       "offset": 25, "prefix": "0x80" },
+      { "type": "single", "name": "left_fx_button_2",       "offset": 26, "prefix": "0x80" },
+      { "type": "single", "name": "left_fx_button_3",       "offset": 27, "prefix": "0x80" },
+      { "type": "single", "name": "left_fx_button_4",       "offset": 28, "prefix": "0x80" },
+
+      { "type": "single", "name": "left_screen_button_1",   "offset": 29, "prefix": "0x80" },
+      { "type": "single", "name": "left_screen_button_2",   "offset": 30, "prefix": "0x80" },
+      { "type": "single", "name": "left_screen_button_3",   "offset": 31, "prefix": "0x80" },
+      { "type": "single", "name": "left_screen_button_4",   "offset": 32, "prefix": "0x80" },
+      { "type": "single", "name": "left_screen_button_5",   "offset": 33, "prefix": "0x80" },
+      { "type": "single", "name": "left_screen_button_6",   "offset": 34, "prefix": "0x80" },
+      { "type": "single", "name": "left_screen_button_7",   "offset": 35, "prefix": "0x80" },
+      { "type": "single", "name": "left_screen_button_8",   "offset": 36, "prefix": "0x80" },
+
+      { "type": "single", "name": "left_hotcue",            "offset": 44, "prefix": "0x80" },
+      { "type": "single", "name": "left_loop",              "offset": 46, "prefix": "0x80" },
+      { "type": "single", "name": "left_freeze",            "offset": 48, "prefix": "0x80" },
+      { "type": "single", "name": "left_remix",             "offset": 50, "prefix": "0x80" },
+      { "type": "single", "name": "left_flux",              "offset": 52, "prefix": "0x80" },
+      { "type": "single", "name": "left_deck",              "offset": 53, "prefix": "0x80" },
+      { "type": "single", "name": "left_shift",             "offset": 55, "prefix": "0x80" },
+      { "type": "single", "name": "left_sync",              "offset": 56, "prefix": "0x80" },
+      { "type": "single", "name": "left_cue",               "offset": 58, "prefix": "0x80" },
+      { "type": "single", "name": "left_play",              "offset": 59, "prefix": "0x80" },
+
+      { "type": "strip",  "name": "left_touchstrip",        "offset": 93, "count": 25, "prefix": "0x80" },
+
+      { "type": "rgb",    "name": "right_pad_1",            "index": 0,   "layout": "rgb", "prefix": "0x81" },
+      { "type": "single", "name": "right_play",             "offset": 59, "prefix": "0x81" },
+      { "type": "strip",  "name": "right_touchstrip",       "offset": 93, "count": 25, "prefix": "0x81" },
+
+      { "type": "single", "name": "mixer_cue_a",            "offset": 25, "prefix": "0x82" },
+      { "type": "single", "name": "mixer_cue_b",            "offset": 26, "prefix": "0x82" },
+      { "type": "single", "name": "mixer_cue_c",            "offset": 57, "prefix": "0x82" },
+      { "type": "single", "name": "mixer_cue_d",            "offset": 55, "prefix": "0x82" }
+    ]
+  },
+
+  "screens": [
+    {
+      "name": "left",
+      "interface": "screen_left",
+      "width": 480,
+      "height": 272,
+      "pixel_format": "bgr565_be",
+      "full_blit": {
+        "header": "0x84,0x00,0x00,0x60,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01,0xe0,0x01,0x10,0x00,0x00,0xff,0x00",
+        "footer": "0x03,0x00,0x00,0x00,0x40,0x00,0x00,0x00"
+      }
+    },
+    {
+      "name": "right",
+      "interface": "screen_right",
+      "width": 480,
+      "height": 272,
+      "pixel_format": "bgr565_be",
+      "full_blit": {
+        "header": "0x84,0x00,0x00,0x60,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01,0xe0,0x01,0x10,0x00,0x00,0xff,0x00",
+        "footer": "0x03,0x00,0x00,0x00,0x40,0x00,0x00,0x00"
+      }
+    }
+  ],
+
+  "quirks": {
+    "dual_handle": true,
+    "detach_kernel_driver": true
+  }
+}

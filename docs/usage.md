@@ -8,14 +8,15 @@ Add encdr to your `Cargo.toml`:
 [dependencies]
 encdr = { path = "path/to/encdr/encdr" }
 
-# Optional: WebView screen renderer (Linux only, requires WebKitGTK)
+# Optional: WebView screen renderer (Linux, macOS, Windows)
 encdr-view = { path = "path/to/encdr/encdr-view" }
 ```
 
 Encdr requires a GPU that supports wgpu (Vulkan, Metal, or DX12). The GPU is used for screen format conversion and frame diffing.
 
-### Linux Prerequisites
+### Platform Prerequisites
 
+**Linux:**
 ```bash
 # USB access (nusb)
 sudo apt install libudev-dev
@@ -32,6 +33,10 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="17cc", MODE="0666"
 ```
 
 Then reload: `sudo udevadm control --reload-rules && sudo udevadm trigger`
+
+**macOS:** No additional system dependencies — `encdr-view` uses the built-in WKWebView via `tao` + `wry`.
+
+**Windows:** No additional system dependencies — `encdr-view` uses the built-in WebView2 runtime (included with Windows 10/11) via `tao` + `wry`.
 
 ---
 
@@ -55,7 +60,7 @@ Call `scan()` to detect connected devices. This matches USB VID:PID against load
 let device_ids = encdr.scan().unwrap();
 ```
 
-Encdr loads built-in descriptors automatically (currently NI Kontrol D2). You can add custom descriptors:
+Encdr loads built-in descriptors automatically (NI Kontrol D2 and NI Maschine Mk3). You can add custom descriptors:
 
 ```rust
 // Load all JSON files from a directory
@@ -161,6 +166,29 @@ encdr.set_led_strip(device_id, "touchstrip_orange", &strip);
 | `touchstrip_blue` | Strip (25) | Touchstrip blue channel |
 | `touchstrip_orange` | Strip (25) | Touchstrip orange channel |
 
+### Mk3 LED Names
+
+The Mk3 has two LED buffer groups (button LEDs and touchstrip), all single-color.
+
+| Name | Type | Description |
+|------|------|-------------|
+| `play`, `rec`, `stop` | Single | Transport control backlights |
+| `restart`, `erase`, `tap`, `follow` | Single | Transport secondary backlights |
+| `shift`, `fixed_vel` | Single | Modifier backlights |
+| `pad_mode`, `keyboard`, `chords`, `step` | Single | Pad mode backlights |
+| `scene`, `pattern`, `events`, `variations` | Single | Sequencer mode backlights |
+| `duplicate`, `select`, `solo`, `mute` | Single | Pad action backlights |
+| `top_1` - `top_8` | Single | Top row button backlights |
+| `group_a` - `group_h` | Single | Group selector backlights |
+| `channel`, `plugin`, `arranger`, `mixer` | Single | View mode backlights |
+| `browser`, `sampling` | Single | Browser/sampling backlights |
+| `arrow_left`, `arrow_right` | Single | Navigation arrow backlights |
+| `file`, `settings`, `auto`, `macro` | Single | Utility backlights |
+| `volume`, `swing`, `note_repeat`, `tempo` | Single | Parameter backlights |
+| `lock`, `pitch`, `mod`, `perform`, `notes` | Single | Mode backlights |
+| `encoder_up/down/left/right` | Single | Encoder push direction backlights |
+| `touchstrip` | Strip | Touchstrip LED array |
+
 ---
 
 ## Screen Output
@@ -212,7 +240,7 @@ view.send("track", serde_json::json!({
 
 // In your main loop: pump events and capture frames
 loop {
-    ScreenView::pump_events(); // Drive GTK event loop
+    ScreenView::pump_events(); // Drive platform event loop (GTK/tao)
     view.poll(&encdr);          // Capture & submit if dirty
     std::thread::sleep(std::time::Duration::from_millis(16));
 }
@@ -234,7 +262,11 @@ window.encdr = {
 </script>
 ```
 
-The WebView approach works with standard HTML, CSS, Canvas, SVG — anything the browser compositor renders. Pixel capture uses WebKitGTK's native snapshot API (not JavaScript `getImageData`), so it captures the full composited output.
+The WebView approach works with standard HTML, CSS, Canvas, SVG — anything the browser compositor renders. Pixel capture uses native platform APIs (not JavaScript `getImageData`), so it captures the full composited output:
+
+- **Linux**: WebKitGTK snapshot → Cairo surface → RGBA
+- **macOS**: WKWebView `takeSnapshot` → NSBitmapImageRep → RGBA
+- **Windows**: WebView2 `CapturePreview` → PNG decode → RGBA
 
 ---
 
@@ -263,7 +295,7 @@ If no GPU context is provided, Encdr creates its own with `wgpu::PowerPreference
 
 ## Custom Device Descriptors
 
-Devices are defined by JSON files. See [docs/hardware/ni_kontrol_d2.md](hardware/ni_kontrol_d2.md) for a complete annotated example. The key sections:
+Devices are defined by JSON files. See [hardware/ni_kontrol_d2.md](hardware/ni_kontrol_d2.md) and [hardware/ni_maschine_mk3.md](hardware/ni_maschine_mk3.md) for complete annotated examples. The key sections:
 
 - **`interfaces`**: USB interface numbers and endpoint addresses
 - **`input_packets`**: Packet layouts with byte offsets, bitmasks, and encodings
