@@ -17,7 +17,9 @@ use crate::screen::ScreenManager;
 /// Commands sent from the main thread to a device thread.
 pub enum DeviceCmd {
     SetLed { name: String, value: LedValue },
+    SetLedInGroup { group: String, name: String, value: LedValue },
     SetLedStrip { name: String, values: Vec<u8> },
+    SetLedStripInGroup { group: String, name: String, values: Vec<u8> },
     SubmitScreen { screen: String, pixels: Vec<u8>, format: PixelFormat },
     Disconnect,
 }
@@ -219,9 +221,25 @@ fn run_device(
                             }
                         }
                     }
+                    Ok(DeviceCmd::SetLedInGroup { group, name, value }) => {
+                        for lb in &mut led_builders {
+                            if lb.group_id() == group {
+                                lb.set(&name, value);
+                                break;
+                            }
+                        }
+                    }
                     Ok(DeviceCmd::SetLedStrip { name, values }) => {
                         for lb in &mut led_builders {
                             if lb.set_strip(&name, &values) {
+                                break;
+                            }
+                        }
+                    }
+                    Ok(DeviceCmd::SetLedStripInGroup { group, name, values }) => {
+                        for lb in &mut led_builders {
+                            if lb.group_id() == group {
+                                lb.set_strip(&name, &values);
                                 break;
                             }
                         }
@@ -291,7 +309,6 @@ fn run_device(
                             if !hook.on_packet(device_id, &data, &mut event_buf) {
                                 parser.parse(&data, &mut event_buf);
                             }
-
                             // Emit events
                             for event in event_buf.drain(..) {
                                 if event_tx.send(event).is_err() {

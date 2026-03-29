@@ -26,6 +26,8 @@ impl DescriptorRegistry {
         self.load_json(d2_json)?;
         let mk3_json = include_str!("../../descriptors/ni_maschine_mk3.json");
         self.load_json(mk3_json)?;
+        let s8_json = include_str!("../../descriptors/ni_kontrol_s8.json");
+        self.load_json(s8_json)?;
         Ok(())
     }
 

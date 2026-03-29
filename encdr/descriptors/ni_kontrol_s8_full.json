@@ -1,0 +1,114 @@
+{
+  "name": "NI Kontrol S8 (Full)",
+  "manufacturer": "Native Instruments",
+  "vendor_id": "0x17cc",
+  "product_id": "0x1370",
+
+  "interfaces": [
+    {
+      "id": "control",
+      "number": 0,
+      "endpoints": {
+        "in":  { "address": "0x81", "type": "interrupt" },
+        "out": { "address": "0x01", "type": "interrupt" }
+      }
+    },
+    {
+      "id": "screen_left",
+      "number": 1,
+      "endpoints": {
+        "out": { "address": "0x02", "type": "bulk" }
+      }
+    },
+    {
+      "id": "screen_right",
+      "number": 2,
+      "endpoints": {
+        "out": { "address": "0x03", "type": "bulk" }
+      }
+    }
+  ],
+
+  "input_packets": [
+    {
+      "id": "buttons",
+      "interface": "control",
+      "size": 46,
+      "items": [
+        { "type": "button", "name": "left_fx_select",      "byte": 2,  "mask": "0x40" },
+        { "type": "button", "name": "left_fx_1",           "byte": 2,  "mask": "0x80" },
+        { "type": "button", "name": "left_fx_2",           "byte": 3,  "mask": "0x04" },
+        { "type": "button", "name": "left_fx_3",           "byte": 3,  "mask": "0x02" },
+        { "type": "button", "name": "left_fx_4",           "byte": 3,  "mask": "0x01" },
+        
+        { "type": "button", "name": "mixer_snap",          "byte": 1,  "mask": "0x01" },
+        { "type": "button", "name": "mixer_quantize",      "byte": 1,  "mask": "0x02" },
+
+        { "type": "button", "name": "mixer_cue_a",         "byte": 5,  "mask": "0x01" },
+        { "type": "button", "name": "mixer_cue_b",         "byte": 5,  "mask": "0x02" },
+        { "type": "button", "name": "mixer_cue_c",         "byte": 9,  "mask": "0x02" },
+        { "type": "button", "name": "mixer_cue_d",         "byte": 9,  "mask": "0x04" },
+        
+        { "type": "button", "name": "mixer_fx_assign_a_1", "byte": 4,  "mask": "0x08" },
+        { "type": "button", "name": "mixer_fx_assign_a_2", "byte": 4,  "mask": "0x10" },
+        { "type": "button", "name": "mixer_fx_assign_b_1", "byte": 4,  "mask": "0x20" },
+        { "type": "button", "name": "mixer_fx_assign_b_2", "byte": 4,  "mask": "0x40" },
+
+        { "type": "button", "name": "mixer_deck_assign_a", "byte": 10, "mask": "0x01" },
+        { "type": "button", "name": "mixer_deck_assign_b", "byte": 10, "mask": "0x02" },
+        { "type": "button", "name": "mixer_deck_assign_c", "byte": 10, "mask": "0x04" },
+        { "type": "button", "name": "mixer_deck_assign_d", "byte": 10, "mask": "0x08" }
+      ]
+    }
+  ],
+
+  "leds": {
+    "interface": "control",
+    "buffer_size": 309,
+    "prefixes": ["0x80", "0x81", "0x82"],
+    "items": [
+      { "type": "single", "name": "mixer_snap",            "offset": 212, "prefix": "0x81" },
+      { "type": "single", "name": "mixer_quantize",        "offset": 213, "prefix": "0x81" },
+
+      { "type": "single", "name": "mixer_cue_a",            "offset": 222, "prefix": "0x81" },
+      { "type": "single", "name": "mixer_cue_b",            "offset": 223, "prefix": "0x81" },
+      { "type": "single", "name": "mixer_cue_c",            "offset": 225, "prefix": "0x81" },
+      { "type": "single", "name": "mixer_cue_d",            "offset": 226, "prefix": "0x81" },
+      
+      { "type": "single", "name": "mixer_fx_assign_a_1",   "offset": 78,  "prefix": "0x80" },
+      { "type": "single", "name": "mixer_fx_assign_a_2",   "offset": 79,  "prefix": "0x80" },
+      { "type": "single", "name": "mixer_fx_assign_b_1",   "offset": 80,  "prefix": "0x80" },
+      { "type": "single", "name": "mixer_fx_assign_b_2",   "offset": 81,  "prefix": "0x80" },
+
+      { "type": "single", "name": "mixer_deck_assign_a",   "offset": 80,  "prefix": "0x80" },
+      { "type": "single", "name": "mixer_deck_assign_b",   "offset": 81,  "prefix": "0x80" },
+      { "type": "single", "name": "mixer_deck_assign_c",   "offset": 82,  "prefix": "0x80" },
+      { "type": "single", "name": "mixer_deck_assign_d",   "offset": 83,  "prefix": "0x80" }
+    ]
+  },
+
+  "screens": [
+    {
+      "name": "left",
+      "interface": "screen_left",
+      "width": 480,
+      "height": 272,
+      "pixel_format": "bgr565_be",
+      "full_blit": {
+        "header": "0x84,0x00,0x00,60,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01,0xe0,0x01,0x10,0x00,0x00,0xff,0x00",
+        "footer": "0x03,0x00,0x00,0x00,0x40,0x00,0x00,0x00"
+      }
+    },
+    {
+      "name": "right",
+      "interface": "screen_right",
+      "width": 480,
+      "height": 272,
+      "pixel_format": "bgr565_be",
+      "full_blit": {
+        "header": "0x84,0x00,0x00,60,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01,0xe0,0x01,0x10,0x00,0x00,0xff,0x00",
+        "footer": "0x03,0x00,0x00,0x00,0x40,0x00,0x00,0x00"
+      }
+    }
+  ]
+}

@@ -230,6 +230,8 @@ pub enum EncoderEncoding {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct LedLayoutDesc {
+    #[serde(default)]
+    pub id: String,
     pub interface: String,
     pub buffer_size: usize,
     pub prefix_byte: HexU16,

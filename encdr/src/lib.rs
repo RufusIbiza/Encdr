@@ -132,7 +132,7 @@ impl Encdr {
         Ok(connected)
     }
 
-    /// Set an LED on a device by name.
+    /// Set an LED on a device by name (matches first LED group containing the name).
     pub fn set_led(&self, device_id: DeviceId, name: &str, value: LedValue) {
         if let Some(handle) = self.devices.get(&device_id) {
             handle.send(DeviceCmd::SetLed {
@@ -142,10 +142,44 @@ impl Encdr {
         }
     }
 
-    /// Set a strip LED array on a device by name.
+    /// Set an LED on a device within a specific LED group.
+    pub fn set_led_in_group(
+        &self,
+        device_id: DeviceId,
+        group: &str,
+        name: &str,
+        value: LedValue,
+    ) {
+        if let Some(handle) = self.devices.get(&device_id) {
+            handle.send(DeviceCmd::SetLedInGroup {
+                group: group.to_string(),
+                name: name.to_string(),
+                value,
+            });
+        }
+    }
+
+    /// Set a strip LED array on a device by name (matches first group containing the name).
     pub fn set_led_strip(&self, device_id: DeviceId, name: &str, values: &[u8]) {
         if let Some(handle) = self.devices.get(&device_id) {
             handle.send(DeviceCmd::SetLedStrip {
+                name: name.to_string(),
+                values: values.to_vec(),
+            });
+        }
+    }
+
+    /// Set a strip LED array on a device within a specific LED group.
+    pub fn set_led_strip_in_group(
+        &self,
+        device_id: DeviceId,
+        group: &str,
+        name: &str,
+        values: &[u8],
+    ) {
+        if let Some(handle) = self.devices.get(&device_id) {
+            handle.send(DeviceCmd::SetLedStripInGroup {
+                group: group.to_string(),
                 name: name.to_string(),
                 values: values.to_vec(),
             });

@@ -5,6 +5,7 @@ use crate::core::led::LedValue;
 
 /// Builds USB LED output buffers from named LED values, driven by the descriptor.
 pub struct LedBuilder {
+    group_id: String,
     buffer_size: usize,
     prefix_byte: u8,
     endpoint_address: u8,
@@ -63,6 +64,7 @@ impl LedBuilder {
             .unwrap_or(0x01);
 
         Self {
+            group_id: desc.id.clone(),
             buffer_size: desc.buffer_size,
             prefix_byte: desc.prefix_byte.0 as u8,
             endpoint_address,
@@ -181,6 +183,11 @@ impl LedBuilder {
     pub fn clear(&mut self) {
         self.buffer.fill(0);
         self.dirty = true;
+    }
+
+    /// The LED group ID (e.g. "left_deck", "right_deck", "mixer").
+    pub fn group_id(&self) -> &str {
+        &self.group_id
     }
 
     /// The USB endpoint address for LED writes.

@@ -1,0 +1,152 @@
+# NI Kontrol S8 Touchstrip LED Function Listing
+
+This document contains the decompiled C++ code from Traktor.exe for the functions responsible for registering and handling the touchstrip LEDs on the Native Instruments Kontrol S8.
+
+---
+
+## 1. sub_141765d30: LED Range Registration
+This function is called during S8 initialization to register the 25 LEDs for each touchstrip. It takes a start index and a count.
+
+```cpp
+void** sub_141765d30(void* arg1, int64_t* arg2, int32_t arg3, int32_t arg4, int32_t arg5, int32_t arg6, int32_t arg7)
+{
+    // arg1: Port object
+    // arg2: Base name (e.g., "left.touchstrip.leds")
+    // arg3: Start index (e.g., 0x5d for left)
+    // arg4: Step size (usually 2)
+    // arg5: Hardware ID (e.g., 0x44)
+    // arg6: Type / Flags (e.g., 0xb)
+    // arg7: Count (e.g., 0x19 = 25)
+
+    void var_1f8;
+    int64_t rax_1 = __security_cookie ^ &var_1f8;
+    int32_t rbx = arg4;
+    int32_t var_1c4 = rbx;
+    int32_t var_1c8 = 1;
+    int32_t* var_1c0;
+    
+    if (arg7 >= 1)
+    {
+        int32_t rsi_1 = arg5;
+        int32_t r15_1 = arg3 - rsi_1;
+        
+        while (true)
+        {
+            int128_t s;
+            __builtin_memset(&s, 0, 0x45);
+            // ... (string formatting logic for "name.%d")
+            
+            // Calls sub_141765b80 for each LED in the range
+            sub_141765b80(arg1, sub_1404a9000(sub_14049cc50(rax_5, &var_1c0), &var_78), 
+                r15_1 + rsi_1, rbx);
+            
+            // ... (cleanup and loop increment)
+            rsi_1 += 1;
+            int32_t rax_38 = var_1c8 + 1;
+            var_1c8 = rax_38;
+            
+            if (rax_38 > arg7)
+                break;
+            continue;
+        }
+    }
+    // ...
+    return result;
+}
+```
+
+---
+
+## 2. sub_141765b80: Single LED Registration
+Handles the registration of an individual LED with its hardware index.
+
+```cpp
+int64_t sub_141765b80(void* arg1, int64_t* arg2, int32_t arg3, int32_t arg4)
+{
+    // arg1: Port object
+    // arg2: LED name (e.g., "left.touchstrip.leds.1")
+    // arg3: Buffer index
+    // arg4: Flags / Type
+
+    void var_178;
+    int64_t rax_1 = __security_cookie ^ &var_178;
+    int32_t var_140 = arg3;
+    int32_t var_148 = arg4;
+    
+    // Creates a mapping entry linking the name to the buffer index
+    int64_t* rax_2 = sub_14175a6b0(&var_98, arg2, &var_140, &var_148, &arg_28, &arg_30);
+    
+    // Registers the connectable object
+    int64_t result = sub_14175cbf0(arg1, &var_f8, rax_2);
+    
+    // ...
+    return result;
+}
+```
+
+---
+
+## 3. sub_140695880: Touchstrip Initialization
+The S8-specific routine that sets up the touchstrip object and its associated LEDs.
+
+```cpp
+int64_t sub_140695880(void* arg1, int64_t* arg2, int32_t arg3, int32_t arg4 @ zmm3, int32_t arg5)
+{
+    // arg1: Port object
+    // arg2: Control name ("left.touchstrip" or "right.touchstrip")
+    // arg3: Deck index (0 or 1)
+    
+    // ...
+    // Creates a new NHLTouchstrip object and a lambda for updates
+    struct std::_Func_base<void,class csi::communication::Port& __ptr64>::std::_Func_impl_no_alloc<class <lambda_7b23036194dca9002126d312a59e54c9>,void,class csi::communication::Port& __ptr64>::VTable
+        ** rax_3 = operator new(0x38);
+    
+    // ...
+    // Finalizes the mapping
+    int64_t result = sub_140665ac0(arg1, &var_e8, &var_88);
+    // ...
+    return result;
+}
+```
+
+---
+
+## 4. S8 Touchstrip Call Sites (from sub_14067fac0)
+
+### Left Touchstrip
+```cpp
+14068100e      sub_1404adf50(&s_1, "left.touchstrip");
+14068102e      sub_140695880(result, &s_1, 0, 0x44800000, 1);
+140681038      sub_1404a31f0(&s_1);
+140681048      sub_1404adf50(&s_1, "left.touchstrip.leds");
+14068106f      sub_141765d30(result, &var_168, 0x5d, 2, 0x44, 0xb, 0x19);
+```
+- **Start Index:** `0x5d` (93)
+- **Hardware ID:** `0x44` (68)
+- **Count:** `0x19` (25)
+
+### Right Touchstrip
+```cpp
+14068256a      sub_1404adf50(&var_1848, "right.touchstrip");
+1406825b0      sub_140695880(result, &var_1848, 1, 0x44800000, 1);
+1406825ba      sub_1404a31f0(&var_1848);
+1406825ca      sub_1404adf50(&var_1848, "right.touchstrip.leds");
+1406825f9      sub_141765d30(result, &var_8d8, 0xb7, 2, 0x9e, 0xb, 0x19);
+```
+- **Start Index:** `0xb7` (183)
+- **Hardware ID:** `0x9e` (158)
+- **Count:** `0x19` (25)
+
+---
+
+## 5. LED Buffer Prefix Protocol (0x80, 0x81, 0x82)
+
+The S8 uses a segmented LED buffer. The touchstrip LEDs fall into different segments:
+
+1.  **Prefix 0x80:** Handles LEDs 0 to ~117.
+    -   Includes **Left Touchstrip** (`0x5d` to `0x75`).
+2.  **Prefix 0x81:** Handles LEDs 118 to ~235.
+    -   Includes **Right Touchstrip** (`0xd3` to `0xeb`).
+3.  **Prefix 0x82:** Handles remaining LEDs (Mixer center, etc.).
+
+**Crucial Note:** If the lights are not turning on, ensure the buffer sent with prefix `0x81` is long enough to reach index `0xeb` (at least 236 bytes including prefix).

@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 480px;
+    height: 272px;
+    overflow: hidden;
+    background: #0a0a0a;
+    font-family: -apple-system, 'Segoe UI', sans-serif;
+    color: #ccc;
+  }
+
+  .container {
+    display: flex;
+    flex-direction: column;
+    width: 480px;
+    height: 272px;
+  }
+
+  /* Top row: FX knobs + FX buttons */
+  .top-row {
+    display: flex;
+    justify-content: space-evenly;
+    align-items: center;
+    height: 80px;
+    padding: 2px 8px;
+    border-bottom: 1px solid #1a1a1a;
+  }
+
+  /* Center area */
+  .center {
+    flex: 1;
+    display: flex;
+    align-items: stretch;
+  }
+
+  /* Side button columns — 4 buttons each side */
+  .side-buttons {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-evenly;
+    padding: 2px 0;
+    width: 14px;
+    flex-shrink: 0;
+  }
+
+  .side-btn {
+    width: 10px;
+    height: 14px;
+    border-radius: 2px;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    transition: background 0.05s;
+  }
+
+  .side-buttons.left .side-btn { margin-left: 2px; }
+  .side-buttons.right .side-btn { margin-left: auto; margin-right: 2px; }
+
+  .side-btn.active {
+    background: #ff4500;
+    border-color: #ff6030;
+    box-shadow: 0 0 6px rgba(255, 69, 0, 0.4);
+  }
+
+  .center-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  /* Pads grid — 2 rows of 4 */
+  .pads {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 3px;
+    width: 200px;
+  }
+
+  .pad {
+    width: 46px;
+    height: 22px;
+    border-radius: 3px;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    transition: background 0.05s;
+  }
+
+  .pad.active {
+    border-color: #ff6030;
+    box-shadow: 0 0 8px rgba(255, 69, 0, 0.3);
+  }
+
+  /* Transport row */
+  .transport {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .transport-btn {
+    font-size: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #444;
+    padding: 2px 6px;
+    border-radius: 2px;
+    background: #111;
+    border: 1px solid #222;
+  }
+
+  .transport-btn.active {
+    color: #fff;
+    background: #ff4500;
+    border-color: #ff6030;
+  }
+
+  .transport-btn.play.active { background: #00c853; border-color: #00e676; }
+  .transport-btn.cue.active { background: #2979ff; border-color: #448aff; }
+  .transport-btn.sync.active { background: #ff6d00; border-color: #ff9100; }
+
+  .status-label {
+    font-size: 10px;
+    color: #444;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  .status-value {
+    font-size: 16px;
+    font-weight: 600;
+    color: #ff4500;
+  }
+
+  .last-event {
+    font-size: 9px;
+    color: #444;
+    max-width: 300px;
+    text-align: center;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  /* Bottom row: perf knobs + ON buttons */
+  .bottom-row {
+    display: flex;
+    justify-content: space-evenly;
+    align-items: center;
+    height: 80px;
+    padding: 2px 8px;
+    border-top: 1px solid #1a1a1a;
+  }
+
+  .knob-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    width: 100px;
+  }
+
+  .knob-label {
+    font-size: 8px;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .knob-value {
+    font-size: 9px;
+    color: #888;
+    font-variant-numeric: tabular-nums;
+    font-family: monospace;
+  }
+
+  .btn-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    transition: background 0.05s;
+  }
+
+  .btn-indicator.active {
+    background: #ff4500;
+    border-color: #ff6030;
+    box-shadow: 0 0 6px rgba(255, 69, 0, 0.4);
+  }
+
+  .on-btn-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 1px;
+  }
+
+  .on-label {
+    font-size: 7px;
+    color: #555;
+    text-transform: uppercase;
+  }
+  .on-label.active { color: #ff4500; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Top row: FX knobs + FX select -->
+  <div class="top-row">
+    <div class="knob-cell">
+      <svg id="fx1-knob" viewBox="0 0 40 40" width="40" height="40"></svg>
+      <div class="btn-indicator" id="fx1-btn"></div>
+      <div class="knob-label">FX 1</div>
+    </div>
+    <div class="knob-cell">
+      <svg id="fx2-knob" viewBox="0 0 40 40" width="40" height="40"></svg>
+      <div class="btn-indicator" id="fx2-btn"></div>
+      <div class="knob-label">FX 2</div>
+    </div>
+    <div class="knob-cell">
+      <svg id="fx3-knob" viewBox="0 0 40 40" width="40" height="40"></svg>
+      <div class="btn-indicator" id="fx3-btn"></div>
+      <div class="knob-label">FX 3</div>
+    </div>
+    <div class="knob-cell">
+      <svg id="fx4-knob" viewBox="0 0 40 40" width="40" height="40"></svg>
+      <div class="btn-indicator" id="fx4-btn"></div>
+      <div class="knob-label">FX 4</div>
+    </div>
+  </div>
+
+  <!-- Center: side screen buttons + pads + transport -->
+  <div class="center">
+    <div class="side-buttons left">
+      <div class="side-btn" id="sl1"></div>
+      <div class="side-btn" id="sl2"></div>
+      <div class="side-btn" id="sl3"></div>
+      <div class="side-btn" id="sl4"></div>
+    </div>
+
+    <div class="center-content">
+      <div class="status-label" id="deck-label">Deck</div>
+      <div class="status-value" id="status-text">S8</div>
+
+      <div class="pads">
+        <div class="pad" id="pad1"></div>
+        <div class="pad" id="pad2"></div>
+        <div class="pad" id="pad3"></div>
+        <div class="pad" id="pad4"></div>
+        <div class="pad" id="pad5"></div>
+        <div class="pad" id="pad6"></div>
+        <div class="pad" id="pad7"></div>
+        <div class="pad" id="pad8"></div>
+      </div>
+
+      <div class="transport">
+        <div class="transport-btn sync" id="sync-btn">Sync</div>
+        <div class="transport-btn cue" id="cue-btn">Cue</div>
+        <div class="transport-btn play" id="play-btn">Play</div>
+        <div class="transport-btn" id="flux-btn">Flux</div>
+        <div class="transport-btn" id="shift-btn">Shift</div>
+      </div>
+
+      <div class="last-event" id="last-event">waiting...</div>
+    </div>
+
+    <div class="side-buttons right">
+      <div class="side-btn" id="sr1"></div>
+      <div class="side-btn" id="sr2"></div>
+      <div class="side-btn" id="sr3"></div>
+      <div class="side-btn" id="sr4"></div>
+    </div>
+  </div>
+
+  <!-- Bottom row: perf knobs + ON buttons -->
+  <div class="bottom-row">
+    <div class="knob-cell">
+      <svg id="perf1-knob" viewBox="0 0 40 40" width="40" height="40"></svg>
+      <div class="knob-value" id="perf1-val">0.500</div>
+      <div class="on-btn-row">
+        <div class="btn-indicator" id="on1-btn"></div>
+        <div class="on-label" id="on1-label">ON</div>
+      </div>
+    </div>
+    <div class="knob-cell">
+      <svg id="perf2-knob" viewBox="0 0 40 40" width="40" height="40"></svg>
+      <div class="knob-value" id="perf2-val">0.500</div>
+      <div class="on-btn-row">
+        <div class="btn-indicator" id="on2-btn"></div>
+        <div class="on-label" id="on2-label">ON</div>
+      </div>
+    </div>
+    <div class="knob-cell">
+      <svg id="perf3-knob" viewBox="0 0 40 40" width="40" height="40"></svg>
+      <div class="knob-value" id="perf3-val">0.500</div>
+      <div class="on-btn-row">
+        <div class="btn-indicator" id="on3-btn"></div>
+        <div class="on-label" id="on3-label">ON</div>
+      </div>
+    </div>
+    <div class="knob-cell">
+      <svg id="perf4-knob" viewBox="0 0 40 40" width="40" height="40"></svg>
+      <div class="knob-value" id="perf4-val">0.500</div>
+      <div class="on-btn-row">
+        <div class="btn-indicator" id="on4-btn"></div>
+        <div class="on-label" id="on4-label">ON</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// Knob renderer
+const CX = 20, CY = 20, R = 15;
+const START = -Math.PI * 0.75;
+const END   =  Math.PI * 0.75;
+
+function polar(angle) {
+  return { x: CX + R * Math.sin(angle), y: CY - R * Math.cos(angle) };
+}
+
+function arcPath(a1, a2) {
+  const p1 = polar(a1), p2 = polar(a2);
+  const delta = Math.abs(a2 - a1);
+  if (delta < 0.001) return '';
+  const large = delta > Math.PI ? 1 : 0;
+  return `M ${p1.x.toFixed(3)} ${p1.y.toFixed(3)} A ${R} ${R} 0 ${large} 1 ${p2.x.toFixed(3)} ${p2.y.toFixed(3)}`;
+}
+
+function renderKnob(svgEl, value, { color = '#ff4500', touched = false } = {}) {
+  const clamped = Math.max(0, Math.min(1, value));
+  const angle = START + clamped * (END - START);
+  const bgArc = arcPath(START, END);
+  const valArc = arcPath(START, angle);
+  const indX1 = CX + R * 0.35 * Math.sin(angle);
+  const indY1 = CY - R * 0.35 * Math.cos(angle);
+  const indX2 = CX + R * 0.85 * Math.sin(angle);
+  const indY2 = CY - R * 0.85 * Math.cos(angle);
+
+  svgEl.innerHTML = `
+    <circle cx="${CX}" cy="${CY}" r="${R}" fill="#1a1a1a" stroke="#2a2a2a" stroke-width="0.5" />
+    <circle cx="${CX}" cy="${CY}" r="${R}" fill="none"
+            stroke="${touched ? color : 'transparent'}" stroke-width="1" opacity="0.3" />
+    ${bgArc ? `<path d="${bgArc}" fill="none" stroke="#2a2a2a" stroke-width="2.5" stroke-linecap="round" />` : ''}
+    ${valArc ? `<path d="${valArc}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" />` : ''}
+    <line x1="${indX1}" y1="${indY1}" x2="${indX2}" y2="${indY2}"
+          stroke="#e0e0e0" stroke-width="1.5" stroke-linecap="round" />
+  `;
+}
+
+// The deck side is injected by the Rust host via initial message
+let deckSide = 'left';
+
+// State — control names use the deck prefix
+const state = {};
+
+function setActive(el, active) {
+  if (el) el.classList.toggle('active', !!active);
+}
+
+function padColor(r, g, b) {
+  if (r === 0 && g === 0 && b === 0) return '#1a1a1a';
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+function render() {
+  const p = deckSide + '_';
+
+  // FX dials (absolute 0-1 sliders)
+  renderKnob(document.getElementById('fx1-knob'), state[p + 'fx_dial_1'] || 0, { touched: !!state[p + 'fx_knob_touch_1'] });
+  renderKnob(document.getElementById('fx2-knob'), state[p + 'fx_dial_2'] || 0, { touched: !!state[p + 'fx_knob_touch_2'] });
+  renderKnob(document.getElementById('fx3-knob'), state[p + 'fx_dial_3'] || 0, { touched: !!state[p + 'fx_knob_touch_3'] });
+  renderKnob(document.getElementById('fx4-knob'), state[p + 'fx_dial_4'] || 0, { touched: !!state[p + 'fx_knob_touch_4'] });
+
+  // FX buttons
+  setActive(document.getElementById('fx1-btn'), state[p + 'fx_1']);
+  setActive(document.getElementById('fx2-btn'), state[p + 'fx_2']);
+  setActive(document.getElementById('fx3-btn'), state[p + 'fx_3']);
+  setActive(document.getElementById('fx4-btn'), state[p + 'fx_4']);
+
+  // Screen encoders (endless, accumulated 0-1)
+  renderKnob(document.getElementById('perf1-knob'), state[p + 'screen_encoder_1'] || 0);
+  renderKnob(document.getElementById('perf2-knob'), state[p + 'screen_encoder_2'] || 0);
+  renderKnob(document.getElementById('perf3-knob'), state[p + 'screen_encoder_3'] || 0);
+  renderKnob(document.getElementById('perf4-knob'), state[p + 'screen_encoder_4'] || 0);
+
+  document.getElementById('perf1-val').textContent = (state[p + 'screen_encoder_1'] || 0).toFixed(3);
+  document.getElementById('perf2-val').textContent = (state[p + 'screen_encoder_2'] || 0).toFixed(3);
+  document.getElementById('perf3-val').textContent = (state[p + 'screen_encoder_3'] || 0).toFixed(3);
+  document.getElementById('perf4-val').textContent = (state[p + 'screen_encoder_4'] || 0).toFixed(3);
+
+  // Screen buttons — 1-4 left of screen, 5-8 right of screen
+  setActive(document.getElementById('sl1'), state[p + 'screen_left_1']);
+  setActive(document.getElementById('sl2'), state[p + 'screen_left_2']);
+  setActive(document.getElementById('sl3'), state[p + 'screen_left_3']);
+  setActive(document.getElementById('sl4'), state[p + 'screen_left_4']);
+  setActive(document.getElementById('sr1'), state[p + 'screen_right_1']);
+  setActive(document.getElementById('sr2'), state[p + 'screen_right_2']);
+  setActive(document.getElementById('sr3'), state[p + 'screen_right_3']);
+  setActive(document.getElementById('sr4'), state[p + 'screen_right_4']);
+
+  // ON buttons
+  for (let i = 1; i <= 4; i++) {
+    const on = state[p + 'on_' + i];
+    setActive(document.getElementById('on' + i + '-btn'), on);
+    setActive(document.getElementById('on' + i + '-label'), on);
+  }
+
+  // Pads — use RGB color from pad state if available
+  for (let i = 1; i <= 8; i++) {
+    const el = document.getElementById('pad' + i);
+    const pressed = state[p + 'pad_' + i];
+    setActive(el, pressed);
+    // Default pad colors if pressed
+    if (pressed) {
+      el.style.background = '#ff4500';
+    } else {
+      el.style.background = '#1a1a1a';
+    }
+  }
+
+  // Transport
+  setActive(document.getElementById('play-btn'), state[p + 'play']);
+  setActive(document.getElementById('cue-btn'), state[p + 'cue']);
+  setActive(document.getElementById('sync-btn'), state[p + 'sync']);
+  setActive(document.getElementById('flux-btn'), state[p + 'flux']);
+  setActive(document.getElementById('shift-btn'), state[p + 'shift']);
+}
+
+// Encdr bridge
+window.encdr = {
+  onMessage(channel, data) {
+    if (channel === 'deck') {
+      deckSide = data;
+      document.getElementById('deck-label').textContent = 'Deck ' + data.toUpperCase();
+      render();
+    }
+    if (channel === 'controls') {
+      Object.assign(state, data);
+      render();
+    }
+    if (channel === 'event') {
+      document.getElementById('last-event').textContent = data;
+    }
+  },
+  _dirty: false,
+  _rafId: null,
+  requestCapture() {
+    if (!this._dirty) {
+      this._dirty = true;
+      if (!this._rafId) {
+        this._rafId = requestAnimationFrame(() => {
+          this._rafId = null;
+          if (this._dirty) {
+            this._dirty = false;
+            window.ipc.postMessage('__encdr_frame_ready');
+          }
+        });
+      }
+    }
+  }
+};
+
+// Initial render
+render();
+</script>
+</body>
+</html>
