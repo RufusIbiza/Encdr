@@ -61,11 +61,11 @@ fn main() {
 
         if (left_position - last_left).abs() > 0.02 {
             last_left = left_position;
-            set_touchstrip_led(&encdr, device_id, "left_touchstrip", left_position);
+            set_touchstrip_led(&encdr, device_id, "left_deck", left_position);
         }
         if (right_position - last_right).abs() > 0.02 {
             last_right = right_position;
-            set_touchstrip_led(&encdr, device_id, "right_touchstrip", right_position);
+            set_touchstrip_led(&encdr, device_id, "right_deck", right_position);
         }
 
         std::thread::sleep(std::time::Duration::from_millis(10));

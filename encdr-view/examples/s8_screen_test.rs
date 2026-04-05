@@ -153,10 +153,10 @@ fn main() {
     // Set initial touchstrip LED position (center)
     let init_orange = touchstrip_orange(0.5);
     let init_blue = touchstrip_blue(0.5);
-    encdr.set_led_strip_in_group(device_id, "left_touchstrip", "touchstrip_orange", &init_orange);
-    encdr.set_led_strip_in_group(device_id, "left_touchstrip", "touchstrip_blue", &init_blue);
-    encdr.set_led_strip_in_group(device_id, "right_touchstrip", "touchstrip_orange", &init_orange);
-    encdr.set_led_strip_in_group(device_id, "right_touchstrip", "touchstrip_blue", &init_blue);
+    encdr.set_led_strip_in_group(device_id, "left_deck", "touchstrip_orange", &init_orange);
+    encdr.set_led_strip_in_group(device_id, "left_deck", "touchstrip_blue", &init_blue);
+    encdr.set_led_strip_in_group(device_id, "right_deck", "touchstrip_orange", &init_orange);
+    encdr.set_led_strip_in_group(device_id, "right_deck", "touchstrip_blue", &init_blue);
 
     println!("Listening for events... (Ctrl+C to quit)\n");
 
@@ -273,14 +273,14 @@ fn main() {
                         if *value > 0.0 { left_touchstrip_pos = *value; }
                         let orange = touchstrip_orange(left_touchstrip_pos);
                         let blue = touchstrip_blue(left_touchstrip_pos);
-                        encdr.set_led_strip_in_group(device_id, "left_touchstrip", "touchstrip_orange", &orange);
-                        encdr.set_led_strip_in_group(device_id, "left_touchstrip", "touchstrip_blue", &blue);
+                        encdr.set_led_strip_in_group(device_id, "left_deck", "touchstrip_orange", &orange);
+                        encdr.set_led_strip_in_group(device_id, "left_deck", "touchstrip_blue", &blue);
                     } else if *name == "right_touchstrip" {
                         if *value > 0.0 { right_touchstrip_pos = *value; }
                         let orange = touchstrip_orange(right_touchstrip_pos);
                         let blue = touchstrip_blue(right_touchstrip_pos);
-                        encdr.set_led_strip_in_group(device_id, "right_touchstrip", "touchstrip_orange", &orange);
-                        encdr.set_led_strip_in_group(device_id, "right_touchstrip", "touchstrip_blue", &blue);
+                        encdr.set_led_strip_in_group(device_id, "right_deck", "touchstrip_orange", &orange);
+                        encdr.set_led_strip_in_group(device_id, "right_deck", "touchstrip_blue", &blue);
                     }
 
                     let msg = format!("{} {:.3}", name, value);

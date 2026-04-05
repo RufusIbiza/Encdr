@@ -206,7 +206,7 @@
     {
       "id": "left_deck",
       "interface": "control",
-      "buffer_size": 309,
+      "buffer_size": 118,
       "prefix_byte": "0x80",
       "items": [
         { "type": "rgb",    "name": "pad_1",                "offsets": {"r": 0,  "g": 1,  "b": 2}  },
@@ -265,16 +265,14 @@
         { "type": "single", "name": "loop_circle_3_blue",   "offset": 66 },
         { "type": "single", "name": "loop_circle_4_blue",   "offset": 67 },
 
-        { "type": "single", "name": "deck_a",               "offset": 118 },
-        { "type": "single", "name": "deck_b",               "offset": 119 },
-        { "type": "single", "name": "deck_c",               "offset": 120 },
-        { "type": "single", "name": "deck_d",               "offset": 121 }
+        { "type": "strip",  "name": "touchstrip_blue",      "offset": 68, "count": 25 },
+        { "type": "strip",  "name": "touchstrip_orange",    "offset": 93, "count": 25 }
       ]
     },
     {
       "id": "right_deck",
       "interface": "control",
-      "buffer_size": 309,
+      "buffer_size": 118,
       "prefix_byte": "0x81",
       "items": [
         { "type": "rgb",    "name": "pad_1",                "offsets": {"r": 0,  "g": 1,  "b": 2}  },
@@ -333,30 +331,8 @@
         { "type": "single", "name": "loop_circle_3_blue",   "offset": 66 },
         { "type": "single", "name": "loop_circle_4_blue",   "offset": 67 },
 
-        { "type": "single", "name": "deck_a",               "offset": 118 },
-        { "type": "single", "name": "deck_b",               "offset": 119 },
-        { "type": "single", "name": "deck_c",               "offset": 120 },
-        { "type": "single", "name": "deck_d",               "offset": 121 }
-      ]
-    },
-    {
-      "id": "left_touchstrip",
-      "interface": "control",
-      "buffer_size": 118,
-      "prefix_byte": "0x80",
-      "items": [
-        { "type": "strip", "name": "touchstrip_blue",   "offset": 68, "count": 25 },
-        { "type": "strip", "name": "touchstrip_orange", "offset": 93, "count": 25 }
-      ]
-    },
-    {
-      "id": "right_touchstrip",
-      "interface": "control",
-      "buffer_size": 118,
-      "prefix_byte": "0x81",
-      "items": [
-        { "type": "strip", "name": "touchstrip_blue",   "offset": 68, "count": 25 },
-        { "type": "strip", "name": "touchstrip_orange", "offset": 93, "count": 25 }
+        { "type": "strip",  "name": "touchstrip_blue",      "offset": 68, "count": 25 },
+        { "type": "strip",  "name": "touchstrip_orange",    "offset": 93, "count": 25 }
       ]
     },
     {
