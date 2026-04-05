@@ -22,7 +22,7 @@ struct PacketState {
     wide_touch_states: Vec<WideTouchState>,
     /// Encoder states (wrap16 type)
     encoder_states: HashMap<String, EncoderState>,
-    /// Fine encoder states (signed16 type)
+    /// Fine encoder states (signed16 bit type)
     fine_encoder_states: HashMap<String, EncoderState>,
     /// Slider states
     slider_states: HashMap<String, EncoderState>,
@@ -237,8 +237,7 @@ impl PacketParser {
                     }
                 }
                 InputItemDesc::Slider(desc) => {
-                    let raw_val = read_slider_value(buf, desc);
-                    let Some(raw_val) = raw_val else { continue };
+                    let Some(raw_val) = read_slider_value(buf, desc) else { continue };
                     if let Some(sl_state) = state.slider_states.get_mut(&desc.name) {
                         if let Some(_changed) = sl_state.update_slider(raw_val) {
                             let value = if desc.normalize {

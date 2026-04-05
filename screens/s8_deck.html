@@ -375,10 +375,10 @@ function render() {
   const p = deckSide + '_';
 
   // FX dials (absolute 0-1 sliders)
-  renderKnob(document.getElementById('fx1-knob'), state[p + 'fx_dial_1'] || 0, { touched: !!state[p + 'fx_knob_touch_1'] });
-  renderKnob(document.getElementById('fx2-knob'), state[p + 'fx_dial_2'] || 0, { touched: !!state[p + 'fx_knob_touch_2'] });
-  renderKnob(document.getElementById('fx3-knob'), state[p + 'fx_dial_3'] || 0, { touched: !!state[p + 'fx_knob_touch_3'] });
-  renderKnob(document.getElementById('fx4-knob'), state[p + 'fx_dial_4'] || 0, { touched: !!state[p + 'fx_knob_touch_4'] });
+  renderKnob(document.getElementById('fx1-knob'), state[p + 'fx_dial_1'] || 0, { touched: !!state[p + 'fx_dial_touch_1'] });
+  renderKnob(document.getElementById('fx2-knob'), state[p + 'fx_dial_2'] || 0, { touched: !!state[p + 'fx_dial_touch_2'] });
+  renderKnob(document.getElementById('fx3-knob'), state[p + 'fx_dial_3'] || 0, { touched: !!state[p + 'fx_dial_touch_3'] });
+  renderKnob(document.getElementById('fx4-knob'), state[p + 'fx_dial_4'] || 0, { touched: !!state[p + 'fx_dial_touch_4'] });
 
   // FX buttons
   setActive(document.getElementById('fx1-btn'), state[p + 'fx_1']);

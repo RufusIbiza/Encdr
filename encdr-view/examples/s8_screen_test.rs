@@ -30,6 +30,34 @@ const DECK_LED_BUTTONS_DUAL: &[(&str, &str, &str)] = &[
     ("sync",    "sync_green",    "sync_red"),
 ];
 
+/// Build touchstrip LEDs for both channels: orange center, blue on either side (position 0.0-1.0 maps to LED 0-24).
+fn touchstrip_orange(pos: f32) -> Vec<u8> {
+    let pos_clamped = pos.clamp(0.0, 1.0);
+    let center = (pos_clamped * 24.0).round() as usize;
+    let mut leds = vec![0u8; 25];
+    if center < 25 {
+        leds[center] = 200; // Orange bright at center
+    }
+    leds
+}
+
+fn touchstrip_blue(pos: f32) -> Vec<u8> {
+    let pos_clamped = pos.clamp(0.0, 1.0);
+    let center = (pos_clamped * 24.0).round() as usize;
+    let mut leds = vec![0u8; 25];
+    // Blue dim on either side of center
+    if center > 0 {
+        leds[center - 1] = 80;
+    }
+    if center < 25 {
+        leds[center] = 0; // Center is orange, not blue
+    }
+    if center < 24 {
+        leds[center + 1] = 80;
+    }
+    leds
+}
+
 /// Map deck prefix to LED group id.
 fn led_group(name: &str) -> Option<(&str, &str)> {
     if let Some(suffix) = name.strip_prefix("left_") {
@@ -122,11 +150,21 @@ fn main() {
         }
     }
 
+    // Set initial touchstrip LED position (center)
+    let init_orange = touchstrip_orange(0.5);
+    let init_blue = touchstrip_blue(0.5);
+    encdr.set_led_strip_in_group(device_id, "left_touchstrip", "touchstrip_orange", &init_orange);
+    encdr.set_led_strip_in_group(device_id, "left_touchstrip", "touchstrip_blue", &init_blue);
+    encdr.set_led_strip_in_group(device_id, "right_touchstrip", "touchstrip_orange", &init_orange);
+    encdr.set_led_strip_in_group(device_id, "right_touchstrip", "touchstrip_blue", &init_blue);
+
     println!("Listening for events... (Ctrl+C to quit)\n");
 
     let events = encdr.events().clone();
 
     let mut controls: HashMap<String, serde_json::Value> = HashMap::new();
+    let mut left_touchstrip_pos: f32 = 0.5;
+    let mut right_touchstrip_pos: f32 = 0.5;
     let mut left_dirty = true;
     let mut right_dirty = true;
     let mut left_needs_capture = false;
@@ -229,6 +267,22 @@ fn main() {
                 Event::Slider { name, value, .. } => {
                     controls.insert(name.to_string(), serde_json::json!(value));
 
+                    // Drive touchstrip LEDs based on position (hold last position on release)
+                    if *name == "left_touchstrip" {
+                        println!("left_touchstrip value={:.4}", value);
+                        if *value > 0.0 { left_touchstrip_pos = *value; }
+                        let orange = touchstrip_orange(left_touchstrip_pos);
+                        let blue = touchstrip_blue(left_touchstrip_pos);
+                        encdr.set_led_strip_in_group(device_id, "left_touchstrip", "touchstrip_orange", &orange);
+                        encdr.set_led_strip_in_group(device_id, "left_touchstrip", "touchstrip_blue", &blue);
+                    } else if *name == "right_touchstrip" {
+                        if *value > 0.0 { right_touchstrip_pos = *value; }
+                        let orange = touchstrip_orange(right_touchstrip_pos);
+                        let blue = touchstrip_blue(right_touchstrip_pos);
+                        encdr.set_led_strip_in_group(device_id, "right_touchstrip", "touchstrip_orange", &orange);
+                        encdr.set_led_strip_in_group(device_id, "right_touchstrip", "touchstrip_blue", &blue);
+                    }
+
                     let msg = format!("{} {:.3}", name, value);
                     if name.starts_with("left_") {
                         left_view.send("event", serde_json::json!(msg));
@@ -274,6 +328,9 @@ fn main() {
                     if name.starts_with("left_") {
                         left_dirty = true;
                     } else if name.starts_with("right_") {
+                        right_dirty = true;
+                    } else {
+                        left_dirty = true;
                         right_dirty = true;
                     }
                 }

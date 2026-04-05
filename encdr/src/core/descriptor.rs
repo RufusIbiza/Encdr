@@ -1,5 +1,6 @@
 use serde::Deserialize;
 use serde::Deserializer;
+use std::collections::HashMap;
 
 /// Top-level device descriptor, parsed from JSON.
 #[derive(Debug, Clone, Deserialize)]
@@ -350,4 +351,12 @@ pub struct QuirksDesc {
     pub dual_handle: bool,
     #[serde(default)]
     pub detach_kernel_driver: bool,
+    #[serde(default)]
+    pub touchstrip: Option<TouchstripQuirksDesc>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TouchstripQuirksDesc {
+    #[serde(default)]
+    pub heartbeat_bytes: HashMap<String, Vec<usize>>,
 }

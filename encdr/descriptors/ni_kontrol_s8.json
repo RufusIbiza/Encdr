@@ -146,10 +146,10 @@
         { "type": "button", "name": "xfader_assign_left_d",  "byte": 24, "mask": "0x02" },
         { "type": "button", "name": "xfader_assign_right_d", "byte": 24, "mask": "0x01" },
 
-        { "type": "touch",  "name": "right_touchstrip_touch", "byte": 20, "mask": "0x40" },
-        { "type": "slider", "name": "right_touchstrip",       "bytes": [26, 27], "bits": 16, "normalize": true, "max_value": 1024 },
-        { "type": "touch",  "name": "left_touchstrip_touch",  "byte": 28, "mask": "0x40" },
-        { "type": "slider", "name": "left_touchstrip",        "bytes": [34, 35], "bits": 16, "normalize": true, "max_value": 1024 }
+        { "type": "slider", "name": "left_touchstrip",  "bytes": [28, 29], "bits": 10, "normalize": true, "max_value": 1024 },
+        { "type": "slider", "name": "right_touchstrip", "bytes": [34, 35], "bits": 10, "normalize": true, "max_value": 1024 },
+        { "type": "touch", "name": "left_touchstrip_touch",  "byte": 16, "mask": "0x01" },
+        { "type": "touch", "name": "right_touchstrip_touch", "byte": 32, "mask": "0x01" }
       ]
     },
     {
@@ -265,9 +265,6 @@
         { "type": "single", "name": "loop_circle_3_blue",   "offset": 66 },
         { "type": "single", "name": "loop_circle_4_blue",   "offset": 67 },
 
-        { "type": "strip",  "name": "touchstrip_blue",      "offset": 68,  "count": 25 },
-        { "type": "strip",  "name": "touchstrip_orange",    "offset": 93,  "count": 25 },
-
         { "type": "single", "name": "deck_a",               "offset": 118 },
         { "type": "single", "name": "deck_b",               "offset": 119 },
         { "type": "single", "name": "deck_c",               "offset": 120 },
@@ -336,9 +333,6 @@
         { "type": "single", "name": "loop_circle_3_blue",   "offset": 66 },
         { "type": "single", "name": "loop_circle_4_blue",   "offset": 67 },
 
-        { "type": "strip",  "name": "touchstrip_blue",      "offset": 68,  "count": 25 },
-        { "type": "strip",  "name": "touchstrip_orange",    "offset": 93,  "count": 25 },
-
         { "type": "single", "name": "deck_a",               "offset": 118 },
         { "type": "single", "name": "deck_b",               "offset": 119 },
         { "type": "single", "name": "deck_c",               "offset": 120 },
@@ -404,6 +398,12 @@
 
   "quirks": {
     "dual_handle": true,
-    "detach_kernel_driver": true
+    "detach_kernel_driver": true,
+    "touchstrip": {
+      "heartbeat_bytes": {
+        "left_touchstrip": [26, 27],
+        "right_touchstrip": [32, 33]
+      }
+    }
   }
 }
