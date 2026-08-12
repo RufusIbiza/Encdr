@@ -190,4 +190,4 @@ This example will show encoder and button states in real-time on both screens.
 
 ## License
 
-MIT OR Apache-2.0
+[GPL-3.0-or-later](LICENSE)
