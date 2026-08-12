@@ -338,13 +338,19 @@
     {
       "id": "mixer",
       "interface": "control",
-      "buffer_size": 309,
+      "buffer_size": 73,
       "prefix_byte": "0x82",
       "items": [
-        { "type": "single", "name": "mixer_cue_a", "offset": 25 },
-        { "type": "single", "name": "mixer_cue_b", "offset": 26 },
-        { "type": "single", "name": "mixer_cue_c", "offset": 57 },
-        { "type": "single", "name": "mixer_cue_d", "offset": 55 }
+        { "type": "single", "name": "mixer_fx_c_1_inactive", "offset": 44 },
+        { "type": "single", "name": "mixer_fx_c_2_inactive", "offset": 45 },
+        { "type": "single", "name": "mixer_fx_a_1_inactive", "offset": 46 },
+        { "type": "single", "name": "mixer_fx_a_2_inactive", "offset": 47 },
+        { "type": "single", "name": "mixer_snap",            "offset": 48 },
+        { "type": "single", "name": "mixer_quantize",        "offset": 49 },
+        { "type": "single", "name": "mixer_fx_b_1_inactive", "offset": 50 },
+        { "type": "single", "name": "mixer_fx_b_2_inactive", "offset": 51 },
+        { "type": "single", "name": "mixer_fx_d_1_inactive", "offset": 52 },
+        { "type": "single", "name": "mixer_fx_d_2_inactive", "offset": 53 }
       ]
     }
   ],

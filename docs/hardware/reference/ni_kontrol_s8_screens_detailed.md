@@ -20,9 +20,9 @@ To distinguish between the two displays, Traktor modifies the command ID or a fi
 
 ### Screen Command Constants
 
-| Screen | Traktor Internal Constant | Likely Header Offset 1 |
-|--------|---------------------------|------------------------|
-| **Left** | `0x03566775`              | `0x66`                 |
+| Screen    | Traktor Internal Constant | Likely Header Offset 1 |
+| --------- | ------------------------- | ---------------------- |
+| **Left**  | `0x03566775`              | `0x66`                 |
 | **Right** | `0x03567375`              | `0x67`                 |
 
 ### Header Structure Analysis

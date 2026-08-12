@@ -12,17 +12,9 @@ fn main() {
     println!("Scanning for NI Kontrol S8...");
 
     // Find S8 device
-    let devices = nusb::list::buses()
-        .filter_map(|bus| {
-            bus.devices()
-                .find(|dev| {
-                    if let Ok(desc) = dev.device_descriptor() {
-                        desc.vendor_id == 0x17cc && desc.product_id == 0x1370
-                    } else {
-                        false
-                    }
-                })
-        })
+    let devices = nusb::list_devices()
+        .unwrap()
+        .filter(|dev| dev.vendor_id() == 0x17cc && dev.product_id() == 0x1370)
         .collect::<Vec<_>>();
 
     if devices.is_empty() {

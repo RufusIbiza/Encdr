@@ -1,0 +1,29 @@
+{
+  "name": "NI Kontrol S8 (Standalone Mode)",
+  "manufacturer": "Native Instruments",
+  "vendor_id": "0x17cc",
+  "product_id": "0x1370",
+
+  "interfaces": [
+    {
+      "id": "control",
+      "number": 5,
+      "endpoints": {
+        "in":  { "address": "0x84", "type": "interrupt" },
+        "out": { "address": "0x03", "type": "interrupt" }
+      }
+    }
+  ],
+
+  "leds": [
+    {
+      "id": "mode_control",
+      "interface": "control",
+      "buffer_size": 309,
+      "prefix_byte": "0xf3",
+      "items": [
+        { "type": "single", "name": "mixer_mode_global", "offset": 1 }
+      ]
+    }
+  ]
+}

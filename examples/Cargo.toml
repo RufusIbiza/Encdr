@@ -1,0 +1,60 @@
+[package]
+name = "encdr-examples"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+encdr = { path = "../encdr" }
+encdr-view = { path = "../encdr-view" }
+nusb = "0.1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+crossbeam-channel = "0.5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[[bin]]
+name = "d2_screen_test"
+path = "kontrol_d2/d2_screen_test.rs"
+
+
+[[bin]]
+name = "s8_monitor"
+path = "kontrol_s8/s8_monitor.rs"
+
+[[bin]]
+name = "s8_screen_test"
+path = "kontrol_s8/s8_screen_test.rs"
+
+[[bin]]
+name = "mk3_screen_test"
+path = "maschine_mk3/mk3_screen_test.rs"
+
+[[bin]]
+name = "touchstrip_monitor"
+path = "maschine_mk3/touchstrip_monitor.rs"
+
+[[bin]]
+name = "touchstrip_position_test"
+path = "maschine_mk3/touchstrip_position_test.rs"
+
+[[bin]]
+name = "mixer_led_test"
+path = "mixer/mixer_led_test.rs"
+
+[[bin]]
+name = "mixer_offset_probe"
+path = "mixer/mixer_offset_probe.rs"
+
+[[bin]]
+name = "mixer_s5_style_test"
+path = "mixer/mixer_s5_style_test.rs"
+
+[[bin]]
+name = "monitor"
+path = "utils/monitor.rs"
+
+[[bin]]
+name = "probe"
+path = "utils/probe.rs"

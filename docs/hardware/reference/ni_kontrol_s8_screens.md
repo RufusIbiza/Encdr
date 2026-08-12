@@ -8,9 +8,9 @@ This document details how the two screens on the Native Instruments Kontrol S8 a
 
 Unlike some controllers that use a header field or a single large buffer to address multiple screens, the S8 addresses its two screens via separate USB interfaces and endpoints.
 
-| Screen | USB Interface | Endpoint | Protocol |
-|--------|---------------|----------|----------|
-| **Left** | 1 (`screen_left`) | `0x02` (Bulk Out) | 0x84 Blit |
+| Screen    | USB Interface      | Endpoint          | Protocol  |
+| --------- | ------------------ | ----------------- | --------- |
+| **Left**  | 1 (`screen_left`)  | `0x02` (Bulk Out) | 0x84 Blit |
 | **Right** | 2 (`screen_right`) | `0x03` (Bulk Out) | 0x84 Blit |
 
 ---

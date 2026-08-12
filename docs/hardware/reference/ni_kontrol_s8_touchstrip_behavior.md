@@ -43,10 +43,10 @@ int64_t result = (*(uint64_t*)(*(uint64_t*)rcx_17 + 0x10))(rcx_17, rdx_15);
 
 ## 4. Hardware Mapping Recap
 
-| Deck | Start Index (Internal) | Physical LED Indices | Buffer Report (Prefix) |
-|------|-----------------------|----------------------|------------------------|
-| Left | `0x5d` (93)           | 93 - 117             | `0x80`                 |
-| Right| `0xb7` (183)*         | 211 - 235            | `0x81`                 |
+| Deck  | Start Index (Internal) | Physical LED Indices | Buffer Report (Prefix) |
+| ----- | ---------------------- | -------------------- | ---------------------- |
+| Left  | `0x5d` (93)            | 93 - 117             | `0x80`                 |
+| Right | `0xb7` (183)*          | 211 - 235            | `0x81`                 |
 
 *\*Note: The right deck start index `0xb7` is often added to a base offset of 118, resulting in 301, but the registration code `sub_141765d30` suggests it handles the offset internally.*
 

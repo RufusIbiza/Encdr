@@ -1,0 +1,5 @@
+{
+  "confirmed_leds": [],
+  "device": "NI Kontrol S8",
+  "notes": "Review these confirmed offsets and update the descriptor accordingly"
+}

@@ -6,12 +6,12 @@ The NI Kontrol S8 features two 25-LED touchstrips (one per deck). These touchstr
 
 ## Technical Specifications
 
-| Property | Value |
-|----------|-------|
-| LEDs per Touchstrip | 25 |
-| Total Touchstrip LEDs | 50 |
-| Report Size | 176 bytes (Sliders/Touch) |
-| LED Buffer Index (Left) | `0x5d` to `0x75` (93 - 117) |
+| Property                 | Value                        |
+| ------------------------ | ---------------------------- |
+| LEDs per Touchstrip      | 25                           |
+| Total Touchstrip LEDs    | 50                           |
+| Report Size              | 176 bytes (Sliders/Touch)    |
+| LED Buffer Index (Left)  | `0x5d` to `0x75` (93 - 117)  |
 | LED Buffer Index (Right) | `0xd3` to `0xeb` (211 - 235) |
 
 ## Traktor Source Analysis

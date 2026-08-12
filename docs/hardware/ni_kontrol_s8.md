@@ -2,15 +2,15 @@
 
 ## Overview
 
-| Property | Value |
-|----------|-------|
-| Manufacturer | Native Instruments |
-| Product | Kontrol S8 |
-| VID:PID | `0x17cc:0x1370` |
-| USB Speed | High Speed (480 Mbps) |
-| Interfaces | 7 (audio, MIDI, DFU, HID control, bulk display) |
-| Screens | 2 x 480 x 272, BGR565 big-endian |
-| Total LEDs | 309-byte output buffer, split across 3 prefix groups |
+| Property     | Value                                                |
+| ------------ | ---------------------------------------------------- |
+| Manufacturer | Native Instruments                                   |
+| Product      | Kontrol S8                                           |
+| VID:PID      | `0x17cc:0x1370`                                      |
+| USB Speed    | High Speed (480 Mbps)                                |
+| Interfaces   | 7 (audio, MIDI, DFU, HID control, bulk display)      |
+| Screens      | 2 x 480 x 272, BGR565 big-endian                     |
+| Total LEDs   | 309-byte output buffer, split across 3 prefix groups |
 
 The Kontrol S8 is a flagship 4-channel standalone mixer and DJ controller. It features two high-resolution displays, touch-sensitive knobs and faders, and a comprehensive mixer section.
 
@@ -47,14 +47,14 @@ The S8 is effectively two D2-style deck controllers flanking a central 4-channel
 
 ## USB Interfaces
 
-| Interface | Name | Number | Endpoint In | Endpoint Out | Type |
-|-----------|------|--------|-------------|--------------|------|
-| Audio Out | Traktor Kontrol S8 Output | 1 | — | `0x01` (isochronous) | Audio output |
-| Audio In | Traktor Kontrol S8 Input | 2 | `0x82` (isochronous) | — | Audio input |
-| MIDI | Traktor Kontrol S8 MIDI | 3 | `0x83` (bulk) | `0x02` (bulk) | MIDI I/O |
-| DFU | Traktor Kontrol S8 DFU | 4 | — | — | Firmware update |
-| Control | Traktor Kontrol S8 HID | 5 | `0x84` (interrupt) | `0x03` (interrupt) | Buttons, sliders, encoders, LEDs |
-| Screen | Traktor Kontrol S8 BD | 6 | — | `0x04` (bulk) | Screen pixel data (both screens) |
+| Interface | Name                      | Number | Endpoint In          | Endpoint Out         | Type                             |
+| --------- | ------------------------- | ------ | -------------------- | -------------------- | -------------------------------- |
+| Audio Out | Traktor Kontrol S8 Output | 1      | —                    | `0x01` (isochronous) | Audio output                     |
+| Audio In  | Traktor Kontrol S8 Input  | 2      | `0x82` (isochronous) | —                    | Audio input                      |
+| MIDI      | Traktor Kontrol S8 MIDI   | 3      | `0x83` (bulk)        | `0x02` (bulk)        | MIDI I/O                         |
+| DFU       | Traktor Kontrol S8 DFU    | 4      | —                    | —                    | Firmware update                  |
+| Control   | Traktor Kontrol S8 HID    | 5      | `0x84` (interrupt)   | `0x03` (interrupt)   | Buttons, sliders, encoders, LEDs |
+| Screen    | Traktor Kontrol S8 BD     | 6      | —                    | `0x04` (bulk)        | Screen pixel data (both screens) |
 
 ---
 
@@ -89,40 +89,40 @@ The S8 LED output buffer is 309 bytes, split into three prefix groups sent via i
 
 ### Prefix Groups
 
-| Prefix | ID | Description |
-|--------|----|-------------|
-| `0x80` | `left_deck` | Left deck LEDs (pads, buttons, touchstrip) |
+| Prefix | ID           | Description                                 |
+| ------ | ------------ | ------------------------------------------- |
+| `0x80` | `left_deck`  | Left deck LEDs (pads, buttons, touchstrip)  |
 | `0x81` | `right_deck` | Right deck LEDs (pads, buttons, touchstrip) |
-| `0x82` | `mixer` | Mixer LEDs (cue buttons, meters) |
+| `0x82` | `mixer`      | Mixer LEDs (cue buttons, meters)            |
 
 ### Per-Deck LED Layout (identical for left/right)
 
-| LED | Type | Offset(s) | Notes |
-|-----|------|-----------|-------|
-| Pad 1–8 | RGB | 0–23 | 3 bytes per pad: R, G, B (sequential) |
-| FX Select | Single | 24 | |
-| FX 1–4 | Single | 25–28 | |
-| Screen Left 1–4 | Single | 29–32 | |
-| Screen Right 1–4 | Single | 33–36 | |
-| Back | Single | 37 | |
-| Capture | Single | 38 | |
-| Edit | Single | 39 | |
-| ON 1–4 | Single | 40–43 | |
-| Hotcue (white/blue) | Dual | 44–45 | |
-| Loop (white/blue) | Dual | 46–47 | |
-| Freeze (white/blue) | Dual | 48–49 | |
-| Remix (white/blue) | Dual | 50–51 | |
-| Flux | Single | 52 | |
-| Deck (white/blue) | Dual | 53–54 | |
-| Shift | Single | 55 | |
-| Sync (green/red) | Dual | 56–57 | |
-| Cue | Single | 58 | |
-| Play | Single | 59 | |
-| Loop Circle 1–4 (white) | Single | 60–63 | |
-| Loop Circle 1–4 (blue) | Single | 64–67 | |
-| Touchstrip Blue | Strip | 68–92 | 25 LEDs |
-| Touchstrip Orange | Strip | 93–117 | 25 LEDs |
-| Deck A/B/C/D | Single | 118–121 | Deck selector indicators |
+| LED                     | Type   | Offset(s) | Notes                                 |
+| ----------------------- | ------ | --------- | ------------------------------------- |
+| Pad 1–8                 | RGB    | 0–23      | 3 bytes per pad: R, G, B (sequential) |
+| FX Select               | Single | 24        |                                       |
+| FX 1–4                  | Single | 25–28     |                                       |
+| Screen Left 1–4         | Single | 29–32     |                                       |
+| Screen Right 1–4        | Single | 33–36     |                                       |
+| Back                    | Single | 37        |                                       |
+| Capture                 | Single | 38        |                                       |
+| Edit                    | Single | 39        |                                       |
+| ON 1–4                  | Single | 40–43     |                                       |
+| Hotcue (white/blue)     | Dual   | 44–45     |                                       |
+| Loop (white/blue)       | Dual   | 46–47     |                                       |
+| Freeze (white/blue)     | Dual   | 48–49     |                                       |
+| Remix (white/blue)      | Dual   | 50–51     |                                       |
+| Flux                    | Single | 52        |                                       |
+| Deck (white/blue)       | Dual   | 53–54     |                                       |
+| Shift                   | Single | 55        |                                       |
+| Sync (green/red)        | Dual   | 56–57     |                                       |
+| Cue                     | Single | 58        |                                       |
+| Play                    | Single | 59        |                                       |
+| Loop Circle 1–4 (white) | Single | 60–63     |                                       |
+| Loop Circle 1–4 (blue)  | Single | 64–67     |                                       |
+| Touchstrip Blue         | Strip  | 68–92     | 25 LEDs                               |
+| Touchstrip Orange       | Strip  | 93–117    | 25 LEDs                               |
+| Deck A/B/C/D            | Single | 118–121   | Deck selector indicators              |
 
 **Note:** RGB pad ordering on S8 is R=0, G=1, B=2 (sequential), unlike the D2 which uses B=0, G=1, R=2 (inverted).
 
@@ -142,13 +142,13 @@ Both screens share a single bulk endpoint (`0x04` on interface 6). The S8 uses t
 
 The target screen is identified by **byte[3]** of the header and **byte[6]** of the footer:
 
-| Screen | Header byte[3] | Footer byte[6] | Full Header |
-|--------|---------------|----------------|-------------|
-| Left   | `0x60`        | `0x00`         | `84 00 00 60 00 00 00 00 00 00 00 00 01 E0 01 10 00 00 FF 00` |
-| Right  | `0x60`        | `0x01`         | `84 00 01 60 00 00 00 00 00 00 00 00 01 E0 01 10 00 00 FF 00` |
+| Screen | Header byte[3] | Footer byte[6] | Full Header                                                   |
+| ------ | -------------- | -------------- | ------------------------------------------------------------- |
+| Left   | `0x60`         | `0x00`         | `84 00 00 60 00 00 00 00 00 00 00 00 01 E0 01 10 00 00 FF 00` |
+| Right  | `0x60`         | `0x01`         | `84 00 01 60 00 00 00 00 00 00 00 00 01 E0 01 10 00 00 FF 00` |
 
-| Screen | Footer |
-|--------|--------|
+| Screen | Footer                    |
+| ------ | ------------------------- |
 | Left   | `03 00 00 00 40 00 00 00` |
 | Right  | `03 00 00 00 40 00 01 00` |
 

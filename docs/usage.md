@@ -154,40 +154,40 @@ encdr.set_led_strip(device_id, "touchstrip_orange", &strip);
 
 ### D2 LED Names
 
-| Name | Type | Description |
-|------|------|-------------|
-| `pad_1` - `pad_8` | RGB | Performance pad LEDs |
-| `play` | Single | Play button backlight |
-| `cue` | Single | Cue button backlight |
-| `sync_green` | Single | Sync button green component |
-| `sync_red` | Single | Sync button red component |
-| `shift` | Single | Shift button backlight |
-| `deck_a` - `deck_d` | Single | Deck selector backlights |
-| `touchstrip_blue` | Strip (25) | Touchstrip blue channel |
-| `touchstrip_orange` | Strip (25) | Touchstrip orange channel |
+| Name                | Type       | Description                 |
+| ------------------- | ---------- | --------------------------- |
+| `pad_1` - `pad_8`   | RGB        | Performance pad LEDs        |
+| `play`              | Single     | Play button backlight       |
+| `cue`               | Single     | Cue button backlight        |
+| `sync_green`        | Single     | Sync button green component |
+| `sync_red`          | Single     | Sync button red component   |
+| `shift`             | Single     | Shift button backlight      |
+| `deck_a` - `deck_d` | Single     | Deck selector backlights    |
+| `touchstrip_blue`   | Strip (25) | Touchstrip blue channel     |
+| `touchstrip_orange` | Strip (25) | Touchstrip orange channel   |
 
 ### Mk3 LED Names
 
 The Mk3 has two LED buffer groups (button LEDs and touchstrip), all single-color.
 
-| Name | Type | Description |
-|------|------|-------------|
-| `play`, `rec`, `stop` | Single | Transport control backlights |
-| `restart`, `erase`, `tap`, `follow` | Single | Transport secondary backlights |
-| `shift`, `fixed_vel` | Single | Modifier backlights |
-| `pad_mode`, `keyboard`, `chords`, `step` | Single | Pad mode backlights |
-| `scene`, `pattern`, `events`, `variations` | Single | Sequencer mode backlights |
-| `duplicate`, `select`, `solo`, `mute` | Single | Pad action backlights |
-| `top_1` - `top_8` | Single | Top row button backlights |
-| `group_a` - `group_h` | Single | Group selector backlights |
-| `channel`, `plugin`, `arranger`, `mixer` | Single | View mode backlights |
-| `browser`, `sampling` | Single | Browser/sampling backlights |
-| `arrow_left`, `arrow_right` | Single | Navigation arrow backlights |
-| `file`, `settings`, `auto`, `macro` | Single | Utility backlights |
-| `volume`, `swing`, `note_repeat`, `tempo` | Single | Parameter backlights |
-| `lock`, `pitch`, `mod`, `perform`, `notes` | Single | Mode backlights |
-| `encoder_up/down/left/right` | Single | Encoder push direction backlights |
-| `touchstrip` | Strip | Touchstrip LED array |
+| Name                                       | Type   | Description                       |
+| ------------------------------------------ | ------ | --------------------------------- |
+| `play`, `rec`, `stop`                      | Single | Transport control backlights      |
+| `restart`, `erase`, `tap`, `follow`        | Single | Transport secondary backlights    |
+| `shift`, `fixed_vel`                       | Single | Modifier backlights               |
+| `pad_mode`, `keyboard`, `chords`, `step`   | Single | Pad mode backlights               |
+| `scene`, `pattern`, `events`, `variations` | Single | Sequencer mode backlights         |
+| `duplicate`, `select`, `solo`, `mute`      | Single | Pad action backlights             |
+| `top_1` - `top_8`                          | Single | Top row button backlights         |
+| `group_a` - `group_h`                      | Single | Group selector backlights         |
+| `channel`, `plugin`, `arranger`, `mixer`   | Single | View mode backlights              |
+| `browser`, `sampling`                      | Single | Browser/sampling backlights       |
+| `arrow_left`, `arrow_right`                | Single | Navigation arrow backlights       |
+| `file`, `settings`, `auto`, `macro`        | Single | Utility backlights                |
+| `volume`, `swing`, `note_repeat`, `tempo`  | Single | Parameter backlights              |
+| `lock`, `pitch`, `mod`, `perform`, `notes` | Single | Mode backlights                   |
+| `encoder_up/down/left/right`               | Single | Encoder push direction backlights |
+| `touchstrip`                               | Strip  | Touchstrip LED array              |
 
 ---
 
@@ -305,13 +305,13 @@ Devices are defined by JSON files. See [hardware/ni_kontrol_d2.md](hardware/ni_k
 
 ### Supported Input Types
 
-| Type | JSON `type` | Event | Fields |
-|------|-------------|-------|--------|
-| Button | `button` | `Event::Button` | `byte`, `mask` |
-| Touch sensor | `touch` | `Event::Touch` | `byte` + `mask` (single-byte), or `bytes` (multi-byte, value > 0) |
-| Slider/fader | `slider` | `Event::Slider` | `byte`/`bytes`, `bits`, `normalize`, `max_value` |
-| Notched encoder | `encoder` | `Event::Encoder` | `byte`, `bits`, `bit_offset`, `encoding` |
-| Fine encoder / Jogdial | `encoder_fine` | `Event::EncoderFine` | `bytes`, `encoding`, `scale` |
+| Type                   | JSON `type`    | Event                | Fields                                                            |
+| ---------------------- | -------------- | -------------------- | ----------------------------------------------------------------- |
+| Button                 | `button`       | `Event::Button`      | `byte`, `mask`                                                    |
+| Touch sensor           | `touch`        | `Event::Touch`       | `byte` + `mask` (single-byte), or `bytes` (multi-byte, value > 0) |
+| Slider/fader           | `slider`       | `Event::Slider`      | `byte`/`bytes`, `bits`, `normalize`, `max_value`                  |
+| Notched encoder        | `encoder`      | `Event::Encoder`     | `byte`, `bits`, `bit_offset`, `encoding`                          |
+| Fine encoder / Jogdial | `encoder_fine` | `Event::EncoderFine` | `bytes`, `encoding`, `scale`                                      |
 
 Touch sensors support two modes:
 - **Single-byte**: `"byte": 9, "mask": "0x02"` — standard bitmask check
@@ -319,12 +319,12 @@ Touch sensors support two modes:
 
 ### Supported Encoder Encodings
 
-| Encoding | Description |
-|----------|-------------|
-| `wrap16` | 4-bit counter with wraparound (used by D2 browse/loop encoders) |
-| `signed16` | 16-bit signed delta (used by D2 screen encoders) |
-| `unsigned16` | 16-bit unsigned (absolute position) |
-| `wrap16_wide` | 16-bit counter with full wraparound (jogwheels/jogdials) |
+| Encoding      | Description                                                     |
+| ------------- | --------------------------------------------------------------- |
+| `wrap16`      | 4-bit counter with wraparound (used by D2 browse/loop encoders) |
+| `signed16`    | 16-bit signed delta (used by D2 screen encoders)                |
+| `unsigned16`  | 16-bit unsigned (absolute position)                             |
+| `wrap16_wide` | 16-bit counter with full wraparound (jogwheels/jogdials)        |
 
 The `wrap16_wide` encoding detects direction via shortest path around the 65536-step ring. Use `encoder_fine` with `wrap16_wide` for jogdials:
 ```json
@@ -391,16 +391,16 @@ Run examples from the workspace root:
 
 ```bash
 # List all loaded descriptors and scan for connected devices
-cargo run -p encdr --example probe
+cargo run -p encdr-examples --bin probe
 
 # Print all events from connected devices (Ctrl+C to quit)
-cargo run -p encdr --example monitor
+cargo run -p encdr-examples --bin monitor
 
 # Show D2 knob/button positions on the screen (requires D2 plugged in)
-cargo run -p encdr-view --example d2_screen_test
+cargo run -p encdr-examples --bin d2_screen_test
 
 # Show Maschine Mk3 encoder/button state on dual screens (requires Mk3 plugged in)
-cargo run -p encdr-view --example mk3_screen_test
+cargo run -p encdr-examples --bin mk3_screen_test
 ```
 
 ---

@@ -87,6 +87,22 @@ path = "src/bin/touchstrip_colour_map.rs"
 name = "touchstrip_blue_test"
 path = "src/bin/touchstrip_blue_test.rs"
 
+[[bin]]
+name = "mixer_discovery"
+path = "src/bin/mixer_discovery.rs"
+
+[[bin]]
+name = "prefix_scanner"
+path = "src/bin/prefix_scanner.rs"
+
+[[bin]]
+name = "prefix_investigator"
+path = "src/bin/prefix_investigator.rs"
+
+[[bin]]
+name = "mixer_test"
+path = "src/bin/mixer_test.rs"
+
 [dependencies]
 nusb = "0.1"
 serde_json = "1.0"

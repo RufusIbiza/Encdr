@@ -13,11 +13,11 @@ The S8 uses two main input reports on Interface 0 (HID):
 ### Report Segmentation Hypothesis
 Based on working offsets for the right deck and the symmetrical layout of the S8, the reports appear to be segmented into 16-byte blocks:
 
-| Block | Range (Bytes) | Description |
-|-------|---------------|-------------|
-| **Deck A (Left)** | 1 - 16 | Buttons, Touch Bits, Slider data for Deck A |
-| **Mixer** | 17 - 32 | Mixer Channel faders, EQs, and Global buttons |
-| **Deck B (Right)** | 33 - 48 | Buttons, Touch Bits, Slider data for Deck B |
+| Block              | Range (Bytes) | Description                                   |
+| ------------------ | ------------- | --------------------------------------------- |
+| **Deck A (Left)**  | 1 - 16        | Buttons, Touch Bits, Slider data for Deck A   |
+| **Mixer**          | 17 - 32       | Mixer Channel faders, EQs, and Global buttons |
+| **Deck B (Right)** | 33 - 48       | Buttons, Touch Bits, Slider data for Deck B   |
 
 ---
 
@@ -26,18 +26,18 @@ Based on working offsets for the right deck and the symmetrical layout of the S8
 ### Position Data (Sliders Report)
 The position is a 16-bit value (only 10 bits used, range 0-1024).
 
-| Deck | Bytes (Offsets) | Note |
-|------|-----------------|------|
-| **Left** | `[2, 3]` | Symmetrically matches the right deck offset. |
-| **Right** | `[34, 35]` | Confirmed working by user. |
+| Deck      | Bytes (Offsets) | Note                                         |
+| --------- | --------------- | -------------------------------------------- |
+| **Left**  | `[2, 3]`        | Symmetrically matches the right deck offset. |
+| **Right** | `[34, 35]`      | Confirmed working by user.                   |
 
 ### Touch State (Buttons Report)
 The capacitive touch bit indicates if a finger is currently on the strip.
 
-| Deck | Byte | Mask | Note |
-|------|------|------|------|
-| **Left** | 16 | `0x01` | Bit 0 of the last byte in the Deck A block. |
-| **Right** | 32 | `0x01` | Bit 0 of the last byte in the Deck B block (confirmed). |
+| Deck      | Byte | Mask   | Note                                                    |
+| --------- | ---- | ------ | ------------------------------------------------------- |
+| **Left**  | 16   | `0x01` | Bit 0 of the last byte in the Deck A block.             |
+| **Right** | 32   | `0x01` | Bit 0 of the last byte in the Deck B block (confirmed). |
 
 ---
 

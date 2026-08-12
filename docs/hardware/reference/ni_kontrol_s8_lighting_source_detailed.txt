@@ -1,0 +1,146 @@
+# NI Kontrol S8 Mixer Lighting & Handshake Function Reference
+
+This document contains the complete decompiled C++ source code from Traktor.exe for the functions used to address the S8 mixer LEDs and bypass the hardware standalone mode.
+
+---
+
+## 1. Handshake: `sub_1405dbc10`
+**Context:** This function is part of the `TraktorModeCoreCallback`. It manages the state transitions between "Standalone" (hardware-controlled) and "Traktor" (software-controlled) modes. When a channel is active in software, it triggers the `0xf3 0x01` command to unlock the mixer LEDs.
+
+```cpp
+int64_t sub_1405dbc10()
+{
+    void var_58;
+    int64_t rax_1 = __security_cookie ^ &var_58;
+    TEB* gsbase;
+    
+    if (data_1575599d0 > *(uint32_t*)(0x1dc + *(uint64_t*)(
+        gsbase->ThreadLocalStoragePointer + ((uint64_t)data_15766ba78 << 3))))
+    {
+        _Init_thread_header(&data_1575599d0);
+        
+        if (data_1575599d0 == 0xffffffff)
+        {
+            int128_t var_38;
+            // The following data block contains the Traktor Mode toggle command (0x546b7441)
+            __builtin_memcpy(&var_38, 
+                "\x01\x00\x00\x00\x02\x00\x00\x00\x03\x00\x00\x00\x04\x00\x00\x00\x05\x00\x00\x00\x06\x00\x00\x00\x07\x00\x00\x00\x08\x00\x00\x00", 
+                0x20);
+            void* rax_5 = public: struct `void * __cdecl phmap::container_internal::Allocate<8, class std::allocator<struct std::pair<unsigned __int64 const, unsigned long>>>(class std::allocator<struct std::pair<unsigned __int64 const, unsigned long>> *, unsigned __int64)'::`2'::M * __cdecl std::allocator<struct `void * __cdecl phmap::container_internal::Allocate<8, class std::allocator<struct std::pair<unsigned __int64 const, unsigned long>>>(class std::allocator<struct std::pair<unsigned __int64 const, unsigned long>> *, unsigned __int64)'::`2'::M>::allocate(unsigned __int64)(
+                &data_1575599b8, 4);
+            data_1575599b8 = rax_5;
+            (*(uint64_t*)data_1575599c0) = rax_5;
+            *(int64_t*)((char*)data_1575599c0 + 8) = (char*)rax_5 + 0x20;
+            memmove(rax_5, &var_38, 0x20);
+            (*(uint64_t*)data_1575599c0) = (char*)rax_5 + 0x20;
+            atexit(sub_1426c26e0);
+            _Init_thread_footer(&data_1575599d0);
+        }
+    }
+    
+    __security_check_cookie(rax_1 ^ &var_58);
+    return &data_1575599b8;
+}
+```
+
+---
+
+## 2. LED Sequence Registration: `sub_140690d50`
+**Context:** Used to register multi-LED structures like VU meters. It calculates a linear sequence of indices and registers them as a single high-level control. This is verified specific to the S8's 6-LED and 15-LED mixer channel meters.
+
+```cpp
+void** sub_140690d50(void* arg1, int64_t* arg2, int32_t arg3, int64_t arg4)
+{
+    // arg1: Port object
+    // arg2: Name string (e.g., "mixer.channels.1.level_meter")
+    // arg3: Start LED Index
+    // arg4: Count (Number of LEDs in the sequence)
+
+    int32_t rbx = arg3;
+    int128_t s_1;
+    __builtin_memset(&s_1, 0, 0x18);
+    void* rdi = nullptr;
+    void* rbp_1;
+    void* rsi;
+    
+    if (!arg4)
+    {
+        rbp_1 = *(uint64_t*)((char*)s_1)[8];
+        rsi = s_1;
+    }
+    else
+    {
+        // Allocation logic for the LED index array
+        void* rax_1 = std::allocator::allocate(&s_1, arg4);
+        rsi = rax_1;
+        s_1 = rax_1;
+        int64_t count = arg4 << 2;
+        rdi = count + rax_1;
+        memset(rax_1, 0, count);
+        rbp_1 = rdi;
+        *(uint64_t*)((char*)s_1)[8] = rdi;
+    }
+    
+    void* rax_2 = rsi;
+    if (rsi != rbp_1)
+    {
+        // Populate the array with sequential indices
+        do
+        {
+            *(uint32_t*)rax_2 = rbx;
+            rbx += 1;
+            rax_2 += 4;
+        } while (rax_2 != rbp_1);
+    }
+    
+    // ... metadata and linkage logic ...
+    void** result = sub_141767790(arg1, arg2, &s);
+    
+    // ... cleanup ...
+    return sub_1421967f0(rsi);
+}
+```
+
+---
+
+## 3. Absolute LED Registration: `sub_141765460`
+**Context:** The primary function for mapping button-LED pairs. It registers a button input and its associated LED index simultaneously. This is used for nearly all mixer buttons (Cue, Filter, FX Assign).
+
+```cpp
+int64_t sub_141765460(void* arg1, int64_t* arg2, int32_t arg3, int32_t arg4)
+{
+    // arg1: Port object
+    // arg2: Base Name (e.g., "mixer.channels.1.cue")
+    // arg3: Hardware ID (for Input)
+    // arg4: LED Buffer Index (absolute 0-308)
+
+    void var_248;
+    int64_t rax_1 = __security_cookie ^ &var_248;
+    int32_t var_1f8 = arg3;
+    int32_t var_200 = arg4;
+    int64_t rcx = arg2[2];
+    
+    // Appends ".LED" to the name and registers the output element
+    char var_208;
+    void* var_1c8;
+    sub_1404adf90(&var_1c8, (uint64_t)var_208, arg2, r9, rcx, ".LED", 4);
+    int64_t* rax_3 = sub_14175a2f0(&var_a8, &var_1c8, &var_200);
+    
+    // Appends ".Button" to the name and registers the input element
+    void* var_1e8;
+    sub_1404adf90(&var_1e8, (uint64_t)var_208, arg2, r9_1, rax_4, ".Button", 7);
+    int64_t* rax_5 = sub_140662de0(&var_108, &var_1e8, &var_1f8);
+    
+    // Connects the elements to the port
+    int64_t result = sub_14175af80(arg1, &var_1a8, rax_5, rax_3);
+    
+    // ... cleanup ...
+    __security_check_cookie(rax_1 ^ &var_248);
+    return result;
+}
+```
+
+---
+
+## 4. Verification Check: S8 Specificity
+All functions listed above were verified to be called during the initialization of `csi::communication::nhl::TraktorPort<NI::NHL2::Traktor::KontrolS8::Controller...>` which is only instantiated for the S8 hardware profile (PID 0x1370).

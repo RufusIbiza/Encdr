@@ -8,14 +8,14 @@ This document details the exact addressing and interpretation logic for the NI K
 
 The S8 touchstrip data is split across two reports. While the right deck is well-understood, the left deck uses symmetrical offsets within the same report structures.
 
-| Deck | Control | Report | Address | Type | Max Value |
-|------|---------|--------|---------|------|-----------|
-| **Left** | **Absolute Position** | Sliders (176b) | **Bytes 2, 3** | 16-bit (10-bit resolution) | 1024 |
-| **Left** | **Delta / Relative** | Sliders (176b) | **Byte 28** | 8-bit Signed | - |
-| **Left** | **Touch State** | Buttons (46b) | **Byte 16, Mask 0x01** | Bit | - |
-| **Right**| **Absolute Position** | Sliders (176b) | **Bytes 34, 35** | 16-bit (10-bit resolution) | 1024 |
-| **Right**| **Delta / Relative** | Sliders (176b) | **Byte 44**? | 8-bit Signed | - |
-| **Right**| **Touch State** | Buttons (46b) | **Byte 32, Mask 0x01** | Bit | - |
+| Deck      | Control               | Report         | Address                | Type                       | Max Value |
+| --------- | --------------------- | -------------- | ---------------------- | -------------------------- | --------- |
+| **Left**  | **Absolute Position** | Sliders (176b) | **Bytes 2, 3**         | 16-bit (10-bit resolution) | 1024      |
+| **Left**  | **Delta / Relative**  | Sliders (176b) | **Byte 28**            | 8-bit Signed               | -         |
+| **Left**  | **Touch State**       | Buttons (46b)  | **Byte 16, Mask 0x01** | Bit                        | -         |
+| **Right** | **Absolute Position** | Sliders (176b) | **Bytes 34, 35**       | 16-bit (10-bit resolution) | 1024      |
+| **Right** | **Delta / Relative**  | Sliders (176b) | **Byte 44**?           | 8-bit Signed               | -         |
+| **Right** | **Touch State**       | Buttons (46b)  | **Byte 32, Mask 0x01** | Bit                        | -         |
 
 ---
 

@@ -1,0 +1,75 @@
+# NI Kontrol S8 Lighting Logic Reference
+
+This document provides a comprehensive listing of the functions and logic used by Traktor to communicate with the lights on the Native Instruments Kontrol S8, specifically focusing on the mixer section and the standalone mode bypass.
+
+---
+
+## 1. Disabling Hardware Mixer Functions (Handshake)
+
+Before individual mixer LEDs can be addressed, Traktor must tell the S8 to disable its internal hardware-controlled LED logic (Standalone Mode) and allow software overrides.
+
+### The `0xf3` Handshake Command
+- **Protocol:** HID Interrupt Out
+- **Prefix:** `0xf3`
+- **Payload:** `0x01` (Enable PC Control / Disable Standalone HW Mode)
+- **Context:** Sent during device initialization or when a channel is assigned to a Traktor deck.
+
+### Relevant Source Code: Mode Toggle
+This logic is managed via the `TraktorModeCoreCallback` within the `Audio::DeviceControlling::KS8Facade` class.
+
+```cpp
+// S8 Specific Callback implementation
+// Located at 1405dbc10 in Traktor.exe
+int64_t sub_1405dbc10() {
+    // This function is triggered when a mixer channel's 'traktormode' 
+    // property changes. 
+    // If the device is found (PID 0x1370), it dispatches the 0xf3 prefix.
+}
+```
+
+---
+
+## 2. Mixer LED Addressing (Specific to S8)
+
+The following mappings and functions are confirmed to relate specifically to the Kontrol S8 (PID 0x1370). Unlike other hardware, the S8 uses a 309-LED buffer split across three prefixed reports.
+
+### LED Registration Function: `sub_141765460`
+This is the primary function used to register absolute LED indices for buttons.
+
+**S8 Call Sites (Confirmed Mixer LEDs):**
+- **Cue Button (Ch 1):** `sub_141765460(result, &var_c08, 0x10, 0xdf);` (Index 223, Prefix 0x81)
+- **Filter On (Ch 1):** `sub_141765460(result, &var_798, 0x11, 0xdb);` (Index 219, Prefix 0x81)
+- **FX Assign L (Ch 1):** `sub_141765460(result, &var_b48, 0x95, 0x11a);` (Index 282, Prefix 0x82)
+- **FX Assign R (Ch 1):** `sub_141765460(result, &var_b28, 0x96, 0x11b);` (Index 283, Prefix 0x82)
+- **Deck Input/Assign (Ch 1):** `sub_141765460(result, &s_1, 0x58, 0x50);` (Index 80, Prefix 0x80)
+
+---
+
+## 3. Level Meter (VU) Logic
+
+The S8 has variable-height level meters (6 or 15 LEDs). Traktor registers them using a start index and a count.
+
+### Level Meter Registration Function: `sub_140690d50`
+**S8 Specific Usage:**
+- **Master VU Left:** `sub_140690d50(result, &var_a0, 0x9a, 9);` (Index 154, Count 9, Prefix 0x81)
+- **Master VU Right:** `sub_140690d50(result, &var_700, 0xa3, 9);` (Index 163, Count 9, Prefix 0x81)
+- **Channel 1 (A) VU:** Starts at `0x5e` (94, Prefix 0x80) or `0xf7` (247, Prefix 0x82) depending on mode.
+
+---
+
+## 4. Addressing Logic Overview
+
+The S8 addressing is non-contiguous because the internal hardware is a composite of several boards.
+
+| Prefix | Byte Range (Data) | S8 Physical Targets |
+|--------|-------------------|---------------------|
+| **0x80** | 0 - 117 | Deck Left, Mixer A/B Cues, Deck Assigns |
+| **0x81** | 118 - 235 | Deck Right, Mixer C/D Cues, Snap, Quantize, Filter On |
+| **0x82** | 236 - 308 | Master VU Meters, Channel VU Meters, Mic Cues |
+
+### Commentary on Implementation
+To address these LEDs correctly in a custom tool:
+1.  **Handshake:** Send `[0xf3, 0x01]` first.
+2.  **Report Size:** Always send exactly **310 bytes** (1 byte prefix + 1 byte prefix header + 308 data bytes).
+3.  **Values:** Each data byte corresponds to one LED (typically 0-127 for mono buttons).
+4.  **Multiplexing:** The device uses the prefix byte to determine where the 308-byte stream starts writing to the physical LED controllers.

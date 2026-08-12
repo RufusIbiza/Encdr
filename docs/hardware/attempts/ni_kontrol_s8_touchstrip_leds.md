@@ -208,12 +208,12 @@ With the 119-byte format confirmed, tested the full colour and brightness mappin
 
 ## SOLVED — Final addressing
 
-| Channel | Prefix | Offsets   | Count |
-|---------|--------|-----------|-------|
-| Left blue   | `0x80` | 68–92  | 25    |
-| Left orange | `0x80` | 93–117 | 25    |
-| Right blue  | `0x81` | 68–92  | 25    |
-| Right orange| `0x81` | 93–117 | 25    |
+| Channel      | Prefix | Offsets | Count |
+| ------------ | ------ | ------- | ----- |
+| Left blue    | `0x80` | 68–92   | 25    |
+| Left orange  | `0x80` | 93–117  | 25    |
+| Right blue   | `0x81` | 68–92   | 25    |
+| Right orange | `0x81` | 93–117  | 25    |
 
 **Report format:** `[prefix_byte] + [118 data bytes]` = 119 bytes total, sent as an
 interrupt_out on interface 5, endpoint `0x03`.
