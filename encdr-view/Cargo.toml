@@ -45,4 +45,8 @@ windows = { version = "0.61", features = [
     "Win32_System_Com",
     "Win32_System_Com_StructuredStorage",
 ] }
+# Required directly (not just transitively via `windows`): the #[implement(...)]
+# macro used in capture_windows.rs expands to code referencing `windows_core` as
+# an absolute crate path, which only resolves if it's a direct dependency here.
+windows-core = "0.61"
 png = "0.17"
