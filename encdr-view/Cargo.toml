@@ -1,9 +1,9 @@
 [package]
 name = "encdr-view"
-version = "0.1.0"
-edition = "2021"
+version = "0.2.0"
+edition = "2024"
 description = "WebView-based screen renderer for encdr controller screens"
-license = "MIT OR Apache-2.0"
+license = "GPLv3"
 
 [dependencies]
 encdr = { path = "../encdr" }
