@@ -16,6 +16,10 @@ bytemuck = { version = "1", features = ["derive"] }
 # Lock-free event channel
 crossbeam-channel = "0.5"
 
+# Async-aware command channel (lets the device thread block on either
+# a USB read or an incoming command, instead of polling)
+async-channel = "2"
+
 # Descriptor parsing
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread;
 
-use crossbeam_channel::{Receiver, Sender};
+use crossbeam_channel::Sender;
 use futures_lite::future::block_on;
 use nusb::transfer::RequestBuffer;
 
@@ -28,7 +28,7 @@ pub enum DeviceCmd {
 pub struct DeviceHandle {
     pub device_id: DeviceId,
     pub descriptor: Arc<DeviceDescriptor>,
-    cmd_tx: Sender<DeviceCmd>,
+    cmd_tx: async_channel::Sender<DeviceCmd>,
     thread: Option<thread::JoinHandle<()>>,
 }
 
@@ -42,7 +42,7 @@ impl DeviceHandle {
         event_tx: Sender<Event>,
         gpu: Option<Arc<crate::screen::GpuContext>>,
     ) -> Result<Self, crate::core::error::EncdrError> {
-        let (cmd_tx, cmd_rx) = crossbeam_channel::bounded(256);
+        let (cmd_tx, cmd_rx) = async_channel::bounded(256);
 
         let usb_device = usb_info.open()?;
         let desc = descriptor.clone();
@@ -64,11 +64,12 @@ impl DeviceHandle {
     }
 
     pub fn send(&self, cmd: DeviceCmd) {
-        self.cmd_tx.send(cmd).ok();
+        // try_send is non-blocking: safe to call from any (non-async) thread.
+        self.cmd_tx.try_send(cmd).ok();
     }
 
     pub fn disconnect(mut self) {
-        self.cmd_tx.send(DeviceCmd::Disconnect).ok();
+        self.cmd_tx.try_send(DeviceCmd::Disconnect).ok();
         if let Some(thread) = self.thread.take() {
             thread.join().ok();
         }
@@ -77,7 +78,7 @@ impl DeviceHandle {
 
 impl Drop for DeviceHandle {
     fn drop(&mut self) {
-        self.cmd_tx.send(DeviceCmd::Disconnect).ok();
+        self.cmd_tx.try_send(DeviceCmd::Disconnect).ok();
         if let Some(thread) = self.thread.take() {
             thread.join().ok();
         }
@@ -90,7 +91,7 @@ fn run_device(
     descriptor: Arc<DeviceDescriptor>,
     usb_device: nusb::Device,
     names: HashMap<String, &'static str>,
-    cmd_rx: Receiver<DeviceCmd>,
+    cmd_rx: async_channel::Receiver<DeviceCmd>,
     event_tx: Sender<Event>,
     gpu: Option<Arc<crate::screen::GpuContext>>,
 ) {
@@ -198,110 +199,121 @@ fn run_device(
         }
     }
 
-    // Main I/O loop
+    // Main I/O loop. Fully event-driven: the thread parks here and only wakes when
+    // either a real USB packet arrives on the interrupt endpoint, or the app sends
+    // a command (LED/screen update). No polling, no timers, no busy-waiting.
     let mut event_buf = Vec::with_capacity(64);
     let mut running = true;
+
+    enum Woken<T> {
+        Read(T),
+        Cmd(DeviceCmd),
+        CmdChannelClosed,
+    }
 
     block_on(async {
         // Queue initial interrupt read
         let mut pending_read = control_iface.interrupt_in(input_ep, RequestBuffer::new(1024));
 
         while running {
-            // Drain commands (non-blocking)
-            loop {
-                match cmd_rx.try_recv() {
-                    Ok(DeviceCmd::Disconnect) => {
-                        running = false;
-                        break;
-                    }
-                    Ok(DeviceCmd::SetLed { name, value }) => {
-                        for lb in &mut led_builders {
-                            if lb.set(&name, value) {
-                                break;
-                            }
-                        }
-                    }
-                    Ok(DeviceCmd::SetLedInGroup { group, name, value }) => {
-                        for lb in &mut led_builders {
-                            if lb.group_id() == group {
-                                lb.set(&name, value);
-                                break;
-                            }
-                        }
-                    }
-                    Ok(DeviceCmd::SetLedStrip { name, values }) => {
-                        for lb in &mut led_builders {
-                            if lb.set_strip(&name, &values) {
-                                break;
-                            }
-                        }
-                    }
-                    Ok(DeviceCmd::SetLedStripInGroup { group, name, values }) => {
-                        for lb in &mut led_builders {
-                            if lb.group_id() == group {
-                                lb.set_strip(&name, &values);
-                                break;
-                            }
-                        }
-                    }
-                    Ok(DeviceCmd::SubmitScreen { screen, pixels, format }) => {
-                        if let Some(sm) = screen_managers.get_mut(&screen) {
-                            let screen_desc = descriptor
-                                .screens
-                                .iter()
-                                .find(|s| s.name == screen);
-                            if let Some(screen_desc) = screen_desc {
-                                if let Some(blit_data) = sm.submit(&pixels, format, screen_desc) {
-                                    let screen_iface_id = &screen_desc.interface;
-                                    if let Some(iface) = interfaces.get(screen_iface_id) {
-                                        let ep = descriptor
-                                            .interface_by_id(screen_iface_id)
-                                            .and_then(|i| i.endpoints.out.as_ref())
-                                            .map(|ep| ep.address.0 as u8)
-                                            .unwrap_or(0x02);
-                                        let _ = iface.bulk_out(ep, blit_data).await;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Err(crossbeam_channel::TryRecvError::Empty) => break,
-                    Err(crossbeam_channel::TryRecvError::Disconnected) => {
-                        running = false;
-                        break;
-                    }
-                }
-            }
-
-            if !running {
-                break;
-            }
-
-            // Flush dirty LEDs
-            for lb in &mut led_builders {
-                if let Some(wire_buf) = lb.flush() {
-                    let ep = lb.endpoint();
-                    let _ = control_iface.interrupt_out(ep, wire_buf).await;
-                }
-            }
-
-            // Read input with a short timeout via select
-            // We use futures_lite to race the read against a timeout
-            let read_result = futures_lite::future::or(
+            let woken = futures_lite::future::or(
+                async { Woken::Read((&mut pending_read).await) },
                 async {
-                    let result = (&mut pending_read).await;
-                    Some(result)
-                },
-                async {
-                    // 20ms timeout — matches Steyr's polling rate
-                    futures_lite::future::yield_now().await;
-                    None
+                    match cmd_rx.recv().await {
+                        Ok(cmd) => Woken::Cmd(cmd),
+                        Err(_) => Woken::CmdChannelClosed,
+                    }
                 },
             )
             .await;
 
-            match read_result {
-                Some(completion) => {
+            match woken {
+                Woken::CmdChannelClosed => {
+                    running = false;
+                }
+                Woken::Cmd(first_cmd) => {
+                    // Apply this command, then drain any others already queued so a
+                    // burst of updates (e.g. all 8 LEDs) gets batched into one flush.
+                    let mut cmd = Some(first_cmd);
+                    while let Some(c) = cmd.take() {
+                        match c {
+                            DeviceCmd::Disconnect => {
+                                running = false;
+                            }
+                            DeviceCmd::SetLed { name, value } => {
+                                for lb in &mut led_builders {
+                                    if lb.set(&name, value) {
+                                        break;
+                                    }
+                                }
+                            }
+                            DeviceCmd::SetLedInGroup { group, name, value } => {
+                                for lb in &mut led_builders {
+                                    if lb.group_id() == group {
+                                        lb.set(&name, value);
+                                        break;
+                                    }
+                                }
+                            }
+                            DeviceCmd::SetLedStrip { name, values } => {
+                                for lb in &mut led_builders {
+                                    if lb.set_strip(&name, &values) {
+                                        break;
+                                    }
+                                }
+                            }
+                            DeviceCmd::SetLedStripInGroup { group, name, values } => {
+                                for lb in &mut led_builders {
+                                    if lb.group_id() == group {
+                                        lb.set_strip(&name, &values);
+                                        break;
+                                    }
+                                }
+                            }
+                            DeviceCmd::SubmitScreen { screen, pixels, format } => {
+                                if let Some(sm) = screen_managers.get_mut(&screen) {
+                                    let screen_desc =
+                                        descriptor.screens.iter().find(|s| s.name == screen);
+                                    if let Some(screen_desc) = screen_desc {
+                                        if let Some(blit_data) =
+                                            sm.submit(&pixels, format, screen_desc)
+                                        {
+                                            let screen_iface_id = &screen_desc.interface;
+                                            if let Some(iface) = interfaces.get(screen_iface_id) {
+                                                let ep = descriptor
+                                                    .interface_by_id(screen_iface_id)
+                                                    .and_then(|i| i.endpoints.out.as_ref())
+                                                    .map(|ep| ep.address.0 as u8)
+                                                    .unwrap_or(0x02);
+                                                let _ = iface.bulk_out(ep, blit_data).await;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if running {
+                            match cmd_rx.try_recv() {
+                                Ok(next) => cmd = Some(next),
+                                Err(_) => cmd = None,
+                            }
+                        }
+                    }
+
+                    if !running {
+                        break;
+                    }
+
+                    // Flush any LEDs that were just changed
+                    for lb in &mut led_builders {
+                        if let Some(wire_buf) = lb.flush() {
+                            let ep = lb.endpoint();
+                            let _ = control_iface.interrupt_out(ep, wire_buf).await;
+                        }
+                    }
+                }
+                Woken::Read(completion) => {
                     match completion.into_result() {
                         Ok(data) => {
                             // Parse the packet
@@ -325,11 +337,11 @@ fn run_device(
                         }
                     }
 
-                    // Queue next read
-                    pending_read = control_iface.interrupt_in(input_ep, RequestBuffer::new(1024));
-                }
-                None => {
-                    // Timeout — continue loop to process commands
+                    if running {
+                        // Queue next read
+                        pending_read =
+                            control_iface.interrupt_in(input_ep, RequestBuffer::new(1024));
+                    }
                 }
             }
         }
