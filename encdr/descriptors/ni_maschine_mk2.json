@@ -1,0 +1,222 @@
+{
+  "name": "NI Maschine Mk2",
+  "manufacturer": "Native Instruments",
+  "vendor_id": "0x17cc",
+  "product_id": "0x1140",
+
+  "interfaces": [
+    {
+      "id": "control",
+      "number": 0,
+      "endpoints": {
+        "in":  { "address": "0x81", "type": "interrupt" },
+        "out": { "address": "0x01", "type": "interrupt" }
+      }
+    },
+    {
+      "id": "screen",
+      "number": 0,
+      "endpoints": {
+        "out": { "address": "0x01", "type": "interrupt" }
+      }
+    }
+  ],
+
+  "input_packets": [
+    {
+      "id": "buttons",
+      "interface": "control",
+      "size": 24,
+      "items": [
+        { "type": "button", "name": "top_8",             "byte": 1,  "mask": "0x01" },
+        { "type": "button", "name": "top_7",             "byte": 1,  "mask": "0x02" },
+        { "type": "button", "name": "top_6",             "byte": 1,  "mask": "0x04" },
+        { "type": "button", "name": "top_5",             "byte": 1,  "mask": "0x08" },
+        { "type": "button", "name": "top_4",             "byte": 1,  "mask": "0x10" },
+        { "type": "button", "name": "top_3",             "byte": 1,  "mask": "0x20" },
+        { "type": "button", "name": "top_2",             "byte": 1,  "mask": "0x40" },
+        { "type": "button", "name": "top_1",             "byte": 1,  "mask": "0x80" },
+
+        { "type": "button", "name": "auto",              "byte": 2,  "mask": "0x01" },
+        { "type": "button", "name": "all",               "byte": 2,  "mask": "0x02" },
+        { "type": "button", "name": "arrow_left",        "byte": 2,  "mask": "0x04" },
+        { "type": "button", "name": "arrow_right",       "byte": 2,  "mask": "0x08" },
+        { "type": "button", "name": "sampling",          "byte": 2,  "mask": "0x10" },
+        { "type": "button", "name": "browser",           "byte": 2,  "mask": "0x20" },
+        { "type": "button", "name": "step",              "byte": 2,  "mask": "0x40" },
+        { "type": "button", "name": "control",           "byte": 2,  "mask": "0x80" },
+
+        { "type": "button", "name": "navigate",          "byte": 3,  "mask": "0x01" },
+        { "type": "button", "name": "note_repeat",       "byte": 3,  "mask": "0x02" },
+        { "type": "button", "name": "enter",             "byte": 3,  "mask": "0x04" },
+        { "type": "button", "name": "nav_right",         "byte": 3,  "mask": "0x08" },
+        { "type": "button", "name": "nav_left",          "byte": 3,  "mask": "0x10" },
+        { "type": "button", "name": "tempo",             "byte": 3,  "mask": "0x20" },
+        { "type": "button", "name": "swing",             "byte": 3,  "mask": "0x40" },
+        { "type": "button", "name": "volume",            "byte": 3,  "mask": "0x80" },
+
+        { "type": "button", "name": "group_h",           "byte": 4,  "mask": "0x01" },
+        { "type": "button", "name": "group_g",           "byte": 4,  "mask": "0x02" },
+        { "type": "button", "name": "group_f",           "byte": 4,  "mask": "0x04" },
+        { "type": "button", "name": "group_e",           "byte": 4,  "mask": "0x08" },
+        { "type": "button", "name": "group_d",           "byte": 4,  "mask": "0x10" },
+        { "type": "button", "name": "group_c",           "byte": 4,  "mask": "0x20" },
+        { "type": "button", "name": "group_b",           "byte": 4,  "mask": "0x40" },
+        { "type": "button", "name": "group_a",           "byte": 4,  "mask": "0x80" },
+
+        { "type": "button", "name": "shift",             "byte": 5,  "mask": "0x01" },
+        { "type": "button", "name": "erase",             "byte": 5,  "mask": "0x02" },
+        { "type": "button", "name": "rec",               "byte": 5,  "mask": "0x04" },
+        { "type": "button", "name": "play",              "byte": 5,  "mask": "0x08" },
+        { "type": "button", "name": "grid",              "byte": 5,  "mask": "0x10" },
+        { "type": "button", "name": "step_right",        "byte": 5,  "mask": "0x20" },
+        { "type": "button", "name": "step_left",         "byte": 5,  "mask": "0x40" },
+        { "type": "button", "name": "restart",           "byte": 5,  "mask": "0x80" },
+
+        { "type": "button", "name": "mute",              "byte": 6,  "mask": "0x01" },
+        { "type": "button", "name": "solo",              "byte": 6,  "mask": "0x02" },
+        { "type": "button", "name": "select",            "byte": 6,  "mask": "0x04" },
+        { "type": "button", "name": "duplicate",         "byte": 6,  "mask": "0x08" },
+        { "type": "button", "name": "nav_mode",          "byte": 6,  "mask": "0x10" },
+        { "type": "button", "name": "pad_mode",          "byte": 6,  "mask": "0x20" },
+        { "type": "button", "name": "pattern",           "byte": 6,  "mask": "0x40" },
+        { "type": "button", "name": "scene",             "byte": 6,  "mask": "0x80" },
+
+        { "type": "encoder_fine", "name": "screen_encoder_1", "bytes": [8, 9],   "encoding": "signed16" },
+        { "type": "encoder_fine", "name": "screen_encoder_2", "bytes": [10, 11], "encoding": "signed16" },
+        { "type": "encoder_fine", "name": "screen_encoder_3", "bytes": [12, 13], "encoding": "signed16" },
+        { "type": "encoder_fine", "name": "screen_encoder_4", "bytes": [14, 15], "encoding": "signed16" },
+        { "type": "encoder_fine", "name": "screen_encoder_5", "bytes": [16, 17], "encoding": "signed16" },
+        { "type": "encoder_fine", "name": "screen_encoder_6", "bytes": [18, 19], "encoding": "signed16" },
+        { "type": "encoder_fine", "name": "screen_encoder_7", "bytes": [20, 21], "encoding": "signed16" },
+        { "type": "encoder_fine", "name": "screen_encoder_8", "bytes": [22, 23], "encoding": "signed16" }
+      ]
+    },
+    {
+      "_comment": "Pad data uses Report 0x20 continuous 16-channel 12-bit ADC stream.",
+      "id": "pads",
+      "interface": "control",
+      "size": 33,
+      "items": []
+    }
+  ],
+
+  "leds": [
+    {
+      "id": "pad_leds",
+      "interface": "control",
+      "buffer_size": 49,
+      "prefix_byte": "0x80",
+      "items": [
+        { "type": "rgb", "name": "pad_1",  "offsets": {"r": 37, "g": 38, "b": 39} },
+        { "type": "rgb", "name": "pad_2",  "offsets": {"r": 40, "g": 41, "b": 42} },
+        { "type": "rgb", "name": "pad_3",  "offsets": {"r": 43, "g": 44, "b": 45} },
+        { "type": "rgb", "name": "pad_4",  "offsets": {"r": 46, "g": 47, "b": 48} },
+        { "type": "rgb", "name": "pad_5",  "offsets": {"r": 25, "g": 26, "b": 27} },
+        { "type": "rgb", "name": "pad_6",  "offsets": {"r": 28, "g": 29, "b": 30} },
+        { "type": "rgb", "name": "pad_7",  "offsets": {"r": 31, "g": 32, "b": 33} },
+        { "type": "rgb", "name": "pad_8",  "offsets": {"r": 34, "g": 35, "b": 36} },
+        { "type": "rgb", "name": "pad_9",  "offsets": {"r": 13, "g": 14, "b": 15} },
+        { "type": "rgb", "name": "pad_10", "offsets": {"r": 16, "g": 17, "b": 18} },
+        { "type": "rgb", "name": "pad_11", "offsets": {"r": 19, "g": 20, "b": 21} },
+        { "type": "rgb", "name": "pad_12", "offsets": {"r": 22, "g": 23, "b": 24} },
+        { "type": "rgb", "name": "pad_13", "offsets": {"r": 1,  "g": 2,  "b": 3}  },
+        { "type": "rgb", "name": "pad_14", "offsets": {"r": 4,  "g": 5,  "b": 6}  },
+        { "type": "rgb", "name": "pad_15", "offsets": {"r": 7,  "g": 8,  "b": 9}  },
+        { "type": "rgb", "name": "pad_16", "offsets": {"r": 10, "g": 11, "b": 12} }
+      ]
+    },
+    {
+      "id": "button_leds_monochrome",
+      "interface": "control",
+      "buffer_size": 32,
+      "prefix_byte": "0x82",
+      "items": [
+        { "type": "single", "name": "control",       "offset": 1 },
+        { "type": "single", "name": "step",          "offset": 2 },
+        { "type": "single", "name": "browser",       "offset": 3 },
+        { "type": "single", "name": "sampling",      "offset": 4 },
+        { "type": "single", "name": "arrow_left",    "offset": 5 },
+        { "type": "single", "name": "arrow_right",   "offset": 6 },
+        { "type": "single", "name": "all",           "offset": 7 },
+        { "type": "single", "name": "auto",          "offset": 8 },
+        { "type": "single", "name": "top_1",         "offset": 9 },
+        { "type": "single", "name": "top_2",         "offset": 10 },
+        { "type": "single", "name": "top_3",         "offset": 11 },
+        { "type": "single", "name": "top_4",         "offset": 12 },
+        { "type": "single", "name": "top_5",         "offset": 13 },
+        { "type": "single", "name": "top_6",         "offset": 14 },
+        { "type": "single", "name": "top_7",         "offset": 15 },
+        { "type": "single", "name": "top_8",         "offset": 16 },
+        { "type": "single", "name": "note_repeat",   "offset": 17 },
+        { "type": "single", "name": "enter",         "offset": 18 },
+        { "type": "single", "name": "nav_right",     "offset": 19 },
+        { "type": "single", "name": "nav_left",      "offset": 20 },
+        { "type": "single", "name": "tempo",         "offset": 21 },
+        { "type": "single", "name": "swing",         "offset": 22 },
+        { "type": "single", "name": "volume",        "offset": 23 },
+        { "type": "single", "name": "mute",          "offset": 24 },
+        { "type": "single", "name": "solo",          "offset": 25 },
+        { "type": "single", "name": "select",        "offset": 26 },
+        { "type": "single", "name": "duplicate",     "offset": 27 },
+        { "type": "single", "name": "navigate",      "offset": 28 },
+        { "type": "single", "name": "pad_mode",      "offset": 29 },
+        { "type": "single", "name": "pattern",       "offset": 30 },
+        { "type": "single", "name": "scene",         "offset": 31 }
+      ]
+    },
+    {
+      "id": "button_leds_rgb",
+      "interface": "control",
+      "buffer_size": 57,
+      "prefix_byte": "0x81",
+      "items": [
+        { "type": "rgb",    "name": "group_a",       "offsets": {"r": 1,  "g": 2,  "b": 3} },
+        { "type": "rgb",    "name": "group_b",       "offsets": {"r": 7,  "g": 8,  "b": 9} },
+        { "type": "rgb",    "name": "group_c",       "offsets": {"r": 13, "g": 14, "b": 15} },
+        { "type": "rgb",    "name": "group_d",       "offsets": {"r": 22, "g": 23, "b": 24} },
+        { "type": "rgb",    "name": "group_e",       "offsets": {"r": 25, "g": 26, "b": 27} },
+        { "type": "rgb",    "name": "group_f",       "offsets": {"r": 34, "g": 35, "b": 36} },
+        { "type": "rgb",    "name": "group_g",       "offsets": {"r": 37, "g": 38, "b": 39} },
+        { "type": "rgb",    "name": "group_h",       "offsets": {"r": 46, "g": 47, "b": 48} },
+        { "type": "single", "name": "restart",       "offset": 49 },
+        { "type": "single", "name": "step_left",     "offset": 50 },
+        { "type": "single", "name": "step_right",    "offset": 51 },
+        { "type": "single", "name": "grid",          "offset": 52 },
+        { "type": "single", "name": "play",          "offset": 53 },
+        { "type": "single", "name": "rec",           "offset": 54 },
+        { "type": "single", "name": "shift",         "offset": 55 },
+        { "type": "single", "name": "erase",         "offset": 56 }
+      ]
+    }
+  ],
+
+  "screens": [
+    {
+      "name": "left",
+      "interface": "screen",
+      "width": 256,
+      "height": 64,
+      "pixel_format": "mono",
+      "full_blit": {
+        "header": "0xe0",
+        "footer": ""
+      }
+    },
+    {
+      "name": "right",
+      "interface": "screen",
+      "width": 256,
+      "height": 64,
+      "pixel_format": "mono",
+      "full_blit": {
+        "header": "0xe1",
+        "footer": ""
+      }
+    }
+  ],
+
+  "quirks": {
+    "detach_kernel_driver": true
+  }
+}

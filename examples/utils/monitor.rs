@@ -3,6 +3,14 @@ use std::time::Duration;
 use encdr::{Encdr, EncdrConfig, Event};
 
 fn main() {
+    // RUST_LOG=trace shows raw USB packet bytes (e.g. "PAD RAW ...") as they arrive.
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "info".parse().unwrap()),
+        )
+        .init();
+
     // Initialize
     let mut encdr = Encdr::new(EncdrConfig::default()).expect("Failed to initialize encdr");
 

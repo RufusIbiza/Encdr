@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 480px;
+    height: 272px;
+    overflow: hidden;
+    background: #0d0f14;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #e0e6ed;
+    user-select: none;
+  }
+  .container {
+    width: 480px;
+    height: 272px;
+    display: flex;
+    flex-direction: column;
+    padding: 8px 12px;
+    background: radial-gradient(circle at 50% 0%, #1a1e29 0%, #0d0f14 100%);
+  }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 26px;
+    border-bottom: 2px solid #00d2ff;
+    padding-bottom: 4px;
+    margin-bottom: 6px;
+  }
+  .title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: #00e5ff;
+    text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
+  }
+  .badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: #142233;
+    color: #00e5ff;
+    border: 1px solid #0099cc;
+    font-weight: 600;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(4, 1fr);
+    gap: 6px;
+    flex: 1;
+  }
+  .pad {
+    background: rgba(22, 27, 38, 0.85);
+    border: 1.5px solid #2e384d;
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 4px 6px;
+    position: relative;
+    overflow: hidden;
+    transition: background 0.05s, border-color 0.05s, transform 0.05s;
+  }
+  .pad.hit {
+    background: #ffffff !important;
+    border-color: #ffd700 !important;
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.9), inset 0 0 10px #ffe600;
+  }
+  .pad.hit .pad-num, .pad.hit .pad-val {
+    color: #000000 !important;
+    font-weight: 800;
+  }
+  .pad-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .pad-num {
+    font-size: 11px;
+    font-weight: 700;
+    color: #9ab0c7;
+  }
+  .pad-val {
+    font-size: 10px;
+    font-family: monospace;
+    color: #5d718a;
+  }
+  .pressure-track {
+    width: 100%;
+    height: 4px;
+    background: rgba(40, 48, 66, 0.8);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 2px;
+  }
+  .pressure-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #00ffa2, #00d2ff);
+    border-radius: 2px;
+    transition: width 0.04s;
+  }
+  .footer {
+    height: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 9px;
+    color: #7d8b9d;
+    margin-top: 4px;
+    border-top: 1px solid #1a2230;
+    padding-top: 2px;
+  }
+  .footer-status {
+    color: #ffd700;
+    font-weight: 600;
+    font-family: monospace;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <span class="title">MASCHINE MK3 &bull; PAD MATRIX</span>
+    <span class="badge">WEBVIEW ACTIVE</span>
+  </div>
+  <div class="grid" id="padGrid"></div>
+  <div class="footer">
+    <span>TOUCH &bull; VELOCITY &bull; POLY AFTERTOUCH</span>
+    <span class="footer-status" id="lastEvent">AWAITING INPUT...</span>
+  </div>
+</div>
+
+<script>
+// Row-major top to bottom:
+// Row 0: 13, 14, 15, 16
+// Row 1:  9, 10, 11, 12
+// Row 2:  5,  6,  7,  8
+// Row 3:  1,  2,  3,  4
+const PAD_ORDER = [
+  13, 14, 15, 16,
+   9, 10, 11, 12,
+   5,  6,  7,  8,
+   1,  2,  3,  4
+];
+
+const gridEl = document.getElementById('padGrid');
+const pads = {};
+
+PAD_ORDER.forEach(num => {
+  const padEl = document.createElement('div');
+  padEl.className = 'pad';
+  padEl.id = 'pad_' + num;
+  padEl.innerHTML = `
+    <div class="pad-header">
+      <span class="pad-num">P${num < 10 ? '0' + num : num}</span>
+      <span class="pad-val" id="val_${num}">--</span>
+    </div>
+    <div class="pressure-track">
+      <div class="pressure-bar" id="bar_${num}"></div>
+    </div>
+  `;
+  gridEl.appendChild(padEl);
+  pads[num] = {
+    el: padEl,
+    valEl: padEl.querySelector('#val_' + num),
+    barEl: padEl.querySelector('#bar_' + num),
+  };
+});
+
+const lastEventEl = document.getElementById('lastEvent');
+
+window.encdr = {
+  onMessage(channel, data) {
+    if (channel === 'pads') {
+      const { pad_states, pad_pressures, pad_hues, last_event } = data;
+      if (last_event) {
+        lastEventEl.textContent = last_event;
+      }
+      for (let i = 1; i <= 16; i++) {
+        const p = pads[i];
+        if (!p) continue;
+        const hit = pad_states[i - 1];
+        const pressure = pad_pressures[i - 1] || 0;
+        const hue = pad_hues ? pad_hues[i - 1] : 200;
+
+        if (hit) {
+          p.el.classList.add('hit');
+          p.valEl.textContent = Math.round(pressure * 100) + '%';
+          p.barEl.style.width = Math.max(10, Math.round(pressure * 100)) + '%';
+        } else {
+          p.el.classList.remove('hit');
+          p.el.style.borderColor = `hsl(${hue}, 80%, 45%)`;
+          if (pressure > 0.01) {
+            p.valEl.textContent = Math.round(pressure * 100) + '%';
+            p.barEl.style.width = Math.round(pressure * 100) + '%';
+          } else {
+            p.valEl.textContent = '--';
+            p.barEl.style.width = '0%';
+          }
+        }
+      }
+    }
+  }
+};
+</script>
+</body>
+</html>

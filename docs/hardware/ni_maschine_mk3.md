@@ -225,40 +225,66 @@ The touchstrip is a horizontal capacitive strip. It emits both a position slider
 
 Emits `Event::Slider` with `value: f32` normalized 0.0-1.0.
 
-### Pads Packet (128 bytes, double-pumped)
+### Pads Packet (Report 0x02, 128 bytes, double-pumped)
 
-The 16 velocity-sensitive pads send pressure data in a 128-byte packet on the control interface. The packet is "double-pumped" — it contains two snapshots of all 16 pad pressures per USB frame, giving twice the temporal resolution. Each pad pressure value is a 16-bit unsigned integer (little-endian). A value of 0 indicates no pressure; higher values indicate harder presses. The packet layout is:
+The 16 velocity-sensitive pads transmit pressure and hit events in Report ID `0x02` on the control interface (64 bytes, or 128 bytes "double-pumped").
 
-```
-[2-byte pad 1, snapshot A] [2-byte pad 2, snapshot A] ... [2-byte pad 16, snapshot A]
-[2-byte pad 1, snapshot B] [2-byte pad 2, snapshot B] ... [2-byte pad 16, snapshot B]
-... (repeated to fill 128 bytes)
-```
+A 128-byte packet is **two independent 64-byte sub-messages** ("Set A" = bytes `[0..64)`, "Set B" = bytes `[64..128)`), each starting with its own leading marker byte (also `0x02`) followed by a dynamic stream of 3-byte hit/pressure event tuples:
 
-Each snapshot contains 16 pads x 2 bytes = 32 bytes. The double-pumped format provides 4 snapshots in the 128-byte packet.
+- **Byte `1 + 3n` (relative to the start of the 64-byte set):** Pad Index `0..15`. End of this set's tuple list is signaled by **all three** bytes of a tuple being zero (`pad_index == 0 && d1 == 0 && d2 == 0`). A 2-byte check (`pad_index == 0 && d1 == 0`) is insufficient: hardware pad index 0 (`pad_13`) can legitimately send `d1 == 0x00` as part of a real low-pressure event, so `d2` must also be checked or that event is misread as end-of-list and the rest of the set is silently dropped.
+- **Byte `2 + 3n`:** `d1`. Lower 4 bits: high 4 bits of a 12-bit pressure reading. Upper 4 bits: an event-type tag (see table below).
+- **Byte `3 + 3n`:** `d2`, the low 8 bits of the 12-bit pressure reading.
 
-Pads emit `Event::Pressure` with `value: f32` normalized 0.0-1.0.
+`pressure_raw = ((d1 & 0xf) << 8) | d2` (12-bit, 0..4095). This formula and the 3-byte tuple layout match both [openAV/Ctlra's `ni_maschine_mk3_pads_decode_set`](https://github.com/openAVproductions/openAV-Ctlra/blob/master/ctlra/devices/ni_maschine_mk3.c) and NI's own official decoder.
 
-| Name     | Pad Index | Grid Position               |
-| -------- | --------- | --------------------------- |
-| `pad_0`  | 0         | Row 4, Col 1 (bottom-left)  |
-| `pad_1`  | 1         | Row 4, Col 2                |
-| `pad_2`  | 2         | Row 4, Col 3                |
-| `pad_3`  | 3         | Row 4, Col 4 (bottom-right) |
-| `pad_4`  | 4         | Row 3, Col 1                |
-| `pad_5`  | 5         | Row 3, Col 2                |
-| `pad_6`  | 6         | Row 3, Col 3                |
-| `pad_7`  | 7         | Row 3, Col 4                |
-| `pad_8`  | 8         | Row 2, Col 1                |
-| `pad_9`  | 9         | Row 2, Col 2                |
-| `pad_10` | 10        | Row 2, Col 3                |
-| `pad_11` | 11        | Row 2, Col 4                |
-| `pad_12` | 12        | Row 1, Col 1 (top-left)     |
-| `pad_13` | 13        | Row 1, Col 2                |
-| `pad_14` | 14        | Row 1, Col 3                |
-| `pad_15` | 15        | Row 1, Col 4 (top-right)    |
+`encdr` does **not** apply one flat threshold to every tuple — it dispatches on the event-type tag in `d1`'s upper 4 bits, cross-verified against NI's own decoder (Ghidra reverse-engineering of `NIHardwareService.exe`, the Windows service that owns real HID I/O for NI's Maschine 2 app; function `FUN_1400b4df0`):
+
+| Tag    | Name                        | Meaning                                                |
+| ------ | --------------------------- | ------------------------------------------------------- |
+| `0x00` | `Pad.Switch.Event` (ON)     | Digital switch closure, carries a real pressure value    |
+| `0x10` | `Pad.Hit.Event` (ON)        | Strike/velocity event, carries attack pressure           |
+| `0x20` | `Pad.Switch.Event` (OFF)    | Explicit release                                         |
+| `0x30` | `Pad.Hit.Event` (OFF)       | Explicit release                                         |
+| `0x40` | `Pad.Pressure.Event`        | Continuous aftertouch while held                         |
+
+- `0x10` (Hit ON) always transitions to pressed immediately, at any `pressure_raw`.
+- `0x20`/`0x30` (explicit OFF) always transition to released immediately, ignoring residual pressure.
+- `0x40` (Aftertouch) and `0x00` (Switch ON) both use hysteresis rather than a flat cutoff, since both can carry low-value settling noise as well as real presses: press fires at `pressure_raw >= 32`, release fires at `pressure_raw <= 16` (suppressed for 30ms after a strike, to absorb mechanical rebound), and values in the 16..32 deadband while already held retain the pressed state and just update reported pressure.
+- Any other tag value is treated as unreachable (Ghidra confirms only these 5 tags exist) and falls back to a flat hysteresis (press `>= 64`, release `<= 48`) as a defensive safety net.
+
+In all ON cases, `pressure = pressure_raw as f32 / 4095.0`. The per-tag hysteresis logic itself is `encdr`-specific — cross-checked against NI's own decoder, not carried over from Ctlra (which uses a flat threshold).
+
+Maschine+ (`0x17cc:0x1820`) and Maschine Studio (`0x17cc:0x1300`) appear to route pad events through the same shared, non-PID-gated dispatcher in `NIHardwareService.exe` as the Mk3 — consistent with these three sharing a pad protocol (the Mk2 is confirmed structurally different: a separate report format entirely — see `docs/hardware/ni_maschine_mk2.md`). `encdr`'s pad parser does not branch on PID for this logic, so it should already be structurally reusable if/when Maschine+/Studio descriptors are added — unconfirmed against real hardware, and out of scope until those descriptors exist.
+
+**Both sets must be decoded**, in order (A then B), carrying pad state forward from A into B. NI's firmware sometimes reports a pad's release only in Set B — for example, a real capture showed Set A still reporting a pad held (`d1=0x41 d2=0x75`, pressure 373) in the same packet where Set B reported it released (`d1=0x30 d2=0x00`, pressure 0). Scanning only Set A would silently drop that release, leaving the pad's LED and on-screen state stuck.
+
+#### Hardware Pad Index to Name Mapping
+
+Native Instruments hardware indexes pads row-major from top-left to bottom-right:
+
+| Hardware Index | Pad Name | Grid Position               |
+| -------------- | -------- | --------------------------- |
+| 0              | `pad_13` | Row 1, Col 1 (top-left)     |
+| 1              | `pad_14` | Row 1, Col 2                |
+| 2              | `pad_15` | Row 1, Col 3                |
+| 3              | `pad_16` | Row 1, Col 4 (top-right)    |
+| 4              | `pad_9`  | Row 2, Col 1                |
+| 5              | `pad_10` | Row 2, Col 2                |
+| 6              | `pad_11` | Row 2, Col 3                |
+| 7              | `pad_12` | Row 2, Col 4                |
+| 8              | `pad_5`  | Row 3, Col 1                |
+| 9              | `pad_6`  | Row 3, Col 2                |
+| 10             | `pad_7`  | Row 3, Col 3                |
+| 11             | `pad_8`  | Row 3, Col 4                |
+| 12             | `pad_1`  | Row 4, Col 1 (bottom-left)  |
+| 13             | `pad_2`  | Row 4, Col 2                |
+| 14             | `pad_3`  | Row 4, Col 3                |
+| 15             | `pad_4`  | Row 4, Col 4 (bottom-right) |
+
+`encdr` automatically decodes the event stream into both `Event::Button { name, pressed }` and `Event::Grid { name, index, pressure }`.
 
 **Pedal input:** The Mk3 has a 1/4" pedal jack for sustain. Pedal state is reported in the buttons packet.
+
 
 ---
 
@@ -327,63 +353,48 @@ Single-color LEDs set with `LedValue::Single(brightness)` where brightness is 0-
 | `stop`               | 52     | Stop button                          |
 | `shift`              | 53     | Shift button                         |
 
-**Note:** Some button LEDs (groups A-H, encoder directional buttons, sampling) use HSV color encoding rather than simple brightness. For these, see the Pad/Group LED buffer below.
+**Note:** Group buttons A-H (`group_a`..`group_h`) and encoder directional buttons (`encoder_up`, `encoder_left`, `encoder_right`, `encoder_down`) use Native Instruments' 1-byte packed color encoding rather than simple monochrome brightness. Setting them via `LedValue::Rgb { r, g, b }` automatically maps to the closest NI hardware palette color.
 
-### Pad & Group LEDs (prefix `0x81`)
+### Pad & Touchstrip LEDs (prefix `0x81`)
 
-A separate LED buffer with prefix `0x81` controls the touchstrip LEDs, group selector LEDs, and pad RGB LEDs. This buffer uses HSV color encoding for color LEDs.
+Report `0x81` controls the 25 touchstrip LEDs and 16 RGB Pad LEDs. The report payload is 41 bytes long (padded to 80 bytes for interrupt transfer).
 
-#### Touchstrip LEDs (25)
+- **Offsets 0..24 (25 bytes):** Touchstrip monochrome LED array (left to right, brightness 0-255).
+- **Offsets 25..40 (16 bytes):** 16 RGB Pad LEDs (1 byte per pad).
 
-25 individually addressable LEDs along the touchstrip.
+#### Color Encoding (1 Byte per Pad)
 
-| Name         | Offset | Count | Description                          |
-| ------------ | ------ | ----- | ------------------------------------ |
-| `touchstrip` | 0      | 25    | Touchstrip LED strip (left to right) |
+Each pad is controlled by a **single byte** that packs the palette color and 2-bit intensity:
 
-Set with `set_led_strip(device_id, "touchstrip", &[u8; 25])`.
+- `0x00`: Pad LED off
+- **Bits 7..2:** Palette color ID (`1..17`, where 1 = Red, 5 = Yellow, 7 = Green, 9 = Cyan, 11 = Blue, 13 = Magenta, 17 = White)
+- **Bits 1..0:** Intensity level (`0..3`, where 0 is dimmest and 3 is full brightness)
 
-#### Group Selector LEDs (8, HSV color)
+Formula: `packed_byte = (color_id << 2) | (intensity & 0x03)`
 
-Group LEDs use HSV color encoding with 3 bytes per LED: Hue, Saturation, Value (brightness).
+`encdr` natively supports setting pads via either `LedValue::Rgb { r, g, b }` (which automatically computes the closest palette color and intensity) or `LedValue::Single(packed_byte)` for direct hardware register control.
 
-| Name      | H Offset | S Offset | V Offset | Description      |
-| --------- | -------- | -------- | -------- | ---------------- |
-| `group_a` | 25       | 26       | 27       | Group A selector |
-| `group_b` | 28       | 29       | 30       | Group B selector |
-| `group_c` | 31       | 32       | 33       | Group C selector |
-| `group_d` | 34       | 35       | 36       | Group D selector |
-| `group_e` | 37       | 38       | 39       | Group E selector |
-| `group_f` | 40       | 41       | 42       | Group F selector |
-| `group_g` | 43       | 44       | 45       | Group G selector |
-| `group_h` | 46       | 47       | 48       | Group H selector |
+#### Pad LED Offsets and Physical Layout
 
-Set with `LedValue::Hsv { h, s, v }`.
+| Name     | Offset | Hardware Index | Grid Position               |
+| -------- | ------ | -------------- | --------------------------- |
+| `pad_13` | 25     | 0              | Row 1, Col 1 (top-left)     |
+| `pad_14` | 26     | 1              | Row 1, Col 2                |
+| `pad_15` | 27     | 2              | Row 1, Col 3                |
+| `pad_16` | 28     | 3              | Row 1, Col 4 (top-right)    |
+| `pad_9`  | 29     | 4              | Row 2, Col 1                |
+| `pad_10` | 30     | 5              | Row 2, Col 2                |
+| `pad_11` | 31     | 6              | Row 2, Col 3                |
+| `pad_12` | 32     | 7              | Row 2, Col 4                |
+| `pad_5`  | 33     | 8              | Row 3, Col 1                |
+| `pad_6`  | 34     | 9              | Row 3, Col 2                |
+| `pad_7`  | 35     | 10             | Row 3, Col 3                |
+| `pad_8`  | 36     | 11             | Row 3, Col 4                |
+| `pad_1`  | 37     | 12             | Row 4, Col 1 (bottom-left)  |
+| `pad_2`  | 38     | 13             | Row 4, Col 2                |
+| `pad_3`  | 39     | 14             | Row 4, Col 3                |
+| `pad_4`  | 40     | 15             | Row 4, Col 4 (bottom-right) |
 
-#### Pad LEDs (16, HSV color)
-
-Each pad has an HSV LED with independent hue, saturation, and value (brightness) channels.
-
-| Name     | H Offset | S Offset | V Offset | Grid Position               |
-| -------- | -------- | -------- | -------- | --------------------------- |
-| `pad_0`  | 49       | 50       | 51       | Row 4, Col 1 (bottom-left)  |
-| `pad_1`  | 52       | 53       | 54       | Row 4, Col 2                |
-| `pad_2`  | 55       | 56       | 57       | Row 4, Col 3                |
-| `pad_3`  | 58       | 59       | 60       | Row 4, Col 4 (bottom-right) |
-| `pad_4`  | 61       | 62       | 63       | Row 3, Col 1                |
-| `pad_5`  | 64       | 65       | 66       | Row 3, Col 2                |
-| `pad_6`  | 67       | 68       | 69       | Row 3, Col 3                |
-| `pad_7`  | 70       | 71       | 72       | Row 3, Col 4                |
-| `pad_8`  | 73       | 74       | 75       | Row 2, Col 1                |
-| `pad_9`  | 76       | 77       | 78       | Row 2, Col 2                |
-| `pad_10` | 79       | 80       | 81       | Row 2, Col 3                |
-| `pad_11` | 82       | 83       | 84       | Row 2, Col 4                |
-| `pad_12` | 85       | 86       | 87       | Row 1, Col 1 (top-left)     |
-| `pad_13` | 88       | 89       | 90       | Row 1, Col 2                |
-| `pad_14` | 91       | 92       | 93       | Row 1, Col 3                |
-| `pad_15` | 94       | 95       | 96       | Row 1, Col 4 (top-right)    |
-
-Set with `LedValue::Hsv { h, s, v }`.
 
 ---
 

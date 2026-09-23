@@ -245,6 +245,7 @@ pub enum LedItemDesc {
     Rgb(RgbLedDesc),
     Single(SingleLedDesc),
     Strip(StripLedDesc),
+    Indexed(SingleLedDesc),
 }
 
 impl LedItemDesc {
@@ -253,9 +254,11 @@ impl LedItemDesc {
             LedItemDesc::Rgb(r) => &r.name,
             LedItemDesc::Single(s) => &s.name,
             LedItemDesc::Strip(s) => &s.name,
+            LedItemDesc::Indexed(i) => &i.name,
         }
     }
 }
+
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct RgbLedDesc {
@@ -353,10 +356,31 @@ pub struct QuirksDesc {
     pub detach_kernel_driver: bool,
     #[serde(default)]
     pub touchstrip: Option<TouchstripQuirksDesc>,
+    #[serde(default)]
+    pub feature_report_leds: Option<FeatureReportLedsQuirkDesc>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct TouchstripQuirksDesc {
     #[serde(default)]
     pub heartbeat_bytes: HashMap<String, Vec<usize>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct FeatureReportLedsQuirkDesc {
+    pub report_id: HexU16,
+    pub interface: usize,
+    #[serde(default = "default_feature_report_len")]
+    pub payload_length: usize,
+    pub items: HashMap<String, FeatureReportLedItemDesc>,
+}
+
+fn default_feature_report_len() -> usize {
+    33
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct FeatureReportLedItemDesc {
+    pub command: HexU16,
+    pub mask: HexU16,
 }

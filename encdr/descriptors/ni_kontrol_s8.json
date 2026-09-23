@@ -92,6 +92,8 @@
         { "type": "button", "name": "deck_assign_d",        "byte": 25, "mask": "0x04" },
         { "type": "button", "name": "mixer_snap",           "byte": 22, "mask": "0x80" },
         { "type": "button", "name": "mixer_quantize",       "byte": 25, "mask": "0x08" },
+        { "type": "button", "name": "mixer_tempo",          "byte": 23, "mask": "0x04" },
+        { "type": "encoder", "name": "tempo_encoder",       "byte": 3, "bits": 4, "bit_offset": 0, "encoding": "wrap16" },
         { "type": "button", "name": "mixer_mic_1",          "byte": 22, "mask": "0x04" },
         { "type": "button", "name": "mixer_mic_2",          "byte": 25, "mask": "0x01" },
 
@@ -197,7 +199,31 @@
         { "type": "touch",  "name": "right_fx_dial_touch_1", "byte": 19, "mask": "0x10" },
         { "type": "touch",  "name": "right_fx_dial_touch_2", "byte": 19, "mask": "0x20" },
         { "type": "touch",  "name": "right_fx_dial_touch_3", "byte": 19, "mask": "0x40" },
-        { "type": "touch",  "name": "right_fx_dial_touch_4", "byte": 19, "mask": "0x80" }
+        { "type": "touch",  "name": "right_fx_dial_touch_4", "byte": 19, "mask": "0x80" },
+
+        { "type": "slider", "name": "mixer_gain_a",   "bytes": [69, 70], "bits": 12, "normalize": true },
+        { "type": "slider", "name": "mixer_eq_hi_a",  "bytes": [71, 72], "bits": 12, "normalize": true },
+        { "type": "slider", "name": "mixer_eq_mid_a", "bytes": [73, 74], "bits": 12, "normalize": true },
+        { "type": "slider", "name": "mixer_eq_low_a", "bytes": [75, 76], "bits": 12, "normalize": true },
+        { "type": "slider", "name": "mixer_filter_a", "bytes": [77, 78], "bits": 12, "normalize": true },
+
+        { "type": "slider", "name": "mixer_gain_b",   "bytes": [79, 80], "bits": 12, "normalize": true },
+        { "type": "slider", "name": "mixer_eq_hi_b",  "bytes": [81, 82], "bits": 12, "normalize": true },
+        { "type": "slider", "name": "mixer_eq_mid_b", "bytes": [83, 84], "bits": 12, "normalize": true },
+        { "type": "slider", "name": "mixer_eq_low_b", "bytes": [85, 86], "bits": 12, "normalize": true },
+        { "type": "slider", "name": "mixer_filter_b", "bytes": [87, 88], "bits": 12, "normalize": true },
+
+        { "type": "slider", "name": "mixer_gain_c",   "bytes": [89, 90], "bits": 12, "normalize": true },
+        { "type": "slider", "name": "mixer_eq_hi_c",  "bytes": [91, 92], "bits": 12, "normalize": true },
+        { "type": "slider", "name": "mixer_eq_mid_c", "bytes": [93, 94], "bits": 12, "normalize": true },
+        { "type": "slider", "name": "mixer_eq_low_c", "byte": 96,        "bits": 4,  "normalize": true, "max_value": 15 },
+        { "type": "slider", "name": "mixer_filter_c", "bytes": [97, 98], "bits": 12, "normalize": true },
+
+        { "type": "slider", "name": "mixer_gain_d",   "bytes": [99, 100], "bits": 12, "normalize": true },
+        { "type": "slider", "name": "mixer_eq_hi_d",  "bytes": [101, 102], "bits": 12, "normalize": true },
+        { "type": "slider", "name": "mixer_eq_mid_d", "bytes": [103, 104], "bits": 12, "normalize": true },
+        { "type": "slider", "name": "mixer_eq_low_d", "byte": 106,        "bits": 4,  "normalize": true, "max_value": 15 },
+        { "type": "slider", "name": "mixer_filter_d", "bytes": [107, 108], "bits": 12, "normalize": true }
       ]
     }
   ],
@@ -385,6 +411,25 @@
       "heartbeat_bytes": {
         "left_touchstrip": [26, 27],
         "right_touchstrip": [32, 33]
+      }
+    },
+    "feature_report_leds": {
+      "report_id": "0xF4",
+      "interface": 5,
+      "payload_length": 33,
+      "items": {
+        "mixer_cue_a": { "command": "0x26", "mask": "0x01" },
+        "mixer_cue_b": { "command": "0x26", "mask": "0x02" },
+        "mixer_cue_c": { "command": "0x26", "mask": "0x04" },
+        "mixer_cue_d": { "command": "0x26", "mask": "0x08" },
+        "mixer_filter_on_a": { "command": "0x25", "mask": "0x01" },
+        "mixer_filter_on_b": { "command": "0x25", "mask": "0x02" },
+        "mixer_filter_on_c": { "command": "0x25", "mask": "0x04" },
+        "mixer_filter_on_d": { "command": "0x25", "mask": "0x08" },
+        "mixer_direct_thru_a": { "command": "0x24", "mask": "0x01" },
+        "mixer_direct_thru_b": { "command": "0x24", "mask": "0x02" },
+        "mixer_direct_thru_c": { "command": "0x24", "mask": "0x04" },
+        "mixer_direct_thru_d": { "command": "0x24", "mask": "0x08" }
       }
     }
   }

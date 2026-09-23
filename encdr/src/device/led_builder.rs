@@ -20,6 +20,7 @@ enum LedMapping {
     Single { offset: usize },
     Rgb { r: usize, g: usize, b: usize },
     Strip { offset: usize, count: usize },
+    Indexed { offset: usize },
 }
 
 impl LedBuilder {
@@ -32,6 +33,12 @@ impl LedBuilder {
                     led_map.insert(
                         s.name.clone(),
                         LedMapping::Single { offset: s.offset },
+                    );
+                }
+                LedItemDesc::Indexed(i) => {
+                    led_map.insert(
+                        i.name.clone(),
+                        LedMapping::Indexed { offset: i.offset },
                     );
                 }
                 LedItemDesc::Rgb(r) => {
@@ -55,6 +62,7 @@ impl LedBuilder {
                 }
             }
         }
+
 
         let endpoint_address = interface
             .endpoints
@@ -135,12 +143,33 @@ impl LedBuilder {
                 }
                 self.dirty = true;
             }
+            (LedMapping::Indexed { offset }, LedValue::Off) => {
+                if *offset < self.buffer.len() {
+                    self.buffer[*offset] = 0;
+                    self.dirty = true;
+                }
+            }
+            (LedMapping::Indexed { offset }, LedValue::Single(b)) => {
+                // Direct raw palette/intensity byte
+                if *offset < self.buffer.len() {
+                    self.buffer[*offset] = b;
+                    self.dirty = true;
+                }
+            }
+            (LedMapping::Indexed { offset }, LedValue::Rgb { r, g, b }) => {
+                // Convert RGB to NI packed palette byte
+                if *offset < self.buffer.len() {
+                    self.buffer[*offset] = LedValue::to_ni_palette_byte(r, g, b);
+                    self.dirty = true;
+                }
+            }
             (LedMapping::Strip { .. }, _) => {
                 // Strips are set via set_strip()
             }
         }
         true
     }
+
 
     /// Set a strip LED array by name.
     pub fn set_strip(&mut self, name: &str, values: &[u8]) -> bool {

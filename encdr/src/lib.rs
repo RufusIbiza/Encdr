@@ -245,3 +245,13 @@ impl Drop for Encdr {
         self.shutdown();
     }
 }
+
+#[cfg(test)]
+mod send_sync_check {
+    use super::Encdr;
+    fn assert_send_sync<T: Send + Sync>() {}
+    #[test]
+    fn encdr_is_send_sync() {
+        assert_send_sync::<Encdr>();
+    }
+}

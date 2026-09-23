@@ -139,6 +139,12 @@ fn convert_format(
         (PixelFormat::Rgb888, PixelFormat::Bgr565Be) => {
             rgb8_to_bgr565_be(pixels, width as usize, height as usize)
         }
+        (PixelFormat::Rgba8888, PixelFormat::Mono) => {
+            rgba8_to_mono(pixels, width as usize, height as usize)
+        }
+        (PixelFormat::Rgb888, PixelFormat::Mono) => {
+            rgb8_to_mono(pixels, width as usize, height as usize)
+        }
         _ => {
             tracing::warn!("Unsupported format conversion: {:?} -> {:?}", from, to);
             pixels.to_vec()
@@ -196,6 +202,56 @@ fn rgb8_to_bgr565_be(rgb: &[u8], width: usize, height: usize) -> Vec<u8> {
 
         out.push((bgr565 >> 8) as u8);
         out.push((bgr565 & 0xff) as u8);
+    }
+
+    out
+}
+
+/// Convert RGBA8888 to 1bpp monochrome bitmap (MSB-first row-major).
+pub(crate) fn rgba8_to_mono(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
+    let stride = (width + 7) / 8;
+    let mut out = vec![0u8; stride * height];
+
+    for y in 0..height {
+        for x in 0..width {
+            let offset = (y * width + x) * 4;
+            if offset + 2 < rgba.len() {
+                let r = rgba[offset] as u32;
+                let g = rgba[offset + 1] as u32;
+                let b = rgba[offset + 2] as u32;
+                let lum = (r * 299 + g * 587 + b * 114) / 1000;
+                if lum > 128 {
+                    let byte_idx = y * stride + (x / 8);
+                    let bit_mask = 0x80 >> (x % 8);
+                    out[byte_idx] |= bit_mask;
+                }
+            }
+        }
+    }
+
+    out
+}
+
+/// Convert RGB888 to 1bpp monochrome bitmap (MSB-first row-major).
+pub(crate) fn rgb8_to_mono(rgb: &[u8], width: usize, height: usize) -> Vec<u8> {
+    let stride = (width + 7) / 8;
+    let mut out = vec![0u8; stride * height];
+
+    for y in 0..height {
+        for x in 0..width {
+            let offset = (y * width + x) * 3;
+            if offset + 2 < rgb.len() {
+                let r = rgb[offset] as u32;
+                let g = rgb[offset + 1] as u32;
+                let b = rgb[offset + 2] as u32;
+                let lum = (r * 299 + g * 587 + b * 114) / 1000;
+                if lum > 128 {
+                    let byte_idx = y * stride + (x / 8);
+                    let bit_mask = 0x80 >> (x % 8);
+                    out[byte_idx] |= bit_mask;
+                }
+            }
+        }
     }
 
     out
@@ -355,5 +411,14 @@ mod tests {
             }
             _ => panic!("Expected partial dirty rect"),
         }
+    }
+
+    #[test]
+    fn rgba_to_mono_basic() {
+        // White pixel (255, 255, 255) -> bit 1 at MSB (0x80)
+        let rgba = [255, 255, 255, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255,
+                    0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255];
+        let result = rgba8_to_mono(&rgba, 8, 1);
+        assert_eq!(result, vec![0x80]);
     }
 }

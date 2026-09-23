@@ -37,10 +37,13 @@ The S8 is effectively two D2-style deck controllers flanking a central 4-channel
 ### Mixer Section (Center)
 - 4 Channel faders (touch-sensitive)
 - Crossfader
-- Cue buttons (A, B, C, D)
+- 20 Analog knobs (Gain, Hi EQ, Mid EQ, Low EQ, Filter across channels A, B, C, D)
+- Cue / PFL buttons (A, B, C, D)
 - Filter On buttons (A, B, C, D)
-- FX assign buttons (2 per channel)
+- FX assign buttons (2 per channel: FX1 and FX2 for C, A, B, D)
 - Snap, Quantize
+- Master Tempo rotary encoder and Tempo button
+- Crossfader Assign switches (Left/Right per channel)
 - Mic 1, Mic 2
 
 ---
@@ -62,38 +65,52 @@ The S8 is effectively two D2-style deck controllers flanking a central 4-channel
 
 The S8 uses larger packets than the D2 to accommodate the mixer section and dual decks.
 
-### Buttons Packet (41 bytes)
-Sent on the control interface (`0x84` interrupt in). Contains all button states for both decks and the mixer.
+### Buttons Packet (41 bytes, Report ID 1)
+Sent on the control interface (`0x84` interrupt in). Contains all button states for both decks and the mixer:
+- Deck buttons: Play, Cue, Sync, Shift, Flux, Deck, Hotcue, Loop, Freeze, Remix, FX buttons, screen buttons, navigation buttons
+- Mixer buttons: Cue/PFL (A, B, C, D), Filter On (A, B, C, D), FX Assign 1 & 2 (A, B, C, D), Snap, Quantize, Deck Assign, Tempo button, Mic 1 & 2
+- Mixer encoders: Master Tempo rotary encoder (Report 1 byte 3, 4-bit `wrap16` counter)
+- Crossfader assign: 8-switch matrix in byte 24 (`xfader_assign_left_*` and `xfader_assign_right_*`)
 
-### Sliders Packet (176 bytes)
-Sent on the control interface when any analog control changes. All 12-bit values, normalized to 0.0–1.0.
-
-**Per deck:** 4 performance knobs (touch-sensitive), 4 faders (touch-sensitive), 4 FX knobs (touch-sensitive)
-**Mixer:** 4 channel faders, crossfader
+### Sliders Packet (109 bytes, Report ID 2)
+Sent on the control interface when any analog control changes. Normalized to 0.0–1.0:
+- **Per deck:** 4 performance knobs, 4 faders (touch-sensitive), 4 FX knobs (touch-sensitive), 4 screen encoders
+- **Mixer Faders:** 4 channel faders (`mixer_fader_a`..`d`, 12-bit) and `crossfader` (12-bit)
+- **Mixer Knobs (20 controls):**
+  - Channel A: `mixer_gain_a` [69, 70], `mixer_eq_hi_a` [71, 72], `mixer_eq_mid_a` [73, 74], `mixer_eq_low_a` [75, 76], `mixer_filter_a` [77, 78] (12-bit)
+  - Channel B: `mixer_gain_b` [79, 80], `mixer_eq_hi_b` [81, 82], `mixer_eq_mid_b` [83, 84], `mixer_eq_low_b` [85, 86], `mixer_filter_b` [87, 88] (12-bit)
+  - Channel C: `mixer_gain_c` [89, 90], `mixer_eq_hi_c` [91, 92], `mixer_eq_mid_c` [93, 94], `mixer_eq_low_c` [96] (4-bit, max 15), `mixer_filter_c` [97, 98] (12-bit)
+  - Channel D: `mixer_gain_d` [99, 100], `mixer_eq_hi_d` [101, 102], `mixer_eq_mid_d` [103, 104], `mixer_eq_low_d` [106] (4-bit, max 15), `mixer_filter_d` [107, 108] (12-bit)
 
 ### Control Naming Convention
 
-All deck controls are prefixed with `left_` or `right_`:
-- `left_fx_knob_1` through `left_fx_knob_4`
-- `left_perf_knob_1` through `left_perf_knob_4`
-- `left_fader_1` through `left_fader_4`
-- `left_fx_button_1`, `left_play`, `left_cue`, etc.
-
-Mixer controls use `mixer_` prefix: `mixer_fader_a`, `mixer_cue_a`, `crossfader`, etc.
+All deck controls are prefixed with `left_` or `right_`.
+Mixer controls use `mixer_` prefix: `mixer_fader_a`, `mixer_cue_a`, `mixer_gain_a`, `mixer_eq_hi_a`, `mixer_tempo`, `crossfader`, etc.
 
 ---
 
 ## LED Output
 
-The S8 LED output buffer is 309 bytes, split into three prefix groups sent via interrupt out on endpoint `0x03` (interface 5).
+The S8 has two distinct LED output pathways:
 
-### Prefix Groups
+### 1. Interrupt OUT Buffer (Endpoint `0x03`, Interface 5)
 
-| Prefix | ID           | Description                                 |
-| ------ | ------------ | ------------------------------------------- |
-| `0x80` | `left_deck`  | Left deck LEDs (pads, buttons, touchstrip)  |
-| `0x81` | `right_deck` | Right deck LEDs (pads, buttons, touchstrip) |
-| `0x82` | `mixer`      | Mixer LEDs (cue buttons, meters)            |
+Split into three prefix groups sent via interrupt out:
+
+| Prefix | ID           | Buffer Size | Description                                           |
+| ------ | ------------ | ----------- | ----------------------------------------------------- |
+| `0x80` | `left_deck`  | 118 bytes   | Left deck LEDs (pads, buttons, touchstrip)            |
+| `0x81` | `right_deck` | 118 bytes   | Right deck LEDs (pads, buttons, touchstrip)           |
+| `0x82` | `mixer`      | 73 bytes    | FX Assign 1 & 2 (C, A, B, D), Snap, Quantize (44–53)  |
+
+### 2. Feature Report / Control Transfer LEDs (`0xF4`, EP0 Interface 5)
+
+Due to the S8's standalone mixer architecture, Cue/PFL, Filter ON, and Direct Thru LEDs do not use the interrupt OUT buffer. Instead, they are sent via EP0 USB Control Transfer (`SET_REPORT`, `wValue=0x03F4`, `wIndex=5`):
+- `[0xF4, 0x26, SS, ...]` — CUE / PFL LEDs (Ch A=0x01, B=0x02, C=0x04, D=0x08)
+- `[0xF4, 0x25, SS, ...]` — FILTER ON LEDs (Ch A=0x01, B=0x02, C=0x04, D=0x08)
+- `[0xF4, 0x24, SS, ...]` — DIRECT THRU LEDs (Ch A=0x01, B=0x02, C=0x04, D=0x08)
+
+Encdr transparently handles this through the `quirks.feature_report_leds` configuration in the descriptor. Calling `set_led("mixer_cue_a", LedValue::Single(127))` automatically dispatches the proper control transfer without requiring caller awareness.
 
 ### Per-Deck LED Layout (identical for left/right)
 
@@ -171,5 +188,6 @@ The target screen is identified by **byte[3]** of the header and **byte[6]** of 
 
 - `dual_handle`: The S8 requires claiming multiple USB interfaces simultaneously (control + screen).
 - `detach_kernel_driver`: The kernel driver must be detached before claiming interfaces.
+- `feature_report_leds`: Manages EP0 Control Transfer Feature Report `0xF4` for mixer Cue/PFL, Filter On, and Direct Thru LEDs.
 - Interfaces 1 and 2 are audio (isochronous), not screens — despite some documentation suggesting otherwise.
 - The MIDI interface (3) has a bulk out endpoint (`0x02`) that should not be confused with screen data.

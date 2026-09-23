@@ -1,6 +1,6 @@
 [package]
 name = "encdr-examples"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 publish = false
 
@@ -32,7 +32,12 @@ name = "mk3_screen_test"
 path = "maschine_mk3/mk3_screen_test.rs"
 
 [[bin]]
+name = "mk3_pad_rainbow"
+path = "maschine_mk3/pad_rainbow.rs"
+
+[[bin]]
 name = "touchstrip_monitor"
+
 path = "maschine_mk3/touchstrip_monitor.rs"
 
 [[bin]]

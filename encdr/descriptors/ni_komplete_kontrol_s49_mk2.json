@@ -1,0 +1,170 @@
+{
+  "name": "NI Komplete Kontrol S49 Mk2",
+  "manufacturer": "Native Instruments",
+  "vendor_id": "0x17cc",
+  "product_id": "0x1610",
+
+  "interfaces": [
+    {
+      "id": "control",
+      "number": 2,
+      "endpoints": {
+        "in":  { "address": "0x82", "type": "interrupt" },
+        "out": { "address": "0x02", "type": "interrupt" }
+      }
+    },
+    {
+      "id": "screen",
+      "number": 3,
+      "endpoints": {
+        "out": { "address": "0x03", "type": "bulk" }
+      }
+    }
+  ],
+
+  "input_packets": [
+    {
+      "id": "buttons",
+      "interface": "control",
+      "size": 32,
+      "items": [
+        { "type": "button", "name": "top_1",               "byte": 1, "mask": "0x10" },
+        { "type": "button", "name": "top_2",               "byte": 1, "mask": "0x20" },
+        { "type": "button", "name": "top_3",               "byte": 1, "mask": "0x40" },
+        { "type": "button", "name": "top_4",               "byte": 1, "mask": "0x80" },
+        { "type": "button", "name": "top_5",               "byte": 1, "mask": "0x01" },
+        { "type": "button", "name": "top_6",               "byte": 1, "mask": "0x02" },
+        { "type": "button", "name": "top_7",               "byte": 1, "mask": "0x04" },
+        { "type": "button", "name": "top_8",               "byte": 1, "mask": "0x08" },
+
+        { "type": "button", "name": "play",                "byte": 2, "mask": "0x10" },
+        { "type": "button", "name": "restart",             "byte": 2, "mask": "0x20" },
+
+        { "type": "button", "name": "stop",                "byte": 3, "mask": "0x01" },
+        { "type": "button", "name": "rec",                 "byte": 3, "mask": "0x02" },
+        { "type": "button", "name": "metro",               "byte": 3, "mask": "0x08" },
+        { "type": "button", "name": "preset_up",           "byte": 3, "mask": "0x10" },
+        { "type": "button", "name": "page_right",          "byte": 3, "mask": "0x20" },
+        { "type": "button", "name": "preset_down",         "byte": 3, "mask": "0x40" },
+        { "type": "button", "name": "page_left",           "byte": 3, "mask": "0x80" },
+
+        { "type": "button", "name": "mute",                "byte": 4, "mask": "0x01" },
+        { "type": "button", "name": "solo",                "byte": 4, "mask": "0x02" },
+        { "type": "button", "name": "scene",               "byte": 4, "mask": "0x04" },
+        { "type": "button", "name": "clear",               "byte": 4, "mask": "0x20" },
+
+        { "type": "button", "name": "plugin",              "byte": 5, "mask": "0x02" },
+        { "type": "button", "name": "setup",               "byte": 5, "mask": "0x08" },
+        { "type": "button", "name": "midi",                "byte": 5, "mask": "0x20" },
+
+        { "type": "button", "name": "encoder_main_left",   "byte": 6, "mask": "0x10" },
+        { "type": "button", "name": "encoder_main_up",     "byte": 6, "mask": "0x20" },
+        { "type": "button", "name": "encoder_main_down",   "byte": 6, "mask": "0x40" },
+        { "type": "button", "name": "encoder_main_right",  "byte": 6, "mask": "0x80" },
+        { "type": "button", "name": "encoder_main_press",  "byte": 6, "mask": "0x08" },
+
+        { "type": "encoder", "name": "encoder_main",       "byte": 30, "bits": 4, "bit_offset": 0, "encoding": "wrap16" }
+      ]
+    },
+    {
+      "id": "knobs",
+      "interface": "control",
+      "size": 51,
+      "items": [
+        { "type": "encoder", "name": "encoder_1", "byte": 17, "bits": 8, "encoding": "wrap16" },
+        { "type": "encoder", "name": "encoder_2", "byte": 19, "bits": 8, "encoding": "wrap16" },
+        { "type": "encoder", "name": "encoder_3", "byte": 21, "bits": 8, "encoding": "wrap16" },
+        { "type": "encoder", "name": "encoder_4", "byte": 23, "bits": 8, "encoding": "wrap16" },
+        { "type": "encoder", "name": "encoder_5", "byte": 25, "bits": 8, "encoding": "wrap16" },
+        { "type": "encoder", "name": "encoder_6", "byte": 27, "bits": 8, "encoding": "wrap16" },
+        { "type": "encoder", "name": "encoder_7", "byte": 29, "bits": 8, "encoding": "wrap16" },
+        { "type": "encoder", "name": "encoder_8", "byte": 31, "bits": 8, "encoding": "wrap16" }
+      ]
+    }
+  ],
+
+  "leds": [
+    {
+      "id": "button_leds",
+      "interface": "control",
+      "buffer_size": 79,
+      "prefix_byte": "0x80",
+      "items": [
+        { "type": "single", "name": "top_1",        "offset": 3 },
+        { "type": "single", "name": "top_2",        "offset": 4 },
+        { "type": "single", "name": "top_3",        "offset": 5 },
+        { "type": "single", "name": "top_4",        "offset": 6 },
+        { "type": "single", "name": "top_5",        "offset": 7 },
+        { "type": "single", "name": "top_6",        "offset": 8 },
+        { "type": "single", "name": "top_7",        "offset": 9 },
+        { "type": "single", "name": "top_8",        "offset": 10 },
+        { "type": "single", "name": "shift",        "offset": 15 },
+        { "type": "single", "name": "page_left",    "offset": 23 },
+        { "type": "single", "name": "mute",         "offset": 25 },
+        { "type": "single", "name": "solo",         "offset": 26 },
+        { "type": "single", "name": "page_right",   "offset": 28 },
+        { "type": "single", "name": "play",         "offset": 30 },
+        { "type": "single", "name": "rec",          "offset": 31 },
+        { "type": "single", "name": "stop",         "offset": 32 },
+        { "type": "single", "name": "preset_up",    "offset": 33 },
+        { "type": "single", "name": "preset_down",  "offset": 34 },
+        { "type": "single", "name": "plugin",       "offset": 37 },
+        { "type": "single", "name": "midi",         "offset": 40 }
+      ]
+    },
+    {
+      "id": "light_guide",
+      "interface": "control",
+      "buffer_size": 249,
+      "prefix_byte": "0x81",
+      "items": [
+        { "type": "strip", "name": "light_guide", "offset": 0, "count": 49 }
+      ]
+    }
+  ],
+
+  "screens": [
+    {
+      "name": "left",
+      "interface": "screen",
+      "width": 480,
+      "height": 272,
+      "pixel_format": "bgr565_be",
+      "full_blit": {
+        "header": "0x84,0x00,0x00,0x60,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01,0xe0,0x01,0x10,0x00,0x00,0xff,0x00",
+        "footer": "0x03,0x00,0x00,0x00,0x40,0x00,0x00,0x00"
+      },
+      "partial_blit": {
+        "supported": true,
+        "x_align": 4,
+        "y_align": 2,
+        "header_template": "0x84,0x00,0x00,0x60,0x00,0x00,0x00,0x00,{x_hi},{x_lo},{y_hi},{y_lo},{w_hi},{w_lo},{h_hi},{h_lo},0x00,0x00,{px_half_hi},{px_half_lo}",
+        "footer": "0x03,0x00,0x00,0x00,0x40,0x00,0x00,0x00"
+      }
+    },
+    {
+      "name": "right",
+      "interface": "screen",
+      "width": 480,
+      "height": 272,
+      "pixel_format": "bgr565_be",
+      "full_blit": {
+        "header": "0x84,0x00,0x01,0x60,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01,0xe0,0x01,0x10,0x00,0x00,0xff,0x00",
+        "footer": "0x03,0x00,0x00,0x00,0x40,0x00,0x00,0x00"
+      },
+      "partial_blit": {
+        "supported": true,
+        "x_align": 4,
+        "y_align": 2,
+        "header_template": "0x84,0x00,0x01,0x60,0x00,0x00,0x00,0x00,{x_hi},{x_lo},{y_hi},{y_lo},{w_hi},{w_lo},{h_hi},{h_lo},0x00,0x00,{px_half_hi},{px_half_lo}",
+        "footer": "0x03,0x00,0x00,0x00,0x40,0x00,0x00,0x00"
+      }
+    }
+  ],
+
+
+  "quirks": {
+    "dual_handle": true,
+    "detach_kernel_driver": true
+  }
+}

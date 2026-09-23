@@ -143,11 +143,13 @@ encdr/
 
 ## Supported Hardware
 
-| Device          | VID:PID     | Status      | Controls                                     | LEDs                            | Screens           |
-| --------------- | ----------- | ----------- | -------------------------------------------- | ------------------------------- | ----------------- |
-| NI Kontrol D2   | `17cc:1400` | Implemented | 57 buttons/touches, 6 encoders, 9 sliders    | 8 RGB pads, 5 singles, 2 strips | 480x272 BGR565    |
-| NI Maschine Mk3 | `17cc:1600` | Implemented | 63 buttons, 10 touches, 9 encoders, 1 slider | 62 singles, 1 strip             | 2x 480x272 BGR565 |
-| NI Kontrol S8   | `17cc:1370` | In Progress | Partial (17 of ~100+ mapped)                 | Partial                         | 2x 480x272 BGR565 |
+| Device                   | VID:PID     | Status      | Controls                                     | LEDs                            | Screens           |
+| ------------------------ | ----------- | ----------- | -------------------------------------------- | ------------------------------- | ----------------- |
+| NI Kontrol D2            | `17cc:1400` | Implemented | 57 buttons/touches, 6 encoders, 9 sliders    | 8 RGB pads, 5 singles, 2 strips | 480x272 BGR565    |
+| NI Maschine Mk3          | `17cc:1600` | Implemented | 63 buttons, 10 touches, 9 encoders, 1 slider | 16 RGB pads, 62 singles, 1 strip| 2x 480x272 BGR565 |
+| NI Komplete Kontrol S-Mk2| `17cc:1610/20/30` | Implemented | 28 buttons, 9 encoders                       | 20 singles, Light Guide (RGB)   | 2x 480x272 BGR565 |
+| NI Kontrol S8            | `17cc:1370` | Implemented | 114 buttons/encoders, 29 faders/knobs        | 16 RGB pads, 100+ singles, EP0 feature LEDs | 2x 480x272 BGR565 |
+
 
 ## Getting Started with Maschine Mk3
 
@@ -186,7 +188,24 @@ This example will show encoder and button states in real-time on both screens.
 - [Usage Guide](docs/usage.md) — comprehensive usage guide
 - [NI Kontrol D2](docs/hardware/ni_kontrol_d2.md) — D2 hardware reference
 - [NI Maschine Mk3](docs/hardware/ni_maschine_mk3.md) — Mk3 hardware reference
-- [NI Kontrol S8](docs/hardware/ni_kontrol_s8.md) — S8 hardware reference (WIP)
+- [NI Komplete Kontrol Mk2](docs/hardware/ni_komplete_kontrol_mk2.md) — Komplete Kontrol S-Series Mk2 hardware reference
+- [NI Kontrol S8](docs/hardware/ni_kontrol_s8.md) — S8 hardware reference
+
+## Changelog
+
+### v0.3.0
+- **Kontrol S8 Mixer Protocol Implementation**:
+  - Added all 20 analog mixer knobs across channels A, B, C, D (Gain, Hi EQ, Mid EQ, Low EQ, and Filter) to Report ID 2 (`sliders` packet).
+  - Implemented 4-bit 1-byte resolution handling for Low EQ on Channels C and D (`max_value: 15`).
+  - Added Master Tempo rotary encoder (`tempo_encoder`, Report 1 byte 3, 4-bit `wrap16`) and `mixer_tempo` button (byte 23 mask `0x04`).
+  - Implemented `feature_report_leds` quirk architecture in core descriptor and background USB device thread (`device_thread.rs`) using EP0 Control Transfers (`SET_REPORT`, `0xF4`) for Cue/PFL (`0x26`), Filter On (`0x25`), and Direct Thru (`0x24`) LEDs.
+  - Updated Kontrol S8 hardware documentation with complete mixer input/output and quirk details.
+- Bumped workspace crates to `v0.3.0`.
+
+### v0.2.0
+- Added GPU-accelerated screen diffing and blitting pipeline.
+- Added WebView screen renderer via `encdr-view`.
+- Initial Kontrol S8, D2, and Maschine Mk3 controller support.
 
 ## License
 
