@@ -99,8 +99,12 @@ encdr/
 ├── encdr/                  Core crate
 │   ├── descriptors/        Built-in JSON device descriptors
 │   │   ├── ni_kontrol_d2.json
+│   │   ├── ni_kontrol_s8.json
+│   │   ├── ni_maschine_mk2.json
 │   │   ├── ni_maschine_mk3.json
-│   │   └── ni_kontrol_s8.json
+│   │   ├── ni_maschine_plus.json
+│   │   ├── ni_maschine_studio.json
+│   │   └── ni_traktor_kontrol_x1_mk3.json
 │   └── src/
 │       ├── lib.rs          Encdr facade + public API
 │       ├── core/           Event types, descriptor model, LED types, errors
@@ -142,7 +146,9 @@ encdr/
         ├── ni_kontrol_s8.md            S8 hardware reference
         ├── ni_kontrol_x1_mk3.md        Traktor Kontrol X1 MK3 hardware reference
         ├── ni_maschine_mk2.md          Maschine Mk2 hardware reference
-        └── ni_maschine_mk3.md          Mk3 hardware reference
+        ├── ni_maschine_mk3.md          Mk3 hardware reference
+        ├── ni_maschine_plus.md         Maschine Plus hardware reference
+        └── ni_maschine_studio.md       Maschine Studio hardware reference
 ```
 
 ## Supported Hardware
@@ -152,6 +158,8 @@ encdr/
 | NI Kontrol D2             | `17cc:1400`       | Implemented | 57 buttons/touches, 6 encoders, 9 sliders     | 8 RGB pads, 5 singles, 2 strips             | 480x272 BGR565    |
 | NI Maschine Mk2           | `17cc:1200`       | Implemented | 47 buttons, 11 encoders, 16 velocity pads     | 16 RGB pads, 31 singles                     | 2x 256x64 1-bit   |
 | NI Maschine Mk3           | `17cc:1600`       | Implemented | 63 buttons, 10 touches, 9 encoders, 1 slider, 16 pads | 16 RGB pads, 62 singles, 1 strip     | 2x 480x272 BGR565 |
+| NI Maschine Plus          | `17cc:1820`       | Implemented | 63 buttons, 10 touches, 9 encoders, 1 slider, 16 pads | 16 RGB pads, 62 singles, 1 strip     | 2x 480x272 BGR565 |
+| NI Maschine Studio        | `17cc:1300`       | Implemented | 64 buttons, 5 touches, 10 encoders, 16 pads   | 16 RGB pads, 8 RGB groups, stereo meters, 32-seg ring | 2x 480x272 BGR565 |
 | NI Komplete Kontrol S-Mk2 | `17cc:1610/20/30` | Implemented | 28 buttons, 9 encoders                        | 20 singles, Light Guide (RGB per-key)       | 2x 480x272 BGR565 |
 | NI Kontrol S8             | `17cc:1370`       | Implemented | 114 buttons/encoders, 29 faders/knobs         | 16 RGB pads, 100+ singles, EP0 feature LEDs | 2x 480x272 BGR565 |
 | NI Traktor Kontrol X1 Mk3 | `17cc:2200`       | Implemented | 21 buttons, 4 encoders, 8 knobs               | 14 singles, 8 RGB hotcues, 2 RGB underglow  | 5x 128x64 1-bit OLED |
@@ -194,11 +202,22 @@ This example will show encoder and button states in real-time on both screens.
 - [NI Kontrol D2](docs/hardware/ni_kontrol_d2.md) — D2 hardware reference
 - [NI Maschine Mk2](docs/hardware/ni_maschine_mk2.md) — Mk2 hardware reference
 - [NI Maschine Mk3](docs/hardware/ni_maschine_mk3.md) — Mk3 hardware reference
+- [NI Maschine Plus](docs/hardware/ni_maschine_plus.md) — Maschine Plus (Controller Mode) hardware reference
+- [NI Maschine Studio](docs/hardware/ni_maschine_studio.md) — Maschine Studio hardware reference
 - [NI Komplete Kontrol Mk2](docs/hardware/ni_komplete_kontrol_mk2.md) — Komplete Kontrol S-Series Mk2 hardware reference
 - [NI Kontrol S8](docs/hardware/ni_kontrol_s8.md) — S8 hardware reference
 - [NI Traktor Kontrol X1 MK3](docs/hardware/ni_kontrol_x1_mk3.md) — X1 MK3 hardware reference
 
 ## Changelog
+
+### v0.3.2
+- **Maschine Plus & Maschine Studio Support**:
+  - Added hardware descriptor for NI Maschine Plus (`17cc:1820`) running in USB Controller Mode.
+  - Added hardware descriptor for NI Maschine Studio (`17cc:1300`) with 4-report LED engine (`0x80`, `0x81`, `0x82`, `0x83`).
+  - Mapped 64 buttons, 10 encoders (including 32-segment optical jogwheel with `wrap16_wide` decoding), and 5 capacitive knob touch sensors for Maschine Studio.
+  - Added multi-report LED handling for stereo 16-segment audio level meters and 32-segment circular jogwheel LED ring.
+  - Added comprehensive hardware documentation for both controllers in `docs/hardware/`.
+  - Updated `docs/usage.md` with multi-report LED guidance and modern device listings.
 
 ### v0.3.1
 - **Traktor Kontrol X1 MK3 Support**:

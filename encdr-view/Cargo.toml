@@ -1,6 +1,6 @@
 [package]
 name = "encdr-view"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2024"
 description = "WebView-based screen renderer for encdr controller screens"
 license = "GPLv3"

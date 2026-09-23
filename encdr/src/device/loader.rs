@@ -38,6 +38,10 @@ impl DescriptorRegistry {
         self.load_json(s88_json)?;
         let x1_mk3_json = include_str!("../../descriptors/ni_traktor_kontrol_x1_mk3.json");
         self.load_json(x1_mk3_json)?;
+        let plus_json = include_str!("../../descriptors/ni_maschine_plus.json");
+        self.load_json(plus_json)?;
+        let studio_json = include_str!("../../descriptors/ni_maschine_studio.json");
+        self.load_json(studio_json)?;
         Ok(())
     }
 
@@ -346,6 +350,55 @@ mod tests {
         let play_event = events.iter().find(|e| matches!(e, crate::core::event::Event::Button { name, pressed, .. } if *name == "left_play" && *pressed));
         assert!(play_event.is_some(), "Expected left_play pressed event");
     }
+
+    #[test]
+    fn load_maschine_plus_descriptor() {
+        let mut reg = DescriptorRegistry::new();
+        reg.load_builtins().unwrap();
+
+        let desc = reg.find(0x17cc, 0x1820).expect("Maschine Plus should be registered").clone();
+        assert_eq!(desc.name, "NI Maschine Plus");
+        assert_eq!(desc.screens.len(), 2);
+        for screen in &desc.screens {
+            assert_eq!(screen.width, 480);
+            assert_eq!(screen.height, 272);
+            assert_eq!(screen.pixel_format, crate::core::descriptor::PixelFormat::Bgr565Be);
+        }
+        assert_eq!(desc.leds.len(), 2);
+    }
+
+    #[test]
+    fn load_maschine_studio_descriptor() {
+        let mut reg = DescriptorRegistry::new();
+        reg.load_builtins().unwrap();
+
+        let desc = reg.find(0x17cc, 0x1300).expect("Maschine Studio should be registered").clone();
+        assert_eq!(desc.name, "NI Maschine Studio");
+        assert_eq!(desc.screens.len(), 2);
+        for screen in &desc.screens {
+            assert_eq!(screen.width, 480);
+            assert_eq!(screen.height, 272);
+            assert_eq!(screen.pixel_format, crate::core::descriptor::PixelFormat::Bgr565Be);
+        }
+        assert_eq!(desc.leds.len(), 4);
+        assert!(desc.leds.iter().any(|l| l.id == "buttons" && l.prefix_byte.0 == 0x80));
+        assert!(desc.leds.iter().any(|l| l.id == "pad_leds" && l.prefix_byte.0 == 0x81));
+        assert!(desc.leds.iter().any(|l| l.id == "master_meters" && l.prefix_byte.0 == 0x82));
+        assert!(desc.leds.iter().any(|l| l.id == "jogwheel_ring" && l.prefix_byte.0 == 0x83));
+
+        let names = reg.intern_descriptor_names(&desc);
+        let mut parser = crate::device::parser::PacketParser::new(crate::core::event::DeviceId(1), &desc, names);
+        let mut events = Vec::new();
+
+        let mut buf = vec![0u8; 42];
+        buf[0] = 0x01;
+        buf[14] = 0x10; // play (byte 14 mask 0x10)
+        parser.parse(&buf, &mut events);
+
+        let play_event = events.iter().find(|e| matches!(e, crate::core::event::Event::Button { name, pressed, .. } if *name == "play" && *pressed));
+        assert!(play_event.is_some(), "Expected play pressed event on Maschine Studio");
+    }
 }
+
 
 

@@ -60,7 +60,17 @@ Call `scan()` to detect connected devices. This matches USB VID:PID against load
 let device_ids = encdr.scan().unwrap();
 ```
 
-Encdr loads built-in descriptors automatically (NI Kontrol D2 and NI Maschine Mk3). You can add custom descriptors:
+Encdr loads built-in descriptors automatically:
+- **NI Kontrol D2** (`17cc:1400`)
+- **NI Kontrol S8** (`17cc:1370`)
+- **NI Maschine Mk2** (`17cc:1140`)
+- **NI Maschine Mk3** (`17cc:1600`)
+- **NI Maschine Plus** (`17cc:1820` — USB controller mode)
+- **NI Maschine Studio** (`17cc:1300`)
+- **NI Komplete Kontrol S49 / S61 / S88 Mk2** (`17cc:1610`, `1620`, `1630`)
+- **NI Traktor Kontrol X1 Mk3** (`17cc:2200`)
+
+You can also add custom descriptors:
 
 ```rust
 // Load all JSON files from a directory
@@ -138,18 +148,19 @@ use encdr::LedValue;
 encdr.set_led(device_id, "play", LedValue::Single(127));
 encdr.set_led(device_id, "play", LedValue::Off);
 
-// RGB pad LED
+// RGB pad LED (automatically converted to NI hardware palette when indexed)
 encdr.set_led(device_id, "pad_1", LedValue::Rgb { r: 255, g: 0, b: 128 });
+
+// Target a specific LED group if control names exist in multiple reports
+encdr.set_led_in_group(device_id, "buttons", "play", LedValue::Single(255));
+encdr.set_led_in_group(device_id, "pad_leds", "group_a", LedValue::Rgb { r: 0, g: 255, b: 0 });
 
 // LED strip (array of brightness values)
 let strip = vec![127u8; 25]; // all LEDs at half brightness
 encdr.set_led_strip(device_id, "touchstrip_blue", &strip);
 
-// Touchstrip position indicator
-let mut strip = vec![0u8; 25];
-let position = 12; // LED index 0-24
-strip[position] = 255;
-encdr.set_led_strip(device_id, "touchstrip_orange", &strip);
+// Strip targeted to a specific group (e.g. Maschine Studio level meters)
+encdr.set_led_strip_in_group(device_id, "master_meters", "meter_left", &vec![255u8; 16]);
 ```
 
 ### D2 LED Names
@@ -168,7 +179,7 @@ encdr.set_led_strip(device_id, "touchstrip_orange", &strip);
 
 ### Mk3 LED Names
 
-The Mk3 has two LED buffer groups (button LEDs and touchstrip), all single-color.
+The Mk3 has two LED buffer groups: Report `0x80` (`buttons`, single-color brightness) and Report `0x81` (`pad_leds`, 16 RGB pads and Smart Strip).
 
 | Name                                       | Type   | Description                       |
 | ------------------------------------------ | ------ | --------------------------------- |
@@ -189,6 +200,66 @@ The Mk3 has two LED buffer groups (button LEDs and touchstrip), all single-color
 | `encoder_up/down/left/right`               | Single | Encoder push direction backlights |
 | `touchstrip`                               | Strip  | Touchstrip LED array              |
 
+### Maschine Plus LED Names
+
+When connected in USB controller mode, the Maschine Plus uses the identical LED mapping and buffer reports as the Maschine Mk3.
+
+### Maschine Studio LED Names
+
+The Maschine Studio features a 4-report LED architecture (`0x80`, `0x81`, `0x82`, `0x83`) driving over 100 individual indicators:
+
+#### Button LEDs (Report `0x80`)
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| `channel`, `plugin`, `arrange`, `mix` | Single | View/mode button backlights |
+| `browse`, `sampling`, `all`, `auto` | Single | Utility mode backlights |
+| `tap`, `snap`, `macro`, `note_repeat` | Single | Performance backlights |
+| `scene`, `pattern`, `pad_mode`, `navigate` | Single | Sequencer action backlights |
+| `duplicate`, `select`, `solo`, `mute` | Single | Pad action backlights |
+| `loop`, `metro`, `grid`, `play`, `rec`, `erase` | Single | Transport control backlights |
+| `copy`, `paste`, `note`, `nudge` | Single | Edit function backlights |
+| `undo`, `redo`, `quantize`, `clear` | Single | Edit history backlights |
+| `back`, `nav_left`, `nav_right`, `enter` | Single | Navigation cluster backlights |
+
+#### Pad & Group RGB LEDs (Report `0x81`)
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| `group_a` - `group_h` | RGB | 8 full RGB Group buttons |
+| `pad_1` - `pad_16` | Indexed RGB | 16 velocity/pressure pads (Native Instruments palette indices) |
+
+#### Master Section & Meter LEDs (Report `0x82`)
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| `in_1` - `in_4` | Single | Audio input selector backlights |
+| `master`, `group`, `sound`, `cue` | Single | Level monitoring mode backlights |
+| `top_1` - `top_8` | Single | 8 top display button backlights |
+| `meter_left` | Strip (16) | Left channel audio level meter (16-segment ladder) |
+| `meter_right` | Strip (16) | Right channel audio level meter (16-segment ladder) |
+
+```rust
+// Controlling the stereo level meters on Maschine Studio:
+let mut left_meter = vec![0u8; 16];
+let mut right_meter = vec![0u8; 16];
+// Light up first 10 segments on left, 8 on right
+left_meter[..10].fill(255);
+right_meter[..8].fill(255);
+encdr.set_led_strip(device_id, "meter_left", &left_meter);
+encdr.set_led_strip(device_id, "meter_right", &right_meter);
+```
+
+#### Jogwheel LED Ring (Report `0x83`)
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| `jogwheel_ring` | Strip (32) | 32-segment circular progress/position ring around jogwheel |
+
+```rust
+// Illuminating a position cursor on the jogwheel ring:
+let mut ring = vec![0u8; 32];
+let cursor_pos = 14; // 0..31 around the dial
+ring[cursor_pos] = 255;
+encdr.set_led_strip(device_id, "jogwheel_ring", &ring);
+```
+
 ---
 
 ## Screen Output
@@ -198,21 +269,41 @@ The Mk3 has two LED buffer groups (button LEDs and touchstrip), all single-color
 For apps that render their own pixels:
 
 ```rust
-// RGBA8888 input - Encdr handles GPU conversion to BGR565, diffing, and USB transfer
-let pixels = vec![0u8; 480 * 272 * 4]; // black screen
-encdr.submit_screen(device_id, "main", &pixels);
-
-// Or submit in native format to skip GPU conversion
 use encdr::PixelFormat;
-let native_pixels = vec![0u8; 480 * 272 * 2]; // BGR565-BE
-encdr.submit_screen_with_format(device_id, "main", &native_pixels, PixelFormat::Bgr565Be);
+
+// RGBA8888 input - Encdr handles GPU conversion, dirty-region diffing, and USB transfer:
+let rgba_pixels = vec![0u8; 480 * 272 * 4]; // black screen
+encdr.submit_screen(device_id, "left", &rgba_pixels);
+
+// Or submit in native format to skip GPU conversion:
+// 1. Dual Color Screens (D2, S8, Mk3, Plus, Studio, KK Mk2: 480x272 BGR565-BE)
+let bgr_pixels = vec![0u8; 480 * 272 * 2]; // 261,120 bytes
+encdr.submit_screen_with_format(device_id, "left", &bgr_pixels, PixelFormat::Bgr565Be);
+encdr.submit_screen_with_format(device_id, "right", &bgr_pixels, PixelFormat::Bgr565Be);
+
+// 2. Monochrome 1-bit Screens (X1 Mk3: 5x 128x64 OLED, Maschine Mk2: 2x 256x64)
+// Packed 1 bit per pixel (8 pixels per byte, MSB first)
+let x1_oled_frame = vec![0xFFu8; (128 * 64) / 8]; // 1024 bytes (all white)
+encdr.submit_screen_with_format(device_id, "left_fx", &x1_oled_frame, PixelFormat::Mono);
+encdr.submit_screen_with_format(device_id, "center_mode", &x1_oled_frame, PixelFormat::Mono);
 ```
 
+#### Screen Addressing by Controller
+| Device | Screen Names | Resolution & Format |
+| ------ | ------------ | ------------------- |
+| **NI Kontrol D2** | `"main"` | $480 \times 272$, BGR565-BE |
+| **NI Kontrol S8** | `"left"`, `"right"` | $480 \times 272$, BGR565-BE |
+| **NI Maschine Mk3 / Plus / Studio** | `"left"`, `"right"` | $480 \times 272$, BGR565-BE |
+| **NI Komplete Kontrol S-Mk2** | `"left"`, `"right"` | $480 \times 272$, BGR565-BE |
+| **NI Maschine Mk2** | `"left"`, `"right"` | $256 \times 64$, 1-bit Mono |
+| **NI Traktor Kontrol X1 Mk3** | `"left_fx"`, `"left_loop"`, `"center_mode"`, `"right_loop"`, `"right_fx"` | $128 \times 64$, 1-bit Mono |
+
 The screen pipeline automatically:
-1. Converts RGBA8 to the device's native pixel format (BGR565-BE for D2) via GPU compute shader
+1. Converts RGBA8 to the device's native pixel format (BGR565-BE or Mono) via GPU compute shader
 2. Compares against the previous frame to find dirty regions
-3. Sends only the changed region (partial blit) if <50% dirty, or a full blit otherwise
-4. Sends periodic keyframes (~every 60 frames) to prevent drift
+3. Sends partial blits if supported and changed region is $<50\%$ of the screen, or a full blit otherwise
+4. Suppresses redundant USB transmission when frames are static (especially on monochrome displays)
+5. Sends periodic keyframes (~every 60 frames) to prevent display drift
 
 ### WebView Renderer (Tier 2)
 
@@ -295,7 +386,7 @@ If no GPU context is provided, Encdr creates its own with `wgpu::PowerPreference
 
 ## Custom Device Descriptors
 
-Devices are defined by JSON files. See [hardware/ni_kontrol_d2.md](hardware/ni_kontrol_d2.md) and [hardware/ni_maschine_mk3.md](hardware/ni_maschine_mk3.md) for complete annotated examples. The key sections:
+Devices are defined by JSON files. See the device references in [`docs/hardware/`](hardware/) (such as [D2](hardware/ni_kontrol_d2.md), [Mk3](hardware/ni_maschine_mk3.md), [Studio](hardware/ni_maschine_studio.md), [S8](hardware/ni_kontrol_s8.md), and [X1 Mk3](hardware/ni_kontrol_x1_mk3.md)) for complete annotated examples. The key sections:
 
 - **`interfaces`**: USB interface numbers and endpoint addresses
 - **`input_packets`**: Packet layouts with byte offsets, bitmasks, and encodings
@@ -396,11 +487,23 @@ cargo run -p encdr-examples --bin probe
 # Print all events from connected devices (Ctrl+C to quit)
 cargo run -p encdr-examples --bin monitor
 
-# Show D2 knob/button positions on the screen (requires D2 plugged in)
+# Traktor Kontrol X1 Mk3: Interactive 5-screen OLED test + RGB hotcues
+cargo run -p encdr-examples --bin x1_mk3_test
+
+# Traktor Kontrol S8: Dual 480x272 screen visualizer + deck controls
+cargo run -p encdr-examples --bin s8_screen_test
+
+# Kontrol D2: Knob/button positions on the screen
 cargo run -p encdr-examples --bin d2_screen_test
 
-# Show Maschine Mk3 encoder/button state on dual screens (requires Mk3 plugged in)
+# Maschine Mk3: Dual-screen encoder and button visualizer
 cargo run -p encdr-examples --bin mk3_screen_test
+
+# Maschine Mk3: Pad RGB animation loop
+cargo run -p encdr-examples --bin mk3_pad_rainbow
+
+# Maschine Mk3: High-resolution Smart Strip touch monitor
+cargo run -p encdr-examples --bin touchstrip_monitor
 ```
 
 ---

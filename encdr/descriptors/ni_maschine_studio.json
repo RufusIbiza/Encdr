@@ -1,0 +1,289 @@
+{
+  "name": "NI Maschine Studio",
+  "manufacturer": "Native Instruments",
+  "vendor_id": "0x17cc",
+  "product_id": "0x1300",
+  "interfaces": [
+    {
+      "id": "control",
+      "number": 0,
+      "endpoints": {
+        "in": {
+          "address": "0x81",
+          "type": "interrupt"
+        },
+        "out": {
+          "address": "0x01",
+          "type": "interrupt"
+        }
+      }
+    },
+    {
+      "id": "screen",
+      "number": 1,
+      "endpoints": {
+        "out": {
+          "address": "0x02",
+          "type": "bulk"
+        }
+      }
+    }
+  ],
+  "input_packets": [
+    {
+      "id": "buttons",
+      "interface": "control",
+      "size": 42,
+      "items": [
+        { "type": "button", "name": "in_1", "byte": 1, "mask": "0x40" },
+        { "type": "button", "name": "in_2", "byte": 1, "mask": "0x80" },
+        { "type": "button", "name": "in_3", "byte": 2, "mask": "0x01" },
+        { "type": "button", "name": "in_4", "byte": 2, "mask": "0x02" },
+        { "type": "button", "name": "master", "byte": 2, "mask": "0x04" },
+        { "type": "button", "name": "group", "byte": 2, "mask": "0x08" },
+        { "type": "button", "name": "sound", "byte": 2, "mask": "0x10" },
+        { "type": "button", "name": "cue", "byte": 2, "mask": "0x20" },
+
+        { "type": "touch", "name": "knob_touch_1", "byte": 2, "mask": "0x80" },
+        { "type": "touch", "name": "knob_touch_2", "byte": 3, "mask": "0x02" },
+        { "type": "touch", "name": "knob_touch_3", "byte": 3, "mask": "0x08" },
+        { "type": "touch", "name": "knob_touch_4", "byte": 3, "mask": "0x20" },
+        { "type": "touch", "name": "knob_touch_5", "byte": 3, "mask": "0x80" },
+
+        { "type": "button", "name": "top_1", "byte": 6, "mask": "0x40" },
+        { "type": "button", "name": "top_2", "byte": 6, "mask": "0x80" },
+        { "type": "button", "name": "top_3", "byte": 7, "mask": "0x01" },
+        { "type": "button", "name": "top_4", "byte": 7, "mask": "0x02" },
+        { "type": "button", "name": "top_5", "byte": 7, "mask": "0x04" },
+        { "type": "button", "name": "top_6", "byte": 7, "mask": "0x08" },
+        { "type": "button", "name": "top_7", "byte": 7, "mask": "0x10" },
+        { "type": "button", "name": "top_8", "byte": 7, "mask": "0x20" },
+
+        { "type": "button", "name": "copy", "byte": 9, "mask": "0x02" },
+        { "type": "button", "name": "paste", "byte": 9, "mask": "0x08" },
+        { "type": "button", "name": "note", "byte": 9, "mask": "0x10" },
+        { "type": "button", "name": "nudge", "byte": 9, "mask": "0x20" },
+        { "type": "button", "name": "undo", "byte": 9, "mask": "0x40" },
+        { "type": "button", "name": "redo", "byte": 9, "mask": "0x80" },
+
+        { "type": "button", "name": "quantize", "byte": 10, "mask": "0x01" },
+        { "type": "button", "name": "clear", "byte": 10, "mask": "0x02" },
+        { "type": "button", "name": "jogwheel_press", "byte": 10, "mask": "0x08" },
+        { "type": "button", "name": "back", "byte": 10, "mask": "0x20" },
+        { "type": "button", "name": "nav_left", "byte": 10, "mask": "0x40" },
+        { "type": "button", "name": "nav_right", "byte": 10, "mask": "0x80" },
+
+        { "type": "button", "name": "enter", "byte": 11, "mask": "0x01" },
+        { "type": "button", "name": "group_a", "byte": 11, "mask": "0x02" },
+        { "type": "button", "name": "group_b", "byte": 11, "mask": "0x04" },
+        { "type": "button", "name": "group_c", "byte": 11, "mask": "0x08" },
+        { "type": "button", "name": "group_d", "byte": 11, "mask": "0x10" },
+        { "type": "button", "name": "channel", "byte": 11, "mask": "0x20" },
+        { "type": "button", "name": "plugin", "byte": 11, "mask": "0x40" },
+        { "type": "button", "name": "arrange", "byte": 11, "mask": "0x80" },
+
+        { "type": "button", "name": "mix", "byte": 12, "mask": "0x01" },
+        { "type": "button", "name": "browse", "byte": 12, "mask": "0x02" },
+        { "type": "button", "name": "sampling", "byte": 12, "mask": "0x04" },
+        { "type": "button", "name": "all", "byte": 12, "mask": "0x08" },
+        { "type": "button", "name": "auto", "byte": 12, "mask": "0x10" },
+        { "type": "button", "name": "group_e", "byte": 12, "mask": "0x20" },
+        { "type": "button", "name": "group_f", "byte": 12, "mask": "0x40" },
+        { "type": "button", "name": "group_g", "byte": 12, "mask": "0x80" },
+
+        { "type": "button", "name": "group_h", "byte": 13, "mask": "0x01" },
+
+        { "type": "button", "name": "loop", "byte": 14, "mask": "0x01" },
+        { "type": "button", "name": "metro", "byte": 14, "mask": "0x02" },
+        { "type": "button", "name": "select", "byte": 14, "mask": "0x04" },
+        { "type": "button", "name": "grid", "byte": 14, "mask": "0x08" },
+        { "type": "button", "name": "play", "byte": 14, "mask": "0x10" },
+        { "type": "button", "name": "rec", "byte": 14, "mask": "0x20" },
+        { "type": "button", "name": "erase", "byte": 14, "mask": "0x40" },
+        { "type": "button", "name": "tap", "byte": 14, "mask": "0x80" },
+
+        { "type": "button", "name": "snap", "byte": 15, "mask": "0x01" },
+        { "type": "button", "name": "macro", "byte": 15, "mask": "0x02" },
+        { "type": "button", "name": "note_repeat", "byte": 15, "mask": "0x04" },
+        { "type": "button", "name": "scene", "byte": 15, "mask": "0x08" },
+        { "type": "button", "name": "pattern", "byte": 15, "mask": "0x10" },
+        { "type": "button", "name": "pad_mode", "byte": 15, "mask": "0x20" },
+        { "type": "button", "name": "navigate", "byte": 15, "mask": "0x40" },
+        { "type": "button", "name": "duplicate", "byte": 15, "mask": "0x80" },
+
+        { "type": "button", "name": "pad_select", "byte": 16, "mask": "0x01" },
+        { "type": "button", "name": "solo", "byte": 16, "mask": "0x02" },
+        { "type": "button", "name": "mute", "byte": 16, "mask": "0x04" },
+
+        { "type": "encoder_fine", "name": "jogwheel", "bytes": [17, 18], "encoding": "wrap16_wide", "scale": 1000.0 },
+        { "type": "encoder", "name": "level", "byte": 19, "bits": 4, "bit_offset": 0, "encoding": "wrap16" },
+
+        { "type": "encoder_fine", "name": "knob_1", "bytes": [20, 21], "encoding": "signed16", "scale": 1.0 },
+        { "type": "encoder_fine", "name": "knob_2", "bytes": [22, 23], "encoding": "signed16", "scale": 1.0 },
+        { "type": "encoder_fine", "name": "knob_3", "bytes": [24, 25], "encoding": "signed16", "scale": 1.0 },
+        { "type": "encoder_fine", "name": "knob_4", "bytes": [26, 27], "encoding": "signed16", "scale": 1.0 },
+        { "type": "encoder_fine", "name": "knob_5", "bytes": [28, 29], "encoding": "signed16", "scale": 1.0 },
+        { "type": "encoder_fine", "name": "knob_6", "bytes": [30, 31], "encoding": "signed16", "scale": 1.0 },
+        { "type": "encoder_fine", "name": "knob_7", "bytes": [32, 33], "encoding": "signed16", "scale": 1.0 },
+        { "type": "encoder_fine", "name": "knob_8", "bytes": [34, 35], "encoding": "signed16", "scale": 1.0 }
+      ]
+    }
+  ],
+  "leds": [
+    {
+      "id": "buttons",
+      "interface": "control",
+      "buffer_size": 63,
+      "prefix_byte": "0x80",
+      "items": [
+        { "type": "single", "name": "channel", "offset": 1 },
+        { "type": "single", "name": "plugin", "offset": 2 },
+        { "type": "single", "name": "arrange", "offset": 3 },
+        { "type": "single", "name": "mix", "offset": 4 },
+        { "type": "single", "name": "browse", "offset": 5 },
+        { "type": "single", "name": "sampling", "offset": 6 },
+        { "type": "single", "name": "all", "offset": 7 },
+        { "type": "single", "name": "auto", "offset": 8 },
+        { "type": "single", "name": "tap", "offset": 9 },
+        { "type": "single", "name": "snap", "offset": 10 },
+        { "type": "single", "name": "macro", "offset": 11 },
+        { "type": "single", "name": "note_repeat", "offset": 12 },
+        { "type": "single", "name": "scene", "offset": 13 },
+        { "type": "single", "name": "pattern", "offset": 14 },
+        { "type": "single", "name": "pad_mode", "offset": 15 },
+        { "type": "single", "name": "navigate", "offset": 16 },
+        { "type": "single", "name": "duplicate", "offset": 17 },
+        { "type": "single", "name": "select", "offset": 18 },
+        { "type": "single", "name": "solo", "offset": 19 },
+        { "type": "single", "name": "mute", "offset": 20 },
+        { "type": "single", "name": "loop", "offset": 21 },
+        { "type": "single", "name": "metro", "offset": 22 },
+        { "type": "single", "name": "grid", "offset": 23 },
+        { "type": "single", "name": "play", "offset": 24 },
+        { "type": "single", "name": "rec", "offset": 25 },
+        { "type": "single", "name": "erase", "offset": 26 },
+        { "type": "single", "name": "copy", "offset": 27 },
+        { "type": "single", "name": "paste", "offset": 28 },
+        { "type": "single", "name": "note", "offset": 29 },
+        { "type": "single", "name": "nudge", "offset": 30 },
+        { "type": "single", "name": "undo", "offset": 31 },
+        { "type": "single", "name": "redo", "offset": 32 },
+        { "type": "single", "name": "quantize", "offset": 33 },
+        { "type": "single", "name": "clear", "offset": 34 },
+        { "type": "single", "name": "back", "offset": 35 },
+        { "type": "single", "name": "nav_left", "offset": 36 },
+        { "type": "single", "name": "nav_right", "offset": 37 },
+        { "type": "single", "name": "enter", "offset": 38 }
+      ]
+    },
+    {
+      "id": "pad_leds",
+      "interface": "control",
+      "buffer_size": 45,
+      "prefix_byte": "0x81",
+      "items": [
+        { "type": "rgb", "name": "group_a", "offsets": { "r": 1, "g": 2, "b": 3 } },
+        { "type": "rgb", "name": "group_b", "offsets": { "r": 4, "g": 5, "b": 6 } },
+        { "type": "rgb", "name": "group_c", "offsets": { "r": 7, "g": 8, "b": 9 } },
+        { "type": "rgb", "name": "group_d", "offsets": { "r": 10, "g": 11, "b": 12 } },
+        { "type": "rgb", "name": "group_e", "offsets": { "r": 13, "g": 14, "b": 15 } },
+        { "type": "rgb", "name": "group_f", "offsets": { "r": 16, "g": 17, "b": 18 } },
+        { "type": "rgb", "name": "group_g", "offsets": { "r": 19, "g": 20, "b": 21 } },
+        { "type": "rgb", "name": "group_h", "offsets": { "r": 22, "g": 23, "b": 24 } },
+        { "type": "indexed", "name": "pad_13", "offset": 25 },
+        { "type": "indexed", "name": "pad_14", "offset": 26 },
+        { "type": "indexed", "name": "pad_15", "offset": 27 },
+        { "type": "indexed", "name": "pad_16", "offset": 28 },
+        { "type": "indexed", "name": "pad_9", "offset": 29 },
+        { "type": "indexed", "name": "pad_10", "offset": 30 },
+        { "type": "indexed", "name": "pad_11", "offset": 31 },
+        { "type": "indexed", "name": "pad_12", "offset": 32 },
+        { "type": "indexed", "name": "pad_5", "offset": 33 },
+        { "type": "indexed", "name": "pad_6", "offset": 34 },
+        { "type": "indexed", "name": "pad_7", "offset": 35 },
+        { "type": "indexed", "name": "pad_8", "offset": 36 },
+        { "type": "indexed", "name": "pad_1", "offset": 37 },
+        { "type": "indexed", "name": "pad_2", "offset": 38 },
+        { "type": "indexed", "name": "pad_3", "offset": 39 },
+        { "type": "indexed", "name": "pad_4", "offset": 40 }
+      ]
+    },
+    {
+      "id": "master_meters",
+      "interface": "control",
+      "buffer_size": 53,
+      "prefix_byte": "0x82",
+      "items": [
+        { "type": "single", "name": "in_1", "offset": 1 },
+        { "type": "single", "name": "in_2", "offset": 2 },
+        { "type": "single", "name": "in_3", "offset": 3 },
+        { "type": "single", "name": "in_4", "offset": 4 },
+        { "type": "single", "name": "master", "offset": 5 },
+        { "type": "single", "name": "group", "offset": 6 },
+        { "type": "single", "name": "sound", "offset": 7 },
+        { "type": "single", "name": "cue", "offset": 8 },
+        { "type": "strip", "name": "meter_left", "offset": 9, "count": 16 },
+        { "type": "strip", "name": "meter_right", "offset": 25, "count": 16 },
+        { "type": "single", "name": "top_1", "offset": 41 },
+        { "type": "single", "name": "top_2", "offset": 42 },
+        { "type": "single", "name": "top_3", "offset": 43 },
+        { "type": "single", "name": "top_4", "offset": 44 },
+        { "type": "single", "name": "top_5", "offset": 45 },
+        { "type": "single", "name": "top_6", "offset": 46 },
+        { "type": "single", "name": "top_7", "offset": 47 },
+        { "type": "single", "name": "top_8", "offset": 48 }
+      ]
+    },
+    {
+      "id": "jogwheel_ring",
+      "interface": "control",
+      "buffer_size": 56,
+      "prefix_byte": "0x83",
+      "items": [
+        { "type": "strip", "name": "jogwheel_ring", "offset": 1, "count": 32 }
+      ]
+    }
+  ],
+  "screens": [
+    {
+      "name": "left",
+      "interface": "screen",
+      "width": 480,
+      "height": 272,
+      "pixel_format": "bgr565_be",
+      "full_blit": {
+        "header": "0x84,0x00,0x00,0x60,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01,0xe0,0x01,0x10,0x00,0x00,0xff,0x00",
+        "footer": "0x03,0x00,0x00,0x00,0x40,0x00,0x00,0x00"
+      },
+      "partial_blit": {
+        "supported": true,
+        "x_align": 4,
+        "y_align": 2,
+        "header_template": "0x84,0x00,0x00,0x60,0x00,0x00,0x00,0x00,{x_hi},{x_lo},{y_hi},{y_lo},{w_hi},{w_lo},{h_hi},{h_lo},0x00,0x00,{px_half_hi},{px_half_lo}",
+        "footer": "0x03,0x00,0x00,0x00,0x40,0x00,0x00,0x00"
+      }
+    },
+    {
+      "name": "right",
+      "interface": "screen",
+      "width": 480,
+      "height": 272,
+      "pixel_format": "bgr565_be",
+      "full_blit": {
+        "header": "0x84,0x00,0x01,0x60,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01,0xe0,0x01,0x10,0x00,0x00,0xff,0x00",
+        "footer": "0x03,0x00,0x00,0x00,0x40,0x00,0x01,0x00"
+      },
+      "partial_blit": {
+        "supported": true,
+        "x_align": 4,
+        "y_align": 2,
+        "header_template": "0x84,0x00,0x01,0x60,0x00,0x00,0x00,0x00,{x_hi},{x_lo},{y_hi},{y_lo},{w_hi},{w_lo},{h_hi},{h_lo},0x00,0x00,{px_half_hi},{px_half_lo}",
+        "footer": "0x03,0x00,0x00,0x00,0x40,0x00,0x01,0x00"
+      }
+    }
+  ],
+  "quirks": {
+    "dual_handle": true,
+    "detach_kernel_driver": true
+  }
+}
