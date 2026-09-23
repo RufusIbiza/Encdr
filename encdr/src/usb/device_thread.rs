@@ -239,27 +239,33 @@ fn run_device(
     }
 
     // Claim interfaces
+    let mut claimed_by_num: HashMap<u8, nusb::Interface> = HashMap::new();
     let mut interfaces: HashMap<String, nusb::Interface> = HashMap::new();
 
     for iface_desc in &descriptor.interfaces {
-        match usb_device.detach_and_claim_interface(iface_desc.number) {
-            Ok(iface) => {
-                tracing::info!(
-                    "Claimed interface {} ('{}')",
-                    iface_desc.number,
-                    iface_desc.id
-                );
-                interfaces.insert(iface_desc.id.clone(), iface);
+        if !claimed_by_num.contains_key(&iface_desc.number) {
+            match usb_device.detach_and_claim_interface(iface_desc.number) {
+                Ok(iface) => {
+                    tracing::info!(
+                        "Claimed interface {} ('{}')",
+                        iface_desc.number,
+                        iface_desc.id
+                    );
+                    claimed_by_num.insert(iface_desc.number, iface);
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to claim interface {} ({}): {}",
+                        iface_desc.number,
+                        iface_desc.id,
+                        e
+                    );
+                    return;
+                }
             }
-            Err(e) => {
-                tracing::error!(
-                    "Failed to claim interface {} ({}): {}",
-                    iface_desc.number,
-                    iface_desc.id,
-                    e
-                );
-                return;
-            }
+        }
+        if let Some(iface) = claimed_by_num.get(&iface_desc.number) {
+            interfaces.insert(iface_desc.id.clone(), iface.clone());
         }
     }
 
@@ -270,7 +276,7 @@ fn run_device(
         .map(|p| p.interface.clone())
         .unwrap_or_else(|| "control".to_string());
 
-    let Some(control_iface) = interfaces.remove(&control_iface_id) else {
+    let Some(control_iface) = interfaces.get(&control_iface_id).cloned() else {
         tracing::error!("Control interface '{}' not found", control_iface_id);
         return;
     };
@@ -299,8 +305,8 @@ fn run_device(
         let screen_desc = descriptor.clone();
         let mut screen_ifaces = HashMap::new();
         for s in &descriptor.screens {
-            if let Some(iface) = interfaces.remove(&s.interface) {
-                screen_ifaces.insert(s.interface.clone(), iface);
+            if let Some(iface) = interfaces.get(&s.interface) {
+                screen_ifaces.insert(s.interface.clone(), iface.clone());
             }
         }
         let mut screen_managers = HashMap::new();
@@ -481,16 +487,26 @@ fn run_screens(
                         .and_then(|i| i.endpoints.out.as_ref())
                         .map(|ep| ep.address.0 as u8)
                         .unwrap_or(0x02);
+                    let is_interrupt = descriptor
+                        .interface_by_id(&screen_desc.interface)
+                        .and_then(|i| i.endpoints.out.as_ref())
+                        .map(|ep| ep.transfer_type == crate::core::descriptor::TransferType::Interrupt)
+                        .unwrap_or(false);
 
                     let blank = vec![0u8; screen_desc.byte_size()];
                     let blit_buf = crate::screen::protocol::build_full_blit(screen_desc, &blank);
                     tracing::info!(
-                        "Sending splash screen: {} bytes to ep 0x{:02x} on interface '{}'",
+                        "Sending splash screen: {} bytes to ep 0x{:02x} ({}) on interface '{}'",
                         blit_buf.len(),
                         ep,
+                        if is_interrupt { "interrupt" } else { "bulk" },
                         screen_desc.interface
                     );
-                    let _ = iface.bulk_out(ep, blit_buf).await;
+                    if is_interrupt {
+                        let _ = iface.interrupt_out(ep, blit_buf).await;
+                    } else {
+                        let _ = iface.bulk_out(ep, blit_buf).await;
+                    }
                     tracing::info!("Splash screen sent successfully");
                 }
             }
@@ -509,7 +525,16 @@ fn run_screens(
                                         .and_then(|i| i.endpoints.out.as_ref())
                                         .map(|ep| ep.address.0 as u8)
                                         .unwrap_or(0x02);
-                                    let _ = iface.bulk_out(ep, blit_data).await;
+                                    let is_interrupt = descriptor
+                                        .interface_by_id(&screen_desc.interface)
+                                        .and_then(|i| i.endpoints.out.as_ref())
+                                        .map(|ep| ep.transfer_type == crate::core::descriptor::TransferType::Interrupt)
+                                        .unwrap_or(false);
+                                    if is_interrupt {
+                                        let _ = iface.interrupt_out(ep, blit_data).await;
+                                    } else {
+                                        let _ = iface.bulk_out(ep, blit_data).await;
+                                    }
                                 }
                             }
                         }

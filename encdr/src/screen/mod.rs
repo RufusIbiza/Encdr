@@ -118,6 +118,9 @@ impl ScreenManager {
         }
 
         // Full blit
+        if self.prev_frame == native_pixels && !force_full {
+            return None;
+        }
         self.prev_frame.copy_from_slice(&native_pixels);
         Some(protocol::build_full_blit(screen_desc, &native_pixels))
     }

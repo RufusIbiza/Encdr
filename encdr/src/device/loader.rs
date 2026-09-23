@@ -36,6 +36,8 @@ impl DescriptorRegistry {
         self.load_json(s61_json)?;
         let s88_json = include_str!("../../descriptors/ni_komplete_kontrol_s88_mk2.json");
         self.load_json(s88_json)?;
+        let x1_mk3_json = include_str!("../../descriptors/ni_traktor_kontrol_x1_mk3.json");
+        self.load_json(x1_mk3_json)?;
         Ok(())
     }
 
@@ -315,6 +317,34 @@ mod tests {
         let a = reg.intern("play");
         let b = reg.intern("play");
         assert!(std::ptr::eq(a, b));
+    }
+
+    #[test]
+    fn load_x1_mk3_descriptor() {
+        let mut reg = DescriptorRegistry::new();
+        reg.load_builtins().unwrap();
+
+        let desc = reg.find(0x17cc, 0x2200).expect("X1 MK3 should be registered").clone();
+        assert_eq!(desc.name, "NI Traktor Kontrol X1 Mk3");
+        assert_eq!(desc.screens.len(), 5);
+        for screen in &desc.screens {
+            assert_eq!(screen.width, 128);
+            assert_eq!(screen.height, 64);
+            assert_eq!(screen.pixel_format, crate::core::descriptor::PixelFormat::Mono);
+            assert_eq!(screen.byte_size(), 1024);
+        }
+
+        let names = reg.intern_descriptor_names(&desc);
+        let mut parser = crate::device::parser::PacketParser::new(crate::core::event::DeviceId(1), &desc, names);
+        let mut events = Vec::new();
+
+        let mut buf = vec![0u8; 25];
+        buf[0] = 0x01;
+        buf[4] = 0x01; // left_play (byte 4 mask 0x01)
+        parser.parse(&buf, &mut events);
+
+        let play_event = events.iter().find(|e| matches!(e, crate::core::event::Event::Button { name, pressed, .. } if *name == "left_play" && *pressed));
+        assert!(play_event.is_some(), "Expected left_play pressed event");
     }
 }
 

@@ -1,0 +1,195 @@
+{
+  "name": "NI Traktor Kontrol X1 Mk3",
+  "manufacturer": "Native Instruments",
+  "vendor_id": "0x17cc",
+  "product_id": "0x2200",
+
+  "interfaces": [
+    {
+      "id": "control",
+      "number": 0,
+      "endpoints": {
+        "in":  { "address": "0x81", "type": "interrupt" },
+        "out": { "address": "0x01", "type": "interrupt" }
+      }
+    },
+    {
+      "id": "screen",
+      "number": 0,
+      "endpoints": {
+        "out": { "address": "0x01", "type": "interrupt" }
+      }
+    }
+  ],
+
+  "input_packets": [
+    {
+      "id": "buttons",
+      "interface": "control",
+      "size": 25,
+      "items": [
+        { "type": "button", "name": "shift",              "byte": 1,  "mask": "0x01" },
+        { "type": "button", "name": "mode",               "byte": 1,  "mask": "0x02" },
+        { "type": "button", "name": "left_browse_press",  "byte": 1,  "mask": "0x04" },
+        { "type": "button", "name": "left_loop_press",    "byte": 1,  "mask": "0x08" },
+        { "type": "button", "name": "right_browse_press", "byte": 1,  "mask": "0x10" },
+        { "type": "button", "name": "right_loop_press",   "byte": 1,  "mask": "0x20" },
+
+        { "type": "button", "name": "left_fx_1",          "byte": 2,  "mask": "0x01" },
+        { "type": "button", "name": "left_fx_2",          "byte": 2,  "mask": "0x02" },
+        { "type": "button", "name": "left_fx_3",          "byte": 2,  "mask": "0x04" },
+        { "type": "button", "name": "left_fx_4",          "byte": 2,  "mask": "0x08" },
+        { "type": "button", "name": "right_fx_1",         "byte": 2,  "mask": "0x10" },
+        { "type": "button", "name": "right_fx_2",         "byte": 2,  "mask": "0x20" },
+        { "type": "button", "name": "right_fx_3",         "byte": 2,  "mask": "0x40" },
+        { "type": "button", "name": "right_fx_4",         "byte": 2,  "mask": "0x80" },
+
+        { "type": "button", "name": "left_hotcue_1",      "byte": 3,  "mask": "0x01" },
+        { "type": "button", "name": "left_hotcue_2",      "byte": 3,  "mask": "0x02" },
+        { "type": "button", "name": "left_hotcue_3",      "byte": 3,  "mask": "0x04" },
+        { "type": "button", "name": "left_hotcue_4",      "byte": 3,  "mask": "0x08" },
+        { "type": "button", "name": "right_hotcue_1",     "byte": 3,  "mask": "0x10" },
+        { "type": "button", "name": "right_hotcue_2",     "byte": 3,  "mask": "0x20" },
+        { "type": "button", "name": "right_hotcue_3",     "byte": 3,  "mask": "0x40" },
+        { "type": "button", "name": "right_hotcue_4",     "byte": 3,  "mask": "0x80" },
+
+        { "type": "button", "name": "left_play",          "byte": 4,  "mask": "0x01" },
+        { "type": "button", "name": "left_cue",           "byte": 4,  "mask": "0x02" },
+        { "type": "button", "name": "left_rev",           "byte": 4,  "mask": "0x04" },
+        { "type": "button", "name": "left_sync",          "byte": 4,  "mask": "0x08" },
+        { "type": "button", "name": "right_play",         "byte": 4,  "mask": "0x10" },
+        { "type": "button", "name": "right_cue",          "byte": 4,  "mask": "0x20" },
+        { "type": "button", "name": "right_rev",          "byte": 4,  "mask": "0x40" },
+        { "type": "button", "name": "right_sync",         "byte": 4,  "mask": "0x80" },
+
+        { "type": "button", "name": "left_assign_left",   "byte": 5,  "mask": "0x01" },
+        { "type": "button", "name": "left_assign_right",  "byte": 5,  "mask": "0x02" },
+        { "type": "button", "name": "left_nudge_slow",    "byte": 5,  "mask": "0x04" },
+        { "type": "button", "name": "left_nudge_fast",    "byte": 5,  "mask": "0x08" },
+        { "type": "button", "name": "right_assign_left",  "byte": 5,  "mask": "0x10" },
+        { "type": "button", "name": "right_assign_right", "byte": 5,  "mask": "0x20" },
+        { "type": "button", "name": "right_nudge_slow",   "byte": 5,  "mask": "0x40" },
+        { "type": "button", "name": "right_nudge_fast",   "byte": 5,  "mask": "0x80" },
+
+        { "type": "encoder", "name": "left_browse",        "byte": 7,  "bits": 4, "bit_offset": 4, "encoding": "wrap16" },
+        { "type": "encoder", "name": "left_loop",          "byte": 7,  "bits": 4, "bit_offset": 0, "encoding": "wrap16" },
+        { "type": "encoder", "name": "right_browse",       "byte": 8,  "bits": 4, "bit_offset": 4, "encoding": "wrap16" },
+        { "type": "encoder", "name": "right_loop",         "byte": 8,  "bits": 4, "bit_offset": 0, "encoding": "wrap16" },
+
+        { "type": "slider", "name": "left_fx_knob_1",     "bytes": [9, 10],   "bits": 12, "normalize": true },
+        { "type": "slider", "name": "left_fx_knob_2",     "bytes": [11, 12], "bits": 12, "normalize": true },
+        { "type": "slider", "name": "left_fx_knob_3",     "bytes": [13, 14], "bits": 12, "normalize": true },
+        { "type": "slider", "name": "left_fx_knob_4",     "bytes": [15, 16], "bits": 12, "normalize": true },
+        { "type": "slider", "name": "right_fx_knob_1",    "bytes": [17, 18], "bits": 12, "normalize": true },
+        { "type": "slider", "name": "right_fx_knob_2",    "bytes": [19, 20], "bits": 12, "normalize": true },
+        { "type": "slider", "name": "right_fx_knob_3",    "bytes": [21, 22], "bits": 12, "normalize": true },
+        { "type": "slider", "name": "right_fx_knob_4",    "bytes": [23, 24], "bits": 12, "normalize": true }
+      ]
+    }
+  ],
+
+  "leds": [
+    {
+      "id": "button_leds",
+      "interface": "control",
+      "buffer_size": 49,
+      "prefix_byte": "0x80",
+      "items": [
+        { "type": "single", "name": "shift",              "offset": 1 },
+        { "type": "single", "name": "mode",               "offset": 2 },
+        { "type": "single", "name": "left_fx_1",          "offset": 3 },
+        { "type": "single", "name": "left_fx_2",          "offset": 4 },
+        { "type": "single", "name": "left_fx_3",          "offset": 5 },
+        { "type": "single", "name": "left_fx_4",          "offset": 6 },
+        { "type": "single", "name": "right_fx_1",         "offset": 7 },
+        { "type": "single", "name": "right_fx_2",         "offset": 8 },
+        { "type": "single", "name": "right_fx_3",         "offset": 9 },
+        { "type": "single", "name": "right_fx_4",         "offset": 10 },
+
+        { "type": "rgb",    "name": "left_hotcue_1",      "offsets": { "r": 11, "g": 12, "b": 13 } },
+        { "type": "rgb",    "name": "left_hotcue_2",      "offsets": { "r": 14, "g": 15, "b": 16 } },
+        { "type": "rgb",    "name": "left_hotcue_3",      "offsets": { "r": 17, "g": 18, "b": 19 } },
+        { "type": "rgb",    "name": "left_hotcue_4",      "offsets": { "r": 20, "g": 21, "b": 22 } },
+
+        { "type": "rgb",    "name": "right_hotcue_1",     "offsets": { "r": 23, "g": 24, "b": 25 } },
+        { "type": "rgb",    "name": "right_hotcue_2",     "offsets": { "r": 26, "g": 27, "b": 28 } },
+        { "type": "rgb",    "name": "right_hotcue_3",     "offsets": { "r": 29, "g": 30, "b": 31 } },
+        { "type": "rgb",    "name": "right_hotcue_4",     "offsets": { "r": 32, "g": 33, "b": 34 } },
+
+        { "type": "single", "name": "left_play",          "offset": 35 },
+        { "type": "single", "name": "left_cue",           "offset": 36 },
+        { "type": "single", "name": "left_rev",           "offset": 37 },
+        { "type": "single", "name": "left_sync",          "offset": 38 },
+        { "type": "single", "name": "right_play",         "offset": 39 },
+        { "type": "single", "name": "right_cue",          "offset": 40 },
+        { "type": "single", "name": "right_rev",          "offset": 41 },
+        { "type": "single", "name": "right_sync",         "offset": 42 },
+
+        { "type": "rgb",    "name": "underglow_left",     "offsets": { "r": 43, "g": 44, "b": 45 } },
+        { "type": "rgb",    "name": "underglow_right",    "offsets": { "r": 46, "g": 47, "b": 48 } }
+      ]
+    }
+  ],
+
+  "screens": [
+    {
+      "name": "left_fx",
+      "interface": "screen",
+      "width": 128,
+      "height": 64,
+      "pixel_format": "mono",
+      "full_blit": {
+        "header": "0xe0",
+        "footer": ""
+      }
+    },
+    {
+      "name": "left_loop",
+      "interface": "screen",
+      "width": 128,
+      "height": 64,
+      "pixel_format": "mono",
+      "full_blit": {
+        "header": "0xe1",
+        "footer": ""
+      }
+    },
+    {
+      "name": "center_mode",
+      "interface": "screen",
+      "width": 128,
+      "height": 64,
+      "pixel_format": "mono",
+      "full_blit": {
+        "header": "0xe2",
+        "footer": ""
+      }
+    },
+    {
+      "name": "right_loop",
+      "interface": "screen",
+      "width": 128,
+      "height": 64,
+      "pixel_format": "mono",
+      "full_blit": {
+        "header": "0xe3",
+        "footer": ""
+      }
+    },
+    {
+      "name": "right_fx",
+      "interface": "screen",
+      "width": 128,
+      "height": 64,
+      "pixel_format": "mono",
+      "full_blit": {
+        "header": "0xe4",
+        "footer": ""
+      }
+    }
+  ],
+
+  "quirks": {
+    "detach_kernel_driver": true
+  }
+}

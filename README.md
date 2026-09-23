@@ -122,6 +122,7 @@ encdr/
 ├── examples/               Collection of examples organized by controller
 │   ├── kontrol_d2/         D2 examples (e.g. d2_screen_test)
 │   ├── kontrol_s8/         S8 examples (e.g. s8_monitor, s8_screen_test)
+│   ├── kontrol_x1_mk3/     X1 Mk3 examples (e.g. x1_mk3_test)
 │   ├── maschine_mk3/       Mk3 examples (e.g. mk3_screen_test, touchstrip_monitor)
 │   ├── mixer/              Mixer and LED testing examples
 │   └── utils/              General utilities (e.g. probe, monitor)
@@ -136,11 +137,12 @@ encdr/
 └── docs/                   Detailed documentation
     ├── usage.md            How to use the crate
     └── hardware/
-        ├── ni_kontrol_d2.md    D2 hardware reference
+        ├── ni_kontrol_d2.md            D2 hardware reference
         ├── ni_komplete_kontrol_mk2.md  Komplete Kontrol S-Series Mk2 reference
+        ├── ni_kontrol_s8.md            S8 hardware reference
+        ├── ni_kontrol_x1_mk3.md        Traktor Kontrol X1 MK3 hardware reference
         ├── ni_maschine_mk2.md          Maschine Mk2 hardware reference
-        ├── ni_maschine_mk3.md          Mk3 hardware reference
-        └── ni_kontrol_s8.md            S8 hardware reference
+        └── ni_maschine_mk3.md          Mk3 hardware reference
 ```
 
 ## Supported Hardware
@@ -152,6 +154,7 @@ encdr/
 | NI Maschine Mk3           | `17cc:1600`       | Implemented | 63 buttons, 10 touches, 9 encoders, 1 slider, 16 pads | 16 RGB pads, 62 singles, 1 strip     | 2x 480x272 BGR565 |
 | NI Komplete Kontrol S-Mk2 | `17cc:1610/20/30` | Implemented | 28 buttons, 9 encoders                        | 20 singles, Light Guide (RGB per-key)       | 2x 480x272 BGR565 |
 | NI Kontrol S8             | `17cc:1370`       | Implemented | 114 buttons/encoders, 29 faders/knobs         | 16 RGB pads, 100+ singles, EP0 feature LEDs | 2x 480x272 BGR565 |
+| NI Traktor Kontrol X1 Mk3 | `17cc:2200`       | Implemented | 21 buttons, 4 encoders, 8 knobs               | 14 singles, 8 RGB hotcues, 2 RGB underglow  | 5x 128x64 1-bit OLED |
 
 ## Getting Started with Maschine Mk3
 
@@ -193,8 +196,24 @@ This example will show encoder and button states in real-time on both screens.
 - [NI Maschine Mk3](docs/hardware/ni_maschine_mk3.md) — Mk3 hardware reference
 - [NI Komplete Kontrol Mk2](docs/hardware/ni_komplete_kontrol_mk2.md) — Komplete Kontrol S-Series Mk2 hardware reference
 - [NI Kontrol S8](docs/hardware/ni_kontrol_s8.md) — S8 hardware reference
+- [NI Traktor Kontrol X1 MK3](docs/hardware/ni_kontrol_x1_mk3.md) — X1 MK3 hardware reference
 
 ## Changelog
+
+### v0.3.1
+- **Traktor Kontrol X1 MK3 Support**:
+  - Added hardware descriptor for NI Traktor Kontrol X1 MK3 (`17cc:2200`).
+  - Added support for 5 concurrent 128x64 1-bit monochrome OLED screens (`left_fx`, `left_loop`, `center_mode`, `right_loop`, `right_fx`) via Interrupt OUT Report IDs `0xE0`..`0xE4`.
+  - Mapped 21 buttons, 4 continuous push encoders (`wrap16`), and 8 analog FX potentiometers.
+  - Implemented 49-byte LED feedback protocol in Report `0x80` for button backlights, RGB hotcues, and RGB underglow light guides.
+  - Added interactive demonstration application (`examples/kontrol_x1_mk3/x1_mk3_test.rs`).
+  - Added comprehensive hardware documentation (`docs/hardware/ni_kontrol_x1_mk3.md`).
+- **Monochrome & Shared Interface Screen Engine**:
+  - Fixed packed buffer calculation in `ScreenDesc::byte_size()` for `PixelFormat::Mono` to prevent buffer size mismatch panics.
+  - Added Interrupt OUT transfer support in `run_screens()` for devices with interrupt-driven screen endpoints.
+  - Implemented interface handle cloning in `device_thread.rs` to allow multiple screens and input loops to safely share USB interface handles.
+  - Added static frame change detection in `ScreenManager::submit()` to suppress redundant duplicate full frames on monochrome displays.
+- Bumped workspace crates to `v0.3.1`.
 
 ### v0.3.0
 - **Komplete Kontrol S-Series Mk2 Keyboards**:

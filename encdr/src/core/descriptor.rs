@@ -306,7 +306,10 @@ impl ScreenDesc {
     }
 
     pub fn byte_size(&self) -> usize {
-        self.pixel_count() * self.pixel_format.bytes_per_pixel()
+        match self.pixel_format {
+            PixelFormat::Mono => (self.pixel_count() + 7) / 8,
+            _ => self.pixel_count() * self.pixel_format.bytes_per_pixel(),
+        }
     }
 }
 

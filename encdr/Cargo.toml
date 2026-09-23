@@ -1,6 +1,6 @@
 [package]
 name = "encdr"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 description = "Lightweight Rust crate for proprietary USB HID controller hardware"
 license = "GPLv3"
