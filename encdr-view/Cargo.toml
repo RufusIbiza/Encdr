@@ -7,11 +7,11 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 readme.workspace = true
-keywords = ["webview", "display", "gui", "hardware", "controller"]
+keywords = ["native-instruments", "ni", "webview", "display", "controller"]
 categories = ["hardware-support", "gui"]
 
 [dependencies]
-encdr = { version = "0.3.2", path = "../encdr" }
+encdr = { version = "0.3.3", path = "../encdr" }
 wry = "0.55"
 tao = "0.34"
 raw-window-handle = "0.6"

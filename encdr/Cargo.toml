@@ -2,12 +2,12 @@
 name = "encdr"
 version.workspace = true
 edition.workspace = true
-description = "Lightweight Rust crate for proprietary USB HID controller hardware"
+description = "Native Instruments USB HID hardware and screen communication layer"
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 readme.workspace = true
-keywords = ["hid", "controller", "hardware", "midi", "dj"]
+keywords = ["native-instruments", "ni", "hid", "controller", "hardware"]
 categories = ["hardware-support", "multimedia::audio"]
 
 [dependencies]

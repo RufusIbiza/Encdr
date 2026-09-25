@@ -1,6 +1,10 @@
 # Encdr
 
-A lightweight Rust crate for communicating with proprietary Native Instruments USB HID controller hardware. Provides data-driven device definitions, real-time input parsing, LED/screen output, GPU-accelerated frame management, and an optional WebView-based screen renderer.
+Native Instruments USB HID hardware and screen communication layer.
+
+Provides data-driven device definitions, real-time input parsing, LED/screen output, GPU-accelerated frame management, and an optional WebView-based screen renderer.
+
+`#NativeInstruments` `#NI`
 
 Born from the [openAV-Ctlra](https://github.com/openAVproductions/openAV-Ctlra) C library, reimagined in Rust with data-driven device descriptors, zero-copy I/O, and a GPU-accelerated screen pipeline.
 
