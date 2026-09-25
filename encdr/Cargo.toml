@@ -1,9 +1,14 @@
 [package]
 name = "encdr"
-version = "0.3.2"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "Lightweight Rust crate for proprietary USB HID controller hardware"
-license = "GPLv3"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords = ["hid", "controller", "hardware", "midi", "dj"]
+categories = ["hardware-support", "multimedia::audio"]
 
 [dependencies]
 # USB transport

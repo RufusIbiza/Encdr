@@ -1,12 +1,17 @@
 [package]
 name = "encdr-view"
-version = "0.3.2"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "WebView-based screen renderer for encdr controller screens"
-license = "GPLv3"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords = ["webview", "display", "gui", "hardware", "controller"]
+categories = ["hardware-support", "gui"]
 
 [dependencies]
-encdr = { path = "../encdr" }
+encdr = { version = "0.3.2", path = "../encdr" }
 wry = "0.55"
 tao = "0.34"
 raw-window-handle = "0.6"
