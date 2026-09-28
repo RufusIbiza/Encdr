@@ -42,6 +42,16 @@ impl DescriptorRegistry {
         self.load_json(plus_json)?;
         let studio_json = include_str!("../../descriptors/ni_maschine_studio.json");
         self.load_json(studio_json)?;
+        let s5_json = include_str!("../../descriptors/ni_kontrol_s5.json");
+        self.load_json(s5_json)?;
+        let s2_mk1_json = include_str!("../../descriptors/ni_kontrol_s2_mk1.json");
+        self.load_json(s2_mk1_json)?;
+        let s2_mk2_json = include_str!("../../descriptors/ni_kontrol_s2_mk2.json");
+        self.load_json(s2_mk2_json)?;
+        let s4_mk2_json = include_str!("../../descriptors/ni_kontrol_s4_mk2.json");
+        self.load_json(s4_mk2_json)?;
+        let s4_mk3_json = include_str!("../../descriptors/ni_kontrol_s4_mk3.json");
+        self.load_json(s4_mk3_json)?;
         Ok(())
     }
 
@@ -397,6 +407,128 @@ mod tests {
 
         let play_event = events.iter().find(|e| matches!(e, crate::core::event::Event::Button { name, pressed, .. } if *name == "play" && *pressed));
         assert!(play_event.is_some(), "Expected play pressed event on Maschine Studio");
+    }
+
+    #[test]
+    fn load_kontrol_s5_descriptor() {
+        let mut reg = DescriptorRegistry::new();
+        reg.load_builtins().unwrap();
+
+        let desc = reg.find(0x17cc, 0x1420).expect("Kontrol S5 should be registered").clone();
+        assert_eq!(desc.name, "NI Kontrol S5");
+        assert_eq!(desc.screens.len(), 2);
+        for screen in &desc.screens {
+            assert_eq!(screen.width, 480);
+            assert_eq!(screen.height, 272);
+            assert_eq!(screen.pixel_format, crate::core::descriptor::PixelFormat::Bgr565Be);
+        }
+        assert_eq!(desc.leds.len(), 3);
+
+        let names = reg.intern_descriptor_names(&desc);
+        let mut parser = crate::device::parser::PacketParser::new(crate::core::event::DeviceId(1), &desc, names);
+        let mut events = Vec::new();
+
+        let mut buf = vec![0u8; 30];
+        buf[9] = 0x10; // left_play (byte 9 mask 0x10)
+        parser.parse(&buf, &mut events);
+
+        let play_event = events.iter().find(|e| matches!(e, crate::core::event::Event::Button { name, pressed, .. } if *name == "left_play" && *pressed));
+        assert!(play_event.is_some(), "Expected left_play pressed event on S5");
+    }
+
+    #[test]
+    fn load_kontrol_s2_mk1_descriptor() {
+        let mut reg = DescriptorRegistry::new();
+        reg.load_builtins().unwrap();
+
+        let desc = reg.find(0x17cc, 0x1101).expect("Kontrol S2 MK1 should be registered").clone();
+        assert_eq!(desc.name, "NI Kontrol S2 Mk1");
+        assert_eq!(desc.input_packets.len(), 2);
+        assert_eq!(desc.leds.len(), 1);
+
+        let names = reg.intern_descriptor_names(&desc);
+        let mut parser = crate::device::parser::PacketParser::new(crate::core::event::DeviceId(1), &desc, names);
+        let mut events = Vec::new();
+
+        let mut buf = vec![0u8; 16];
+        buf[13] = 0x10; // left_play (byte 13 mask 0x10)
+        parser.parse(&buf, &mut events);
+
+        let play_event = events.iter().find(|e| matches!(e, crate::core::event::Event::Button { name, pressed, .. } if *name == "left_play" && *pressed));
+        assert!(play_event.is_some(), "Expected left_play pressed event on S2 MK1");
+    }
+
+    #[test]
+    fn load_kontrol_s2_mk2_descriptor() {
+        let mut reg = DescriptorRegistry::new();
+        reg.load_builtins().unwrap();
+
+        let desc = reg.find(0x17cc, 0x1320).expect("Kontrol S2 MK2 should be registered").clone();
+        assert_eq!(desc.name, "NI Kontrol S2 Mk2");
+        assert_eq!(desc.input_packets.len(), 2);
+        assert_eq!(desc.leds.len(), 2);
+
+        let names = reg.intern_descriptor_names(&desc);
+        let mut parser = crate::device::parser::PacketParser::new(crate::core::event::DeviceId(1), &desc, names);
+        let mut events = Vec::new();
+
+        let mut buf = vec![0u8; 17];
+        buf[11] = 0x01; // left_play (byte 11 mask 0x01)
+        parser.parse(&buf, &mut events);
+
+        let play_event = events.iter().find(|e| matches!(e, crate::core::event::Event::Button { name, pressed, .. } if *name == "left_play" && *pressed));
+        assert!(play_event.is_some(), "Expected left_play pressed event on S2 MK2");
+    }
+
+    #[test]
+    fn load_kontrol_s4_mk2_descriptor() {
+        let mut reg = DescriptorRegistry::new();
+        reg.load_builtins().unwrap();
+
+        let desc = reg.find(0x17cc, 0x1310).expect("Kontrol S4 MK2 should be registered").clone();
+        assert_eq!(desc.name, "NI Kontrol S4 Mk2");
+        assert_eq!(desc.input_packets.len(), 2);
+        assert_eq!(desc.leds.len(), 2);
+
+        let names = reg.intern_descriptor_names(&desc);
+        let mut parser = crate::device::parser::PacketParser::new(crate::core::event::DeviceId(1), &desc, names);
+        let mut events = Vec::new();
+
+        let mut buf = vec![0u8; 20];
+        buf[13] = 0x01; // left_play (byte 13 mask 0x01)
+        parser.parse(&buf, &mut events);
+
+        let play_event = events.iter().find(|e| matches!(e, crate::core::event::Event::Button { name, pressed, .. } if *name == "left_play" && *pressed));
+        assert!(play_event.is_some(), "Expected left_play pressed event on S4 MK2");
+    }
+
+    #[test]
+    fn load_kontrol_s4_mk3_descriptor() {
+        let mut reg = DescriptorRegistry::new();
+        reg.load_builtins().unwrap();
+
+        let desc = reg.find(0x17cc, 0x1720).expect("Kontrol S4 MK3 should be registered").clone();
+        assert_eq!(desc.name, "NI Kontrol S4 Mk3");
+        assert_eq!(desc.screens.len(), 2);
+        for screen in &desc.screens {
+            assert_eq!(screen.width, 320);
+            assert_eq!(screen.height, 240);
+            assert_eq!(screen.pixel_format, crate::core::descriptor::PixelFormat::Bgr565Be);
+        }
+        assert_eq!(desc.leds.len(), 4);
+        assert!(desc.leds.iter().any(|l| l.id == "motor_command" && l.prefix_byte.0 == 0x31));
+        assert!(desc.leds.iter().any(|l| l.id == "wheel_leds" && l.prefix_byte.0 == 0x32));
+
+        let names = reg.intern_descriptor_names(&desc);
+        let mut parser = crate::device::parser::PacketParser::new(crate::core::event::DeviceId(1), &desc, names);
+        let mut events = Vec::new();
+
+        let mut buf = vec![0u8; 25];
+        buf[4] = 0x01; // left_play (byte 4 mask 0x01)
+        parser.parse(&buf, &mut events);
+
+        let play_event = events.iter().find(|e| matches!(e, crate::core::event::Event::Button { name, pressed, .. } if *name == "left_play" && *pressed));
+        assert!(play_event.is_some(), "Expected left_play pressed event on S4 MK3");
     }
 }
 

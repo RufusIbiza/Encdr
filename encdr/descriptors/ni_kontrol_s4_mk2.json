@@ -1,0 +1,213 @@
+{
+  "name": "NI Kontrol S4 Mk2",
+  "manufacturer": "Native Instruments",
+  "vendor_id": "0x17cc",
+  "product_id": "0x1310",
+
+  "interfaces": [
+    {
+      "id": "control",
+      "number": 3,
+      "endpoints": {
+        "in":  { "address": "0x83", "type": "interrupt" },
+        "out": { "address": "0x02", "type": "interrupt" }
+      }
+    }
+  ],
+
+  "input_packets": [
+    {
+      "id": "buttons",
+      "interface": "control",
+      "size": 20,
+      "items": [
+        { "type": "encoder_fine", "name": "left_jog_wheel",  "bytes": [1, 2], "encoding": "wrap16_wide", "scale": 1000.0 },
+        { "type": "encoder_fine", "name": "right_jog_wheel", "bytes": [5, 6], "encoding": "wrap16_wide", "scale": 1000.0 },
+
+        { "type": "button", "name": "right_load_track",     "byte": 10, "mask": "0x10" },
+        { "type": "button", "name": "right_deck_switch",    "byte": 10, "mask": "0x20" },
+        { "type": "button", "name": "mixer_cue_b",          "byte": 10, "mask": "0x40" },
+        { "type": "button", "name": "mixer_cue_d",          "byte": 10, "mask": "0x80" },
+        { "type": "button", "name": "mixer_quantize",       "byte": 10, "mask": "0x08" },
+        { "type": "button", "name": "mixer_snap",           "byte": 10, "mask": "0x02" },
+
+        { "type": "button", "name": "right_remix_1",        "byte": 11, "mask": "0x80" },
+        { "type": "button", "name": "right_remix_2",        "byte": 11, "mask": "0x40" },
+        { "type": "button", "name": "right_remix_3",        "byte": 11, "mask": "0x20" },
+        { "type": "button", "name": "right_remix_4",        "byte": 11, "mask": "0x10" },
+        { "type": "button", "name": "right_loop_out",       "byte": 11, "mask": "0x08" },
+        { "type": "button", "name": "right_loop_in",        "byte": 11, "mask": "0x04" },
+        { "type": "button", "name": "right_flux",           "byte": 11, "mask": "0x02" },
+        { "type": "button", "name": "right_reset_key",      "byte": 11, "mask": "0x01" },
+
+        { "type": "button", "name": "right_hotcue_1",       "byte": 12, "mask": "0x80" },
+        { "type": "button", "name": "right_hotcue_2",       "byte": 12, "mask": "0x40" },
+        { "type": "button", "name": "right_hotcue_3",       "byte": 12, "mask": "0x20" },
+        { "type": "button", "name": "right_hotcue_4",       "byte": 12, "mask": "0x10" },
+        { "type": "button", "name": "right_shift",          "byte": 12, "mask": "0x08" },
+        { "type": "button", "name": "right_sync",           "byte": 12, "mask": "0x04" },
+        { "type": "button", "name": "right_cue",            "byte": 12, "mask": "0x02" },
+        { "type": "button", "name": "right_play",           "byte": 12, "mask": "0x01" },
+
+        { "type": "button", "name": "left_hotcue_1",        "byte": 13, "mask": "0x80" },
+        { "type": "button", "name": "left_hotcue_2",        "byte": 13, "mask": "0x40" },
+        { "type": "button", "name": "left_hotcue_3",        "byte": 13, "mask": "0x20" },
+        { "type": "button", "name": "left_hotcue_4",        "byte": 13, "mask": "0x10" },
+        { "type": "button", "name": "left_shift",           "byte": 13, "mask": "0x08" },
+        { "type": "button", "name": "left_sync",            "byte": 13, "mask": "0x04" },
+        { "type": "button", "name": "left_cue",             "byte": 13, "mask": "0x02" },
+        { "type": "button", "name": "left_play",            "byte": 13, "mask": "0x01" },
+
+        { "type": "button", "name": "left_remix_1",         "byte": 14, "mask": "0x80" },
+        { "type": "button", "name": "left_remix_2",         "byte": 14, "mask": "0x40" },
+        { "type": "button", "name": "left_remix_3",         "byte": 14, "mask": "0x20" },
+        { "type": "button", "name": "left_remix_4",         "byte": 14, "mask": "0x10" },
+        { "type": "button", "name": "left_loop_out",        "byte": 14, "mask": "0x08" },
+        { "type": "button", "name": "left_loop_in",         "byte": 14, "mask": "0x04" },
+        { "type": "button", "name": "left_flux",            "byte": 14, "mask": "0x02" },
+        { "type": "button", "name": "left_reset_key",       "byte": 14, "mask": "0x01" },
+
+        { "type": "button", "name": "left_load_track",      "byte": 15, "mask": "0x10" },
+        { "type": "button", "name": "left_deck_switch",     "byte": 15, "mask": "0x20" },
+        { "type": "button", "name": "mixer_cue_a",          "byte": 15, "mask": "0x40" },
+        { "type": "button", "name": "mixer_cue_c",          "byte": 15, "mask": "0x80" },
+        { "type": "button", "name": "preview_deck",         "byte": 15, "mask": "0x01" },
+        { "type": "button", "name": "record",               "byte": 15, "mask": "0x04" },
+
+        { "type": "button", "name": "fx2_on",               "byte": 16, "mask": "0x08" },
+        { "type": "button", "name": "fx2_1",                "byte": 16, "mask": "0x04" },
+        { "type": "button", "name": "fx2_2",                "byte": 16, "mask": "0x02" },
+        { "type": "button", "name": "fx2_3",                "byte": 16, "mask": "0x01" },
+        { "type": "button", "name": "mixer_b_fx1",          "byte": 16, "mask": "0x80" },
+        { "type": "button", "name": "mixer_b_fx2",          "byte": 16, "mask": "0x40" },
+        { "type": "button", "name": "mixer_d_fx1",          "byte": 16, "mask": "0x20" },
+        { "type": "button", "name": "mixer_d_fx2",          "byte": 16, "mask": "0x10" },
+
+        { "type": "touch",  "name": "left_jog_touch",        "byte": 17, "mask": "0x01" },
+        { "type": "touch",  "name": "right_jog_touch",       "byte": 17, "mask": "0x02" },
+        { "type": "button", "name": "show_parameters_fx2",  "byte": 17, "mask": "0x04" },
+        { "type": "button", "name": "show_parameters_fx1",  "byte": 17, "mask": "0x08" },
+        { "type": "button", "name": "gain_press_c",         "byte": 17, "mask": "0x10" },
+        { "type": "button", "name": "gain_press_a",         "byte": 17, "mask": "0x20" },
+        { "type": "button", "name": "gain_press_b",         "byte": 17, "mask": "0x40" },
+        { "type": "button", "name": "gain_press_d",         "byte": 17, "mask": "0x80" },
+
+        { "type": "button", "name": "fx1_on",               "byte": 18, "mask": "0x80" },
+        { "type": "button", "name": "fx1_1",                "byte": 18, "mask": "0x40" },
+        { "type": "button", "name": "fx1_2",                "byte": 18, "mask": "0x20" },
+        { "type": "button", "name": "fx1_3",                "byte": 18, "mask": "0x10" },
+        { "type": "button", "name": "mixer_c_fx1",          "byte": 18, "mask": "0x08" },
+        { "type": "button", "name": "mixer_c_fx2",          "byte": 18, "mask": "0x04" },
+        { "type": "button", "name": "mixer_a_fx1",          "byte": 18, "mask": "0x02" },
+        { "type": "button", "name": "mixer_a_fx2",          "byte": 18, "mask": "0x01" },
+
+        { "type": "button", "name": "left_loop_activate",   "byte": 19, "mask": "0x01" },
+        { "type": "button", "name": "left_loop_set",        "byte": 19, "mask": "0x02" },
+        { "type": "button", "name": "browse_push",          "byte": 19, "mask": "0x04" },
+        { "type": "button", "name": "right_loop_activate",  "byte": 19, "mask": "0x08" },
+        { "type": "button", "name": "right_loop_set",       "byte": 19, "mask": "0x10" }
+      ]
+    },
+    {
+      "id": "sliders",
+      "interface": "control",
+      "size": 80,
+      "items": [
+        { "type": "encoder", "name": "left_loopmove",   "byte": 1, "bits": 4, "bit_offset": 0, "encoding": "wrap16" },
+        { "type": "encoder", "name": "left_loopsize",   "byte": 1, "bits": 4, "bit_offset": 4, "encoding": "wrap16" },
+        { "type": "encoder", "name": "right_loopmove",  "byte": 2, "bits": 4, "bit_offset": 4, "encoding": "wrap16" },
+        { "type": "encoder", "name": "browse",          "byte": 2, "bits": 4, "bit_offset": 0, "encoding": "wrap16" },
+        { "type": "encoder", "name": "right_loopsize",  "byte": 3, "bits": 4, "bit_offset": 0, "encoding": "wrap16" },
+        { "type": "encoder", "name": "pregain_a",       "byte": 3, "bits": 4, "bit_offset": 4, "encoding": "wrap16" },
+        { "type": "encoder", "name": "pregain_b",       "byte": 4, "bits": 4, "bit_offset": 0, "encoding": "wrap16" },
+        { "type": "encoder", "name": "pregain_c",       "byte": 4, "bits": 4, "bit_offset": 4, "encoding": "wrap16" },
+        { "type": "encoder", "name": "pregain_d",       "byte": 5, "bits": 4, "bit_offset": 0, "encoding": "wrap16" },
+
+        { "type": "slider", "name": "crossfader",       "bytes": [7,  8],  "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "pitch_left",       "bytes": [9,  10], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "pitch_right",      "bytes": [11, 12], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "head_mix",         "bytes": [13, 14], "bits": 12, "normalize": true, "max_value": 4096 },
+
+        { "type": "slider", "name": "eq_low_a",         "bytes": [23, 24], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "eq_mid_a",         "bytes": [25, 26], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "eq_hi_a",          "bytes": [27, 28], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "filter_a",         "bytes": [29, 30], "bits": 12, "normalize": true, "max_value": 4096 },
+
+        { "type": "slider", "name": "eq_low_b",         "bytes": [31, 32], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "eq_mid_b",         "bytes": [33, 34], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "eq_hi_b",          "bytes": [35, 36], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "filter_b",         "bytes": [37, 38], "bits": 12, "normalize": true, "max_value": 4096 },
+
+        { "type": "slider", "name": "eq_low_c",         "bytes": [39, 40], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "eq_mid_c",         "bytes": [41, 42], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "eq_hi_c",          "bytes": [43, 44], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "filter_c",         "bytes": [45, 46], "bits": 12, "normalize": true, "max_value": 4096 },
+
+        { "type": "slider", "name": "eq_low_d",         "bytes": [47, 48], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "eq_mid_d",         "bytes": [49, 50], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "eq_hi_d",          "bytes": [51, 52], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "filter_d",         "bytes": [53, 54], "bits": 12, "normalize": true, "max_value": 4096 },
+
+        { "type": "slider", "name": "fader_a",          "bytes": [55, 56], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fader_b",          "bytes": [57, 58], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fader_c",          "bytes": [59, 60], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fader_d",          "bytes": [61, 62], "bits": 12, "normalize": true, "max_value": 4096 },
+
+        { "type": "slider", "name": "fx1_dry_wet",      "bytes": [63, 64], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fx1_1",            "bytes": [65, 66], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fx1_2",            "bytes": [67, 68], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fx1_3",            "bytes": [69, 70], "bits": 12, "normalize": true, "max_value": 4096 },
+
+        { "type": "slider", "name": "fx2_dry_wet",      "bytes": [71, 72], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fx2_1",            "bytes": [73, 74], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fx2_2",            "bytes": [75, 76], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fx2_3",            "bytes": [77, 78], "bits": 12, "normalize": true, "max_value": 4096 }
+      ]
+    }
+  ],
+
+  "leds": [
+    {
+      "id": "deck_leds",
+      "interface": "control",
+      "buffer_size": 64,
+      "prefix_byte": "0x80",
+      "items": [
+        { "type": "rgb",    "name": "left_hotcue_1",   "offsets": {"r": 0,  "g": 1,  "b": 2} },
+        { "type": "rgb",    "name": "left_hotcue_2",   "offsets": {"r": 3,  "g": 4,  "b": 5} },
+        { "type": "rgb",    "name": "left_hotcue_3",   "offsets": {"r": 6,  "g": 7,  "b": 8} },
+        { "type": "rgb",    "name": "left_hotcue_4",   "offsets": {"r": 9,  "g": 10, "b": 11} },
+        { "type": "rgb",    "name": "right_hotcue_1",  "offsets": {"r": 12, "g": 13, "b": 14} },
+        { "type": "rgb",    "name": "right_hotcue_2",  "offsets": {"r": 15, "g": 16, "b": 17} },
+        { "type": "rgb",    "name": "right_hotcue_3",  "offsets": {"r": 18, "g": 19, "b": 20} },
+        { "type": "rgb",    "name": "right_hotcue_4",  "offsets": {"r": 21, "g": 22, "b": 23} },
+        { "type": "single", "name": "left_play",       "offset": 24 },
+        { "type": "single", "name": "left_cue",        "offset": 25 },
+        { "type": "single", "name": "left_sync",       "offset": 26 },
+        { "type": "single", "name": "left_shift",      "offset": 27 },
+        { "type": "single", "name": "right_play",      "offset": 28 },
+        { "type": "single", "name": "right_cue",       "offset": 29 },
+        { "type": "single", "name": "right_sync",      "offset": 30 },
+        { "type": "single", "name": "right_shift",     "offset": 31 }
+      ]
+    },
+    {
+      "id": "mixer_leds",
+      "interface": "control",
+      "buffer_size": 64,
+      "prefix_byte": "0x81",
+      "items": [
+        { "type": "single", "name": "mixer_cue_a",     "offset": 0 },
+        { "type": "single", "name": "mixer_cue_b",     "offset": 1 },
+        { "type": "single", "name": "mixer_cue_c",     "offset": 2 },
+        { "type": "single", "name": "mixer_cue_d",     "offset": 3 },
+        { "type": "single", "name": "mixer_quantize",  "offset": 4 },
+        { "type": "single", "name": "mixer_snap",      "offset": 5 }
+      ]
+    }
+  ],
+
+  "quirks": {
+    "detach_kernel_driver": true
+  }
+}

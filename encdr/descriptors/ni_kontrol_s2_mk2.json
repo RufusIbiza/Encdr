@@ -1,0 +1,178 @@
+{
+  "name": "NI Kontrol S2 Mk2",
+  "manufacturer": "Native Instruments",
+  "vendor_id": "0x17cc",
+  "product_id": "0x1320",
+
+  "interfaces": [
+    {
+      "id": "control",
+      "number": 3,
+      "endpoints": {
+        "in":  { "address": "0x83", "type": "interrupt" },
+        "out": { "address": "0x02", "type": "interrupt" }
+      }
+    }
+  ],
+
+  "input_packets": [
+    {
+      "id": "buttons",
+      "interface": "control",
+      "size": 17,
+      "items": [
+        { "type": "encoder", "name": "left_jog_wheel",  "byte": 1, "bits": 8, "encoding": "wrap16" },
+        { "type": "encoder", "name": "right_jog_wheel", "byte": 5, "bits": 8, "encoding": "wrap16" },
+
+        { "type": "button", "name": "right_play",     "byte": 9, "mask": "0x01" },
+        { "type": "button", "name": "right_cue",      "byte": 9, "mask": "0x02" },
+        { "type": "button", "name": "right_sync",     "byte": 9, "mask": "0x04" },
+        { "type": "button", "name": "right_shift",    "byte": 9, "mask": "0x08" },
+        { "type": "button", "name": "right_cue_4",    "byte": 9, "mask": "0x10" },
+        { "type": "button", "name": "right_cue_3",    "byte": 9, "mask": "0x20" },
+        { "type": "button", "name": "right_cue_2",    "byte": 9, "mask": "0x40" },
+        { "type": "button", "name": "right_cue_1",    "byte": 9, "mask": "0x80" },
+
+        { "type": "button", "name": "left_jog_press",       "byte": 10, "mask": "0x01" },
+        { "type": "button", "name": "right_jog_press",      "byte": 10, "mask": "0x02" },
+        { "type": "button", "name": "main_booth_switch",    "byte": 10, "mask": "0x04" },
+        { "type": "button", "name": "mic_engage",           "byte": 10, "mask": "0x08" },
+        { "type": "button", "name": "mixer_cue_b",          "byte": 10, "mask": "0x10" },
+        { "type": "button", "name": "right_flux",           "byte": 10, "mask": "0x20" },
+        { "type": "button", "name": "right_loop_in",        "byte": 10, "mask": "0x40" },
+        { "type": "button", "name": "right_loop_out",       "byte": 10, "mask": "0x80" },
+
+        { "type": "button", "name": "left_play",      "byte": 11, "mask": "0x01" },
+        { "type": "button", "name": "left_cue",       "byte": 11, "mask": "0x02" },
+        { "type": "button", "name": "left_sync",      "byte": 11, "mask": "0x04" },
+        { "type": "button", "name": "left_shift",     "byte": 11, "mask": "0x08" },
+        { "type": "button", "name": "left_cue_4",     "byte": 11, "mask": "0x10" },
+        { "type": "button", "name": "left_cue_3",     "byte": 11, "mask": "0x20" },
+        { "type": "button", "name": "left_cue_2",     "byte": 11, "mask": "0x40" },
+        { "type": "button", "name": "left_cue_1",     "byte": 11, "mask": "0x80" },
+
+        { "type": "button", "name": "remix_on_b",           "byte": 12, "mask": "0x01" },
+        { "type": "button", "name": "remix_on_a",           "byte": 12, "mask": "0x02" },
+        { "type": "button", "name": "browse_load_b",        "byte": 12, "mask": "0x04" },
+        { "type": "button", "name": "browse_load_a",        "byte": 12, "mask": "0x08" },
+        { "type": "button", "name": "mixer_cue_a",          "byte": 12, "mask": "0x10" },
+        { "type": "button", "name": "left_flux",            "byte": 12, "mask": "0x20" },
+        { "type": "button", "name": "left_loop_in",         "byte": 12, "mask": "0x40" },
+        { "type": "button", "name": "left_loop_out",        "byte": 12, "mask": "0x80" },
+
+        { "type": "button", "name": "fx2_dry_wet",          "byte": 13, "mask": "0x04" },
+        { "type": "button", "name": "fx2_3",                "byte": 13, "mask": "0x08" },
+        { "type": "button", "name": "fx2_2",                "byte": 13, "mask": "0x10" },
+        { "type": "button", "name": "fx2_1",                "byte": 13, "mask": "0x20" },
+        { "type": "button", "name": "left_gain_press",      "byte": 13, "mask": "0x40" },
+        { "type": "button", "name": "right_gain_press",     "byte": 13, "mask": "0x80" },
+
+        { "type": "button", "name": "mixer_b_fx2",          "byte": 14, "mask": "0x01" },
+        { "type": "button", "name": "mixer_b_fx1",          "byte": 14, "mask": "0x02" },
+        { "type": "button", "name": "mixer_a_fx2",          "byte": 14, "mask": "0x04" },
+        { "type": "button", "name": "mixer_a_fx1",          "byte": 14, "mask": "0x08" },
+        { "type": "button", "name": "fx1_dry_wet",          "byte": 14, "mask": "0x10" },
+        { "type": "button", "name": "fx1_3",                "byte": 14, "mask": "0x20" },
+        { "type": "button", "name": "fx1_2",                "byte": 14, "mask": "0x40" },
+        { "type": "button", "name": "fx1_1",                "byte": 14, "mask": "0x80" },
+
+        { "type": "button", "name": "left_loop_enc_press",  "byte": 15, "mask": "0x01" },
+        { "type": "button", "name": "left_move_enc_press",  "byte": 15, "mask": "0x02" },
+        { "type": "button", "name": "browse_enc_press",     "byte": 15, "mask": "0x04" },
+        { "type": "button", "name": "right_loop_enc_press", "byte": 15, "mask": "0x08" },
+        { "type": "button", "name": "right_move_enc_press", "byte": 15, "mask": "0x10" }
+      ]
+    },
+    {
+      "id": "sliders",
+      "interface": "control",
+      "size": 51,
+      "items": [
+        { "type": "encoder", "name": "browse_encoder",     "byte": 3, "bits": 4, "bit_offset": 0, "encoding": "wrap16" },
+        { "type": "encoder", "name": "left_loop_encoder",   "byte": 2, "bits": 4, "bit_offset": 0, "encoding": "wrap16" },
+        { "type": "encoder", "name": "left_move_encoder",   "byte": 2, "bits": 4, "bit_offset": 4, "encoding": "wrap16" },
+        { "type": "encoder", "name": "right_loop_encoder",  "byte": 3, "bits": 4, "bit_offset": 4, "encoding": "wrap16" },
+        { "type": "encoder", "name": "right_move_encoder",  "byte": 4, "bits": 4, "bit_offset": 0, "encoding": "wrap16" },
+        { "type": "encoder", "name": "left_gain_encoder",   "byte": 4, "bits": 4, "bit_offset": 4, "encoding": "wrap16" },
+        { "type": "encoder", "name": "right_gain_encoder",  "byte": 5, "bits": 4, "bit_offset": 0, "encoding": "wrap16" },
+
+        { "type": "slider", "name": "crossfader",       "bytes": [5,  6],  "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "pitch_left",       "bytes": [7,  8],  "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "pitch_right",      "bytes": [9,  10], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "cue_mix",          "bytes": [11, 12], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "remix",            "bytes": [13, 14], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "main_level",       "bytes": [15, 16], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "level_back",       "bytes": [17, 18], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fader_left",       "bytes": [19, 20], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fader_right",      "bytes": [21, 22], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fx_left_dry_wet",  "bytes": [23, 24], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fx_left_1",        "bytes": [25, 26], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fx_left_2",        "bytes": [27, 28], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fx_left_3",        "bytes": [29, 30], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fx_right_dry_wet", "bytes": [31, 32], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fx_right_1",       "bytes": [33, 34], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fx_right_2",       "bytes": [35, 36], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fx_right_3",       "bytes": [37, 38], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "eq_left_hi",       "bytes": [39, 40], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "eq_left_mid",      "bytes": [41, 42], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "eq_left_low",      "bytes": [43, 44], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "eq_right_hi",      "bytes": [45, 46], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "eq_right_mid",     "bytes": [47, 48], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "eq_right_low",     "bytes": [49, 50], "bits": 12, "normalize": true, "max_value": 4096 }
+      ]
+    }
+  ],
+
+  "leds": [
+    {
+      "id": "main_leds",
+      "interface": "control",
+      "buffer_size": 64,
+      "prefix_byte": "0x80",
+      "items": [
+        { "type": "single", "name": "fx1_dry_wet", "offset": 0 },
+        { "type": "single", "name": "fx1_1",       "offset": 1 },
+        { "type": "single", "name": "fx1_2",       "offset": 2 },
+        { "type": "single", "name": "fx1_3",       "offset": 3 },
+        { "type": "single", "name": "fx2_dry_wet", "offset": 4 },
+        { "type": "single", "name": "fx2_1",       "offset": 5 },
+        { "type": "single", "name": "fx2_2",       "offset": 6 },
+        { "type": "single", "name": "fx2_3",       "offset": 7 },
+        { "type": "single", "name": "mixer_a_fx1", "offset": 8 },
+        { "type": "single", "name": "mixer_a_fx2", "offset": 9 },
+        { "type": "single", "name": "mixer_b_fx1", "offset": 10 },
+        { "type": "single", "name": "mixer_b_fx2", "offset": 11 },
+        { "type": "single", "name": "mixer_cue_a", "offset": 12 },
+        { "type": "single", "name": "mixer_cue_b", "offset": 13 }
+      ]
+    },
+    {
+      "id": "deck_leds",
+      "interface": "control",
+      "buffer_size": 32,
+      "prefix_byte": "0x81",
+      "items": [
+        { "type": "rgb",    "name": "left_cue_1",   "offsets": {"r": 0,  "g": 1,  "b": 2} },
+        { "type": "rgb",    "name": "left_cue_2",   "offsets": {"r": 3,  "g": 4,  "b": 5} },
+        { "type": "rgb",    "name": "left_cue_3",   "offsets": {"r": 6,  "g": 7,  "b": 8} },
+        { "type": "rgb",    "name": "left_cue_4",   "offsets": {"r": 9,  "g": 10, "b": 11} },
+        { "type": "rgb",    "name": "right_cue_1",  "offsets": {"r": 12, "g": 13, "b": 14} },
+        { "type": "rgb",    "name": "right_cue_2",  "offsets": {"r": 15, "g": 16, "b": 17} },
+        { "type": "rgb",    "name": "right_cue_3",  "offsets": {"r": 18, "g": 19, "b": 20} },
+        { "type": "rgb",    "name": "right_cue_4",  "offsets": {"r": 21, "g": 22, "b": 23} },
+        { "type": "single", "name": "left_play",    "offset": 24 },
+        { "type": "single", "name": "left_cue",     "offset": 25 },
+        { "type": "single", "name": "left_sync",    "offset": 26 },
+        { "type": "single", "name": "left_shift",   "offset": 27 },
+        { "type": "single", "name": "right_play",   "offset": 28 },
+        { "type": "single", "name": "right_cue",    "offset": 29 },
+        { "type": "single", "name": "right_sync",   "offset": 30 },
+        { "type": "single", "name": "right_shift",  "offset": 31 }
+      ]
+    }
+  ],
+
+  "quirks": {
+    "detach_kernel_driver": true
+  }
+}

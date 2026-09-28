@@ -682,7 +682,8 @@ impl PacketParser {
                     if desc.byte >= buf.len() {
                         continue;
                     }
-                    let raw = (buf[desc.byte] >> desc.bit_offset) & ((1 << desc.bits) - 1);
+                    let mask = if desc.bits >= 8 { 0xFF } else { (1u8 << desc.bits) - 1 };
+                    let raw = (buf[desc.byte] >> desc.bit_offset) & mask;
                     if let Some(enc_state) = state.encoder_states.get_mut(&desc.name) {
                         match desc.encoding {
                             EncoderEncoding::Wrap16 => {
