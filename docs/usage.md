@@ -1,5 +1,8 @@
 # Encdr Usage Guide
 
+> Looking for a step-by-step tutorial? See the [Quick Start Tutorial](quickstart.md) for a full Maschine Mk3 walkthrough.  
+> Looking for method signatures and type definitions? See the [API Reference](api_reference.md).
+
 ## Installation
 
 Add encdr to your `Cargo.toml`:

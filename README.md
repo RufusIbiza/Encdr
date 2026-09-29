@@ -186,20 +186,6 @@ encdr/
 | NI Komplete Kontrol S-Mk2 | `17cc:1610/20/30` | Implemented | 28 buttons, 9 encoders                        | 20 singles, Light Guide (RGB per-key)       | 2x 480x272 BGR565 |
 | NI Traktor Kontrol X1 Mk3 | `17cc:2200`       | Implemented | 21 buttons, 4 encoders, 8 knobs               | 14 singles, 8 RGB hotcues, 2 RGB underglow  | 5x 128x64 1-bit OLED |
 
-## Getting Started with Maschine Mk3
-
-The Maschine Mk3 uses two separate USB interfaces (`control` on interface 4, and `screen` on interface 5) which are both claimed from the same USB device using a `dual_handle` quirk.
-
-### Linux Prerequisites
-On Linux, the HID kernel driver must be detached before claiming the interface. `encdr` attempts to handle this automatically, but you will need appropriate permissions (e.g. via `udev` rules) to access the USB device without `sudo`.
-
-### Running the Example
-To test the controller with interactive dual-screen visuals, run:
-```bash
-cargo run -p encdr-examples --bin mk3_screen_test
-```
-This example will show encoder and button states in real-time on both screens.
-
 ## Dependencies
 
 | Purpose                 | Crate                      | Why                                      |
@@ -220,6 +206,8 @@ This example will show encoder and button states in real-time on both screens.
 
 ## Documentation
 
+- [Quick Start Tutorial](docs/quickstart.md) — step-by-step tutorial with Maschine Mk3 dual-screen walkthrough
+- [API Reference](docs/api_reference.md) — complete programmer reference for all types, functions, and methods
 - [Usage Guide](docs/usage.md) — comprehensive usage guide
 - [NI Kontrol D2](docs/hardware/ni_kontrol_d2.md) — D2 hardware reference
 - [NI Kontrol S2 Mk1](docs/hardware/ni_kontrol_s2_mk1.md) — Traktor Kontrol S2 MK1 hardware reference
@@ -236,6 +224,14 @@ This example will show encoder and button states in real-time on both screens.
 - [NI Traktor Kontrol X1 MK3](docs/hardware/ni_kontrol_x1_mk3.md) — X1 MK3 hardware reference
 
 ## Changelog
+### v0.4.0
+- **Quick Start Tutorial**:
+  - Added a dedicated, comprehensive tutorial in [`docs/quickstart.md`](docs/quickstart.md).
+  - Expanded on the Native Instruments Maschine Mk3 dual-screen walkthrough, event handling, RGB pad control, and platform prerequisites.
+- **Programmer Reference / API Documentation**:
+  - Added complete reference documentation in [`docs/api_reference.md`](docs/api_reference.md) detailing every public struct, enum, trait, and function across `encdr` and `encdr-view`.
+- **Documentation Restructuring**:
+  - Streamlined `README.md` and added cross-navigation links across guides.
 
 ### v0.3.4
 - **Traktor Kontrol S5 Support**:
