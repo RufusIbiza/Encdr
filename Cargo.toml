@@ -3,7 +3,7 @@ members = ["encdr", "encdr-view", "examples"]
 resolver = "2"
 
 [workspace.package]
-version = "0.4.1"
+version = "0.4.5"
 edition = "2024"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/RufusIbiza/Encdr"

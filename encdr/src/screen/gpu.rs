@@ -16,10 +16,11 @@ impl GpuContext {
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 ..Default::default()
             })
-            .await?;
+            .await
+            .ok()?;
 
         let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor::default(), None)
+            .request_device(&wgpu::DeviceDescriptor::default())
             .await
             .ok()?;
 

@@ -224,6 +224,20 @@ encdr/
 - [NI Traktor Kontrol X1 MK3](docs/hardware/ni_kontrol_x1_mk3.md) — X1 MK3 hardware reference
 
 ## Changelog
+### v0.4.5
+- **wgpu v30 Compute Pipeline Upgrade**:
+  - Upgraded `wgpu` from `23` to `30.0.1` in `encdr`.
+  - Adapted GPU compute pipeline layout descriptors (`immediate_size: 0`, `Option<&BindGroupLayout>`), device polling (`PollType::wait_indefinitely()`), and mapped buffer range error handling.
+  - Added unit tests verifying GPU compute RGBA $\rightarrow$ BGR565-BE conversion bit-exact matching against the CPU reference.
+- **WebView Ecosystem Upgrades**:
+  - Upgraded `wry` to `0.57` and `tao` to `0.37` in `encdr-view`.
+- **Screen Pipeline Diffing & Initial Frame Fix**:
+  - Fixed a critical bug in [`ScreenManager::submit`](encdr/src/screen/mod.rs) where `self.prev_frame` was copied before evaluating `DirtyRect::Full`, causing full screen updates and initial WebView renders to be dropped as duplicates on non-keyframe ticks.
+  - Ensured frame 1 is always forced as a full keyframe blit.
+  - Added [`test_screen_manager_lifecycle`](encdr/src/screen/mod.rs) verifying forced initial frames, identical frame suppression, and full/partial dirty blits.
+- **Maschine MK3 Hardware Validation**:
+  - Validated physical hardware dual-display rendering and real-time event interaction with Native Instruments Maschine MK3.
+
 ### v0.4.1
 - **7-Segment Display Subsystem & Helpers**:
   - Added [`SevenSegment`](encdr/src/core/seven_segment.rs) abstraction for multi-segment numeric/alphanumeric displays (Traktor Kontrol S4 MK2, X1 MK2, F1).

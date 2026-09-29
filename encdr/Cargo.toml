@@ -15,7 +15,7 @@ categories = ["hardware-support", "multimedia::audio"]
 nusb = "0.1"
 
 # GPU compute (format conversion + frame diff)
-wgpu = "23"
+wgpu = "30"
 bytemuck = { version = "1", features = ["derive"] }
 
 # Lock-free event channel

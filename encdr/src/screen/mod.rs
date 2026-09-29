@@ -68,8 +68,8 @@ impl ScreenManager {
 
         self.frame_count += 1;
 
-        // Step 2: Determine if we need a keyframe (full blit every ~60 frames / ~2s at 30fps)
-        let force_full = self.frame_count % 60 == 0;
+        // Step 2: Determine if we need a keyframe (full blit on frame 1 and every ~60 frames / ~2s at 30fps)
+        let force_full = self.frame_count == 1 || self.frame_count % 60 == 0;
 
         // Step 3: Frame diff
         if !force_full {
@@ -85,12 +85,10 @@ impl ScreenManager {
                         partial_blit.y_align,
                     );
 
-                    // Update prev frame
-                    self.prev_frame.copy_from_slice(&native_pixels);
-
                     match dirty {
                         DirtyRect::Clean => return None,
                         DirtyRect::Partial { x, y, w, h } => {
+                            self.prev_frame.copy_from_slice(&native_pixels);
                             let region_pixels = extract_region(
                                 &native_pixels,
                                 self.width,
@@ -423,5 +421,48 @@ mod tests {
                     0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255];
         let result = rgba8_to_mono(&rgba, 8, 1);
         assert_eq!(result, vec![0x80]);
+    }
+
+    #[test]
+    fn test_screen_manager_lifecycle() {
+        let desc = crate::core::descriptor::ScreenDesc {
+            name: "test".to_string(),
+            interface: "screen".to_string(),
+            width: 10,
+            height: 10,
+            pixel_format: PixelFormat::Bgr565Be,
+            full_blit: crate::core::descriptor::ScreenBlitDesc {
+                header: "0x01".to_string(),
+                footer: "0x02".to_string(),
+            },
+            partial_blit: Some(crate::core::descriptor::PartialBlitDesc {
+                supported: true,
+                x_align: 2,
+                y_align: 2,
+                header_template: "0x03".to_string(),
+                footer: "0x04".to_string(),
+            }),
+        };
+
+        let mut sm = ScreenManager::new(&desc, None);
+        let frame_black = vec![0u8; 10 * 10 * 2];
+        let mut frame_red = vec![0xF8, 0x00].repeat(10 * 10);
+
+        // Frame 1: forced full
+        let res1 = sm.submit(&frame_black, PixelFormat::Bgr565Be, &desc);
+        assert!(res1.is_some(), "Frame 1 must always be submitted");
+
+        // Frame 2: identical black -> Clean -> None
+        let res2 = sm.submit(&frame_black, PixelFormat::Bgr565Be, &desc);
+        assert!(res2.is_none(), "Identical frame should return None");
+
+        // Frame 3: 100% changed to red -> DirtyRect::Full -> must return Some
+        let res3 = sm.submit(&frame_red, PixelFormat::Bgr565Be, &desc);
+        assert!(res3.is_some(), "Full screen change on non-keyframe must not be dropped");
+
+        // Frame 4: 1 pixel changed -> Partial -> must return Some
+        frame_red[0] = 0x00;
+        let res4 = sm.submit(&frame_red, PixelFormat::Bgr565Be, &desc);
+        assert!(res4.is_some(), "Partial change should return Some");
     }
 }

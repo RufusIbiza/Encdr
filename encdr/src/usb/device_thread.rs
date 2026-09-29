@@ -530,14 +530,22 @@ fn run_screens(
                                         .and_then(|i| i.endpoints.out.as_ref())
                                         .map(|ep| ep.transfer_type == crate::core::descriptor::TransferType::Interrupt)
                                         .unwrap_or(false);
+                                    tracing::debug!("Sending {} bytes to ep 0x{:02x}...", blit_data.len(), ep);
                                     if is_interrupt {
                                         let _ = iface.interrupt_out(ep, blit_data).await;
                                     } else {
                                         let _ = iface.bulk_out(ep, blit_data).await;
                                     }
+                                    tracing::debug!("Bulk out completed for screen '{}'", screen);
+                                } else {
+                                    tracing::warn!("Interface '{}' not found in screen_ifaces", screen_desc.interface);
                                 }
                             }
+                        } else {
+                            tracing::warn!("screen_desc for '{}' not found in descriptor", screen);
                         }
+                    } else {
+                        tracing::warn!("ScreenManager for '{}' not found", screen);
                     }
                 }
                 _ => {}

@@ -85,8 +85,8 @@ impl GpuConvertPipeline {
             gpu.device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("encdr_convert_layout"),
-                    bind_group_layouts: &[&bind_group_layout],
-                    push_constant_ranges: &[],
+                    bind_group_layouts: &[Some(&bind_group_layout)],
+                    immediate_size: 0,
                 });
 
         let pipeline = gpu
@@ -245,18 +245,64 @@ impl GpuConvertPipeline {
             tx.send(result).ok();
         });
 
-        self.gpu.device.poll(wgpu::Maintain::Wait);
+        let _ = self.gpu.device.poll(wgpu::PollType::wait_indefinitely());
 
         if let Ok(Ok(())) = rx.recv() {
-            let data = buffer_slice.get_mapped_range();
-            let result_bytes = pixel_count * 2;
-            let out = data[..result_bytes].to_vec();
-            drop(data);
-            staging_buf.unmap();
-            out
-        } else {
-            tracing::warn!("GPU readback failed, falling back to CPU conversion");
-            super::rgba8_to_bgr565_be(rgba, pixel_count, 1)
+            if let Ok(data) = buffer_slice.get_mapped_range() {
+                let result_bytes = pixel_count * 2;
+                let out = data[..result_bytes].to_vec();
+                drop(data);
+                staging_buf.unmap();
+                return out;
+            }
+        }
+
+        tracing::warn!("GPU readback failed, falling back to CPU conversion");
+        super::rgba8_to_bgr565_be(rgba, pixel_count, 1)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_gpu_pipeline_conversion_if_supported() {
+        let gpu = futures_lite::future::block_on(GpuContext::new());
+        assert!(gpu.is_some(), "GPU context should be created on this system");
+        if let Some(gpu) = gpu {
+            let mut pipeline = GpuConvertPipeline::new(Arc::new(gpu));
+            // 4 pixels: Red, Green, Blue, White
+            let rgba = vec![
+                255, 0, 0, 255,
+                0, 255, 0, 255,
+                0, 0, 255, 255,
+                255, 255, 255, 255,
+            ];
+            let converted = futures_lite::future::block_on(pipeline.convert_rgba_to_bgr565(&rgba));
+            let cpu_expected = super::super::rgba8_to_bgr565_be(&rgba, 4, 1);
+            assert_eq!(converted, cpu_expected);
+        }
+    }
+
+    #[test]
+    fn test_gpu_pipeline_conversion_full_screen() {
+        let gpu = futures_lite::future::block_on(GpuContext::new());
+        assert!(gpu.is_some(), "GPU context should be created on this system");
+        if let Some(gpu) = gpu {
+            let mut pipeline = GpuConvertPipeline::new(Arc::new(gpu));
+            let pixel_count = 480 * 272;
+            let mut rgba = vec![0u8; pixel_count * 4];
+            for i in 0..pixel_count {
+                rgba[i * 4] = (i % 256) as u8;
+                rgba[i * 4 + 1] = ((i / 256) % 256) as u8;
+                rgba[i * 4 + 2] = 200;
+                rgba[i * 4 + 3] = 255;
+            }
+            let converted = futures_lite::future::block_on(pipeline.convert_rgba_to_bgr565(&rgba));
+            let cpu_expected = super::super::rgba8_to_bgr565_be(&rgba, pixel_count, 1);
+            assert_eq!(converted.len(), cpu_expected.len());
+            assert_eq!(converted, cpu_expected);
         }
     }
 }
