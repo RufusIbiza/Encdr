@@ -204,6 +204,20 @@
         { "type": "single", "name": "mixer_quantize",  "offset": 4 },
         { "type": "single", "name": "mixer_snap",      "offset": 5 }
       ]
+    },
+    {
+      "id": "loop_displays",
+      "interface": "control",
+      "buffer_size": 32,
+      "prefix_byte": "0xd5",
+      "items": [
+        { "type": "single", "name": "left_loop_digit_1",  "offset": 4 },
+        { "type": "single", "name": "left_loop_digit_2",  "offset": 8 },
+        { "type": "single", "name": "right_loop_digit_1", "offset": 12 },
+        { "type": "single", "name": "right_loop_digit_2", "offset": 16 },
+        { "type": "single", "name": "left_loop_dot",      "offset": 20 },
+        { "type": "single", "name": "right_loop_dot",     "offset": 24 }
+      ]
     }
   ],
 

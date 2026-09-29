@@ -488,7 +488,8 @@ mod tests {
         let desc = reg.find(0x17cc, 0x1310).expect("Kontrol S4 MK2 should be registered").clone();
         assert_eq!(desc.name, "NI Kontrol S4 Mk2");
         assert_eq!(desc.input_packets.len(), 2);
-        assert_eq!(desc.leds.len(), 2);
+        assert_eq!(desc.leds.len(), 3);
+        assert!(desc.leds.iter().any(|g| g.id == "loop_displays" && g.prefix_byte.0 == 0xd5));
 
         let names = reg.intern_descriptor_names(&desc);
         let mut parser = crate::device::parser::PacketParser::new(crate::core::event::DeviceId(1), &desc, names);

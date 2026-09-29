@@ -13,6 +13,7 @@ pub use crate::core::descriptor::{DeviceDescriptor, PixelFormat};
 pub use crate::core::error::{EncdrError, Result};
 pub use crate::core::event::{DeviceId, Event};
 pub use crate::core::led::LedValue;
+pub use crate::core::seven_segment::SevenSegment;
 pub use crate::device::hooks::PacketHook;
 pub use crate::screen::GpuContext;
 
@@ -183,6 +184,72 @@ impl Encdr {
                 name: name.to_string(),
                 values: values.to_vec(),
             });
+        }
+    }
+
+    /// Set a 7-segment display control on a device by name.
+    ///
+    /// Writes the raw segment bitmask (bit 0=a .. bit 6=g, bit 7=dp) as a single LED value.
+    pub fn set_seven_segment(&self, device_id: DeviceId, name: &str, seg: SevenSegment) {
+        self.set_led(device_id, name, LedValue::Single(seg.raw_mask()));
+    }
+
+    /// Set a 7-segment display control within a specific LED group.
+    pub fn set_seven_segment_in_group(
+        &self,
+        device_id: DeviceId,
+        group: &str,
+        name: &str,
+        seg: SevenSegment,
+    ) {
+        self.set_led_in_group(device_id, group, name, LedValue::Single(seg.raw_mask()));
+    }
+
+    /// Sets a dual 7-segment display (left and right digits) from a text string.
+    ///
+    /// Decimal points attached to characters (e.g. `"1."`) are automatically merged.
+    pub fn set_seven_segment_str(
+        &self,
+        device_id: DeviceId,
+        digit_left: &str,
+        digit_right: &str,
+        text: &str,
+    ) {
+        let encoded = SevenSegment::encode_str(text);
+        let left = encoded.first().copied().unwrap_or(SevenSegment::BLANK);
+        let right = encoded.get(1).copied().unwrap_or(SevenSegment::BLANK);
+        self.set_seven_segment(device_id, digit_left, left);
+        self.set_seven_segment(device_id, digit_right, right);
+    }
+
+    /// Sets a DJ loop length display (e.g. 32, 16, 8, 4, 2, 1, 0.5, 0.25) across two digits
+    /// with an optional active loop dot.
+    pub fn set_loop_display(
+        &self,
+        device_id: DeviceId,
+        digit_left: &str,
+        digit_right: &str,
+        beats: f32,
+        active: bool,
+    ) {
+        self.set_loop_display_with_dot(device_id, digit_left, digit_right, None, beats, active);
+    }
+
+    /// Sets a DJ loop length display across two digits, with an optional separate status dot LED.
+    pub fn set_loop_display_with_dot(
+        &self,
+        device_id: DeviceId,
+        digit_left: &str,
+        digit_right: &str,
+        dot_name: Option<&str>,
+        beats: f32,
+        active: bool,
+    ) {
+        let [left, right] = SevenSegment::encode_loop_length(beats, active);
+        self.set_seven_segment(device_id, digit_left, left);
+        self.set_seven_segment(device_id, digit_right, right);
+        if let Some(dot) = dot_name {
+            self.set_led(device_id, dot, if active { LedValue::Single(255) } else { LedValue::Off });
         }
     }
 

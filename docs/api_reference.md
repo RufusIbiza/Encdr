@@ -11,12 +11,13 @@ This document provides a comprehensive API reference for [`encdr`](file:///home/
 3. [Device Identifiers: `DeviceId`](#3-device-identifiers-deviceid)
 4. [Hardware Events: `Event`](#4-hardware-events-event)
 5. [LED Values & NI Palette: `LedValue`](#5-led-values--ni-palette-ledvalue)
-6. [Pixel Formats: `PixelFormat`](#6-pixel-formats-pixelformat)
-7. [GPU Acceleration: `GpuContext`](#7-gpu-acceleration-gpucontext)
-8. [Custom Packet Decoders: `PacketHook`](#8-custom-packet-decoders-packethook)
-9. [Error Handling: `EncdrError`](#9-error-handling-encdrerror)
-10. [Device Descriptors & Runtime Introspection](#10-device-descriptors--runtime-introspection)
-11. [WebView Offscreen Renderer: `encdr-view`](#11-webview-offscreen-renderer-encdr-view)
+6. [Seven-Segment Displays: `SevenSegment`](#6-seven-segment-displays-sevensegment)
+7. [Pixel Formats: `PixelFormat`](#7-pixel-formats-pixelformat)
+8. [GPU Acceleration: `GpuContext`](#8-gpu-acceleration-gpucontext)
+9. [Custom Packet Decoders: `PacketHook`](#9-custom-packet-decoders-packethook)
+10. [Error Handling: `EncdrError`](#10-error-handling-encdrerror)
+11. [Device Descriptors & Runtime Introspection](#11-device-descriptors--runtime-introspection)
+12. [WebView Offscreen Renderer: `encdr-view`](#12-webview-offscreen-renderer-encdr-view)
 
 ---
 
@@ -103,6 +104,53 @@ Sets a multi-segment strip within an explicit buffer group.
 ```rust
 let left_meter = [128u8; 16];
 encdr.set_led_strip_in_group(device_id, "master_meters", "meter_left", &left_meter);
+```
+
+#### `pub fn set_seven_segment(&self, device_id: DeviceId, name: &str, seg: SevenSegment)`
+Updates a 7-segment display control by name, writing the raw segment bitmask (`bit 0 = a` .. `bit 6 = g`, `bit 7 = dp`) to the hardware.
+
+```rust
+use encdr::SevenSegment;
+
+// Display digit '8' with decimal point
+encdr.set_seven_segment(device_id, "left_loop_digit_1", SevenSegment::from_char('8').with_dot(true));
+```
+
+#### `pub fn set_seven_segment_in_group(&self, device_id: DeviceId, group: &str, name: &str, seg: SevenSegment)`
+Sets a 7-segment display control within an explicit LED buffer group.
+
+```rust
+encdr.set_seven_segment_in_group(device_id, "loop_displays", "left_loop_digit_1", SevenSegment::from_char('4'));
+```
+
+#### `pub fn set_seven_segment_str(&self, device_id: DeviceId, digit_left: &str, digit_right: &str, text: &str)`
+Sets a dual-digit 7-segment display from a text string. Decimal points attached to characters (e.g. `"1."` or `"1.6"`) are automatically merged onto the preceding digit's decimal point.
+
+```rust
+// Displays '1.' on left digit and '6' on right digit
+encdr.set_seven_segment_str(device_id, "left_loop_digit_1", "left_loop_digit_2", "1.6");
+```
+
+#### `pub fn set_loop_display(&self, device_id: DeviceId, digit_left: &str, digit_right: &str, beats: f32, active: bool)`
+Encodes standard DJ loop lengths (e.g., `32`, `16`, `8`, `4`, `2`, `1`, `0.5`, `0.25`, `0.125`) across two digits. If `active` is true, the decimal point on the right digit is illuminated.
+
+```rust
+// Displays '.2.' indicating an active 1/2 beat loop (or '.2' if inactive)
+encdr.set_loop_display(device_id, "left_loop_digit_1", "left_loop_digit_2", 0.5, true);
+```
+
+#### `pub fn set_loop_display_with_dot(&self, device_id: DeviceId, digit_left: &str, digit_right: &str, dot_name: Option<&str>, beats: f32, active: bool)`
+Encodes DJ loop lengths across two digits and simultaneously controls a dedicated hardware status dot LED (such as `left_loop_dot` on the Traktor Kontrol S4 MK2).
+
+```rust
+encdr.set_loop_display_with_dot(
+    device_id,
+    "left_loop_digit_1",
+    "left_loop_digit_2",
+    Some("left_loop_dot"),
+    8.0,
+    true,
+);
 ```
 
 #### `pub fn submit_screen(&self, device_id: DeviceId, screen: &str, pixels: &[u8])`
@@ -299,7 +347,84 @@ let ni_byte = LedValue::to_ni_palette_byte(255, 0, 0); // Red at full brightness
 
 ---
 
-## 6. Pixel Formats: `PixelFormat`
+## 6. Seven-Segment Displays: `SevenSegment`
+
+Defined in [`encdr::core::seven_segment::SevenSegment`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/core/seven_segment.rs#L16-L195).
+
+Controllers like the Traktor Kontrol S4 MK2, Traktor Kontrol X1 MK2, and Traktor Kontrol F1 feature multi-digit 7-segment LED displays. The `SevenSegment` struct models segment bitmasks, character translation, brightness conversion, and DJ loop length formatting.
+
+### Segment Layout & Bitmask Constants
+
+```text
+      -- a (bit 0, 0x01) --
+     |                     |
+  f (bit 5, 0x20)       b (bit 1, 0x02)
+     |                     |
+      -- g (bit 6, 0x40) --
+     |                     |
+  e (bit 4, 0x10)       c (bit 2, 0x04)
+     |                     |
+      -- d (bit 3, 0x08) --     * dp (bit 7, 0x80)
+```
+
+| Constant | Value | Description |
+|---|---|---|
+| `SEG_A` | `0x01` | Top horizontal segment |
+| `SEG_B` | `0x02` | Top right vertical segment |
+| `SEG_C` | `0x04` | Bottom right vertical segment |
+| `SEG_D` | `0x08` | Bottom horizontal segment |
+| `SEG_E` | `0x10` | Bottom left vertical segment |
+| `SEG_F` | `0x20` | Top left vertical segment |
+| `SEG_G` | `0x40` | Center horizontal segment |
+| `SEG_DP` | `0x80` | Decimal point / status dot |
+| `BLANK` | `0x00` | All segments off |
+
+### Constructors & Conversion Methods
+
+#### `pub const fn from_mask(mask: u8) -> Self`
+Creates a `SevenSegment` instance directly from a raw 8-bit segment bitmask.
+
+#### `pub const fn raw_mask(&self) -> u8`
+Returns the raw 8-bit segment bitmask.
+
+#### `pub const fn with_dot(mut self, dot: bool) -> Self`
+Sets or clears the decimal point segment (`SEG_DP`).
+
+#### `pub const fn has_dot(&self) -> bool`
+Returns `true` if the decimal point segment is illuminated.
+
+#### `pub fn from_char(c: char) -> Self`
+Translates alphanumeric characters (`'0'..'9'`, `'a'..'z'`, `'-'`, `'_'`, `'='`, `'/'`, `'.'`) to their 7-segment representation.
+
+#### `pub fn from_digit(digit: u8) -> Self`
+Translates a numeric digit or hexadecimal nibble (`0..=15`) to its 7-segment representation.
+
+#### `pub fn to_brightness_array(&self, on_brightness: u8, off_brightness: u8) -> [u8; 8]`
+Decomposes the 7-segment bitmask into an 8-byte array of segment brightnesses `[a, b, c, d, e, f, g, dp]` for controllers where each segment is individually addressed as an LED channel.
+
+#### `pub fn encode_str(s: &str) -> Vec<Self>`
+Parses a string into a sequence of `SevenSegment` instances. Embedded periods (`'.'`) are merged into the preceding character's decimal point.
+
+#### `pub fn encode_loop_length(beats: f32, loop_active: bool) -> [Self; 2]`
+Encodes standard DJ loop beat lengths following Native Instruments Traktor notation. Whole beats count normally (`32`, `16`, ` 8`, ` 4`, ` 2`, ` 1`), while sub-beat fractions count in reverse with the decimal point lit (`.2` for 1/2 beat, `.4` for 1/4 beat, `.8` for 1/8 beat, `1.6` for 1/16 beat, `3.2` for 1/32 beat). When `loop_active` is true, the decimal point on `right` is illuminated.
+
+```rust
+use encdr::SevenSegment;
+
+// Encode a 1/4 beat loop (inactive)
+let [left, right] = SevenSegment::encode_loop_length(0.25, false);
+assert_eq!(left, SevenSegment::from_char('.'));
+assert_eq!(right, SevenSegment::from_char('4'));
+
+// Encode a 1/2 beat loop (active)
+let [left, right] = SevenSegment::encode_loop_length(0.5, true);
+assert_eq!(left, SevenSegment::from_char('.'));
+assert_eq!(right, SevenSegment::from_char('2').with_dot(true));
+```
+
+---
+
+## 7. Pixel Formats: `PixelFormat`
 
 Defined in [`encdr::core::descriptor::PixelFormat`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/core/descriptor.rs#L318-L335).
 
@@ -322,7 +447,7 @@ Returns byte density per pixel (`2` for BGR565/RGB565, `3` for RGB888, `4` for R
 
 ---
 
-## 7. GPU Acceleration: `GpuContext`
+## 8. GPU Acceleration: `GpuContext`
 
 Defined in [`encdr::screen::gpu::GpuContext`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/screen/gpu.rs#L5-L36).
 
@@ -347,7 +472,7 @@ Wraps existing `wgpu` device and queue instances from a host application to elim
 
 ---
 
-## 8. Custom Packet Decoders: `PacketHook`
+## 9. Custom Packet Decoders: `PacketHook`
 
 Defined in [`encdr::device::hooks::PacketHook`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/device/hooks.rs#L6-L16).
 
@@ -367,7 +492,7 @@ pub trait PacketHook: Send + Sync + 'static {
 
 ---
 
-## 9. Error Handling: `EncdrError`
+## 10. Error Handling: `EncdrError`
 
 Defined in [`encdr::core::error::EncdrError`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/core/error.rs#L4-L34).
 
@@ -410,7 +535,7 @@ pub type Result<T> = std::result::Result<T, EncdrError>;
 
 ---
 
-## 10. Device Descriptors & Runtime Introspection
+## 11. Device Descriptors & Runtime Introspection
 
 Defined in [`encdr::core::descriptor`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/core/descriptor.rs).
 
@@ -453,7 +578,7 @@ pub struct ScreenDesc {
 
 ---
 
-## 11. WebView Offscreen Renderer: `encdr-view`
+## 12. WebView Offscreen Renderer: `encdr-view`
 
 Defined in [`encdr-view::ScreenView`](file:///home/rufus/Documents/Projects/Encdr/encdr-view/src/lib.rs#L61-L70).
 

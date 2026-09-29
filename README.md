@@ -224,6 +224,19 @@ encdr/
 - [NI Traktor Kontrol X1 MK3](docs/hardware/ni_kontrol_x1_mk3.md) — X1 MK3 hardware reference
 
 ## Changelog
+### v0.4.1
+- **7-Segment Display Subsystem & Helpers**:
+  - Added [`SevenSegment`](encdr/src/core/seven_segment.rs) abstraction for multi-segment numeric/alphanumeric displays (Traktor Kontrol S4 MK2, X1 MK2, F1).
+  - Implemented segment bitmask constants (`SEG_A`..`SEG_G`, `SEG_DP`), alphanumeric translation (`from_char`, `from_digit`), raw bitmask manipulation, and per-segment brightness arrays (`to_brightness_array`).
+  - Added string encoding (`encode_str`) with automatic decimal point merging.
+  - Added DJ loop length encoding (`encode_loop_length`) adhering to Traktor hardware notation: whole beats (`32`..`1`) and fractional sub-beats (`.2`, `.4`, `.8`, `1.6`, `3.2`) with active loop status indication.
+- **Traktor Kontrol S4 MK2 Loop Displays**:
+  - Added USB Output Report `0xd5` (32 bytes) mapping in `ni_kontrol_s4_mk2.json` for Deck A/C (`left_loop_digit_1`, `left_loop_digit_2`, `left_loop_dot`) and Deck B/D (`right_loop_digit_1`, `right_loop_digit_2`, `right_loop_dot`).
+  - Added high-level helper methods to `Encdr`: `set_seven_segment`, `set_seven_segment_in_group`, `set_seven_segment_str`, `set_loop_display`, and `set_loop_display_with_dot`.
+- **Documentation Updates**:
+  - Updated [`docs/hardware/ni_kontrol_s4_mk2.md`](docs/hardware/ni_kontrol_s4_mk2.md) with Report `0xd5` layout, segment bitmasks, Traktor display notation table, and legacy MIDI CC mappings.
+  - Updated [`docs/api_reference.md`](docs/api_reference.md) with Section 6 for `SevenSegment` and new facade methods.
+
 ### v0.4.0
 - **Quick Start Tutorial**:
   - Added a dedicated, comprehensive tutorial in [`docs/quickstart.md`](docs/quickstart.md).
