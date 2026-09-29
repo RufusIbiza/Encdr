@@ -7,7 +7,7 @@ publish = false
 [dependencies]
 encdr = { path = "../encdr" }
 encdr-view = { path = "../encdr-view" }
-nusb = "0.1"
+nusb = "0.2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 crossbeam-channel = "0.5"
@@ -34,6 +34,10 @@ path = "maschine_mk3/mk3_screen_test.rs"
 [[bin]]
 name = "mk3_pad_rainbow"
 path = "maschine_mk3/pad_rainbow.rs"
+
+[[bin]]
+name = "mk3_pad_response"
+path = "maschine_mk3/pad_response.rs"
 
 [[bin]]
 name = "touchstrip_monitor"

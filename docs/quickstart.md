@@ -18,8 +18,8 @@ Add `encdr` and `encdr-view` to your project's `Cargo.toml`:
 
 ```toml
 [dependencies]
-encdr = "0.4.0"
-encdr-view = "0.4.0"
+encdr = "0.5.0"
+encdr-view = "0.5.0"
 crossbeam-channel = "0.5"
 serde_json = "1.0"
 tracing = "0.1"

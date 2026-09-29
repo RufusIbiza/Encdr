@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Maschine Mk3 Pad Matrix</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 480px;
+    height: 272px;
+    overflow: hidden;
+    background: #090b10;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #e2e8f0;
+    user-select: none;
+  }
+  .container {
+    width: 480px;
+    height: 272px;
+    display: flex;
+    flex-direction: column;
+    padding: 8px 12px;
+    background: radial-gradient(circle at 50% 0%, #171b26 0%, #090b10 100%);
+  }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 24px;
+    border-bottom: 2px solid #00e5ff;
+    padding-bottom: 3px;
+    margin-bottom: 6px;
+  }
+  .title {
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    color: #00e5ff;
+    text-shadow: 0 0 8px rgba(0, 229, 255, 0.6);
+  }
+  .status-badge {
+    font-size: 9px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: #0f1d2e;
+    color: #38bdf8;
+    border: 1px solid #0284c7;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+  .status-badge.active {
+    background: #052e16;
+    color: #4ade80;
+    border-color: #22c55e;
+    box-shadow: 0 0 10px rgba(34, 197, 94, 0.4);
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(4, 1fr);
+    gap: 5px;
+    flex: 1;
+  }
+  .pad-cell {
+    background: rgba(26, 32, 44, 0.85);
+    border: 1.5px solid #2d3748;
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 3px 6px;
+    position: relative;
+    overflow: hidden;
+    transition: background 0.04s ease-out, border-color 0.04s ease-out, box-shadow 0.04s ease-out;
+  }
+  .pad-cell.active {
+    background: linear-gradient(135deg, #00e5ff 0%, #0284c7 100%) !important;
+    border-color: #ffffff !important;
+    box-shadow: 0 0 16px rgba(0, 229, 255, 0.8), inset 0 0 8px #ffffff;
+    transform: scale(0.98);
+  }
+  .pad-cell.active .pad-num,
+  .pad-cell.active .pad-label {
+    color: #000000 !important;
+    font-weight: 900;
+  }
+  .pad-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .pad-num {
+    font-size: 11px;
+    font-weight: 800;
+    color: #94a3b8;
+  }
+  .pad-label {
+    font-size: 9px;
+    font-family: ui-monospace, monospace;
+    color: #64748b;
+    font-weight: 600;
+  }
+  .pad-meter {
+    width: 100%;
+    height: 4px;
+    background: rgba(15, 23, 42, 0.8);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 2px;
+  }
+  .pad-fill {
+    width: 0%;
+    height: 100%;
+    background: #00e5ff;
+    border-radius: 2px;
+    transition: width 0.02s linear;
+  }
+  .pad-cell.active .pad-fill {
+    background: #ffffff;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="title">PAD RESPONSIVENESS MATRIX</div>
+    <div id="badge" class="status-badge">READY</div>
+  </div>
+  <div class="grid" id="grid">
+    <!-- Row 1: Pads 13..16 -->
+    <div class="pad-cell" id="pad-13"><div class="pad-header"><span class="pad-num">13</span><span class="pad-label" id="lbl-13">--</span></div><div class="pad-meter"><div class="pad-fill" id="fill-13"></div></div></div>
+    <div class="pad-cell" id="pad-14"><div class="pad-header"><span class="pad-num">14</span><span class="pad-label" id="lbl-14">--</span></div><div class="pad-meter"><div class="pad-fill" id="fill-14"></div></div></div>
+    <div class="pad-cell" id="pad-15"><div class="pad-header"><span class="pad-num">15</span><span class="pad-label" id="lbl-15">--</span></div><div class="pad-meter"><div class="pad-fill" id="fill-15"></div></div></div>
+    <div class="pad-cell" id="pad-16"><div class="pad-header"><span class="pad-num">16</span><span class="pad-label" id="lbl-16">--</span></div><div class="pad-meter"><div class="pad-fill" id="fill-16"></div></div></div>
+    <!-- Row 2: Pads 9..12 -->
+    <div class="pad-cell" id="pad-9"><div class="pad-header"><span class="pad-num">9</span><span class="pad-label" id="lbl-9">--</span></div><div class="pad-meter"><div class="pad-fill" id="fill-9"></div></div></div>
+    <div class="pad-cell" id="pad-10"><div class="pad-header"><span class="pad-num">10</span><span class="pad-label" id="lbl-10">--</span></div><div class="pad-meter"><div class="pad-fill" id="fill-10"></div></div></div>
+    <div class="pad-cell" id="pad-11"><div class="pad-header"><span class="pad-num">11</span><span class="pad-label" id="lbl-11">--</span></div><div class="pad-meter"><div class="pad-fill" id="fill-11"></div></div></div>
+    <div class="pad-cell" id="pad-12"><div class="pad-header"><span class="pad-num">12</span><span class="pad-label" id="lbl-12">--</span></div><div class="pad-meter"><div class="pad-fill" id="fill-12"></div></div></div>
+    <!-- Row 3: Pads 5..8 -->
+    <div class="pad-cell" id="pad-5"><div class="pad-header"><span class="pad-num">5</span><span class="pad-label" id="lbl-5">--</span></div><div class="pad-meter"><div class="pad-fill" id="fill-5"></div></div></div>
+    <div class="pad-cell" id="pad-6"><div class="pad-header"><span class="pad-num">6</span><span class="pad-label" id="lbl-6">--</span></div><div class="pad-meter"><div class="pad-fill" id="fill-6"></div></div></div>
+    <div class="pad-cell" id="pad-7"><div class="pad-header"><span class="pad-num">7</span><span class="pad-label" id="lbl-7">--</span></div><div class="pad-meter"><div class="pad-fill" id="fill-7"></div></div></div>
+    <div class="pad-cell" id="pad-8"><div class="pad-header"><span class="pad-num">8</span><span class="pad-label" id="lbl-8">--</span></div><div class="pad-meter"><div class="pad-fill" id="fill-8"></div></div></div>
+    <!-- Row 4: Pads 1..4 -->
+    <div class="pad-cell" id="pad-1"><div class="pad-header"><span class="pad-num">1</span><span class="pad-label" id="lbl-1">--</span></div><div class="pad-meter"><div class="pad-fill" id="fill-1"></div></div></div>
+    <div class="pad-cell" id="pad-2"><div class="pad-header"><span class="pad-num">2</span><span class="pad-label" id="lbl-2">--</span></div><div class="pad-meter"><div class="pad-fill" id="fill-2"></div></div></div>
+    <div class="pad-cell" id="pad-3"><div class="pad-header"><span class="pad-num">3</span><span class="pad-label" id="lbl-3">--</span></div><div class="pad-meter"><div class="pad-fill" id="fill-3"></div></div></div>
+    <div class="pad-cell" id="pad-4"><div class="pad-header"><span class="pad-num">4</span><span class="pad-label" id="lbl-4">--</span></div><div class="pad-meter"><div class="pad-fill" id="fill-4"></div></div></div>
+  </div>
+</div>
+
+<script>
+  window.encdr = {
+    onMessage: function(channel, data) {
+      if (channel === 'pad_state') {
+        const badge = document.getElementById('badge');
+        let anyActive = false;
+
+        for (let i = 1; i <= 16; i++) {
+          const pad = document.getElementById('pad-' + i);
+          const lbl = document.getElementById('lbl-' + i);
+          const fill = document.getElementById('fill-' + i);
+          const state = data[i - 1]; // { active: bool, pressure: float }
+
+          if (state && state.active) {
+            anyActive = true;
+            pad.classList.add('active');
+            const pct = Math.round(state.pressure * 100);
+            lbl.textContent = pct > 0 ? pct + '%' : 'HIT';
+            fill.style.width = (state.pressure * 100) + '%';
+          } else {
+            pad.classList.remove('active');
+            lbl.textContent = '--';
+            fill.style.width = '0%';
+          }
+        }
+
+        if (anyActive) {
+          badge.textContent = 'PAD ACTIVE';
+          badge.classList.add('active');
+        } else {
+          badge.textContent = 'READY';
+          badge.classList.remove('active');
+        }
+      }
+    }
+  };
+</script>
+</body>
+</html>

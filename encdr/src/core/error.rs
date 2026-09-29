@@ -15,7 +15,7 @@ pub enum EncdrError {
     Json(#[from] serde_json::Error),
 
     #[error("IO error: {0}")]
-    Io(std::io::Error),
+    Io(#[from] std::io::Error),
 
     #[error("Device not found: {0}")]
     DeviceNotFound(String),

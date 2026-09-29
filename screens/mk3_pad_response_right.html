@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Maschine Mk3 Aftertouch Monitor</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 480px;
+    height: 272px;
+    overflow: hidden;
+    background: #090b10;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #e2e8f0;
+    user-select: none;
+  }
+  .container {
+    width: 480px;
+    height: 272px;
+    display: flex;
+    flex-direction: column;
+    padding: 10px 14px;
+    background: radial-gradient(circle at 50% 0%, #171b26 0%, #090b10 100%);
+    justify-content: space-between;
+  }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 24px;
+    border-bottom: 2px solid #00e5ff;
+    padding-bottom: 3px;
+  }
+  .title {
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    color: #00e5ff;
+    text-shadow: 0 0 8px rgba(0, 229, 255, 0.6);
+  }
+  .status-pill {
+    font-size: 9px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    font-weight: 700;
+  }
+  .status-pill.active {
+    background: #083344;
+    color: #00e5ff;
+    border-color: #00e5ff;
+    box-shadow: 0 0 10px rgba(0, 229, 255, 0.4);
+  }
+  .pad-info-box {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-top: 4px;
+    padding: 6px 12px;
+    background: rgba(30, 41, 59, 0.4);
+    border-radius: 6px;
+    border: 1px solid #334155;
+  }
+  .active-pad-title {
+    font-size: 18px;
+    font-weight: 900;
+    letter-spacing: 1px;
+    color: #f8fafc;
+  }
+  .active-pad-title.lit {
+    color: #00e5ff;
+    text-shadow: 0 0 12px rgba(0, 229, 255, 0.7);
+  }
+  .pressure-value {
+    font-size: 16px;
+    font-family: ui-monospace, monospace;
+    font-weight: 800;
+    color: #00e5ff;
+  }
+  .bar-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 8px 0;
+  }
+  .bar-label-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: #94a3b8;
+  }
+  .track-wrapper {
+    position: relative;
+    width: 100%;
+    height: 40px;
+    background: #0f172a;
+    border: 2px solid #334155;
+    border-radius: 8px;
+    padding: 3px;
+    display: flex;
+    align-items: center;
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.6);
+  }
+  .fill-bar {
+    position: absolute;
+    left: 4px;
+    top: 4px;
+    bottom: 4px;
+    width: 0%;
+    background: linear-gradient(90deg, #0284c7 0%, #00e5ff 100%);
+    border-radius: 4px;
+    transition: width 0.02s linear;
+    box-shadow: 0 0 12px rgba(0, 229, 255, 0.5);
+  }
+  .cursor-dot {
+    position: absolute;
+    top: 50%;
+    left: 4px;
+    transform: translate(-50%, -50%);
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #ffffff;
+    border: 3px solid #00e5ff;
+    box-shadow: 0 0 16px #00e5ff, 0 0 30px rgba(0, 229, 255, 0.9);
+    transition: left 0.02s linear;
+    z-index: 10;
+  }
+  .cursor-dot.idle {
+    left: 14px !important;
+    background: #475569;
+    border-color: #64748b;
+    box-shadow: none;
+  }
+  .ticks-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9px;
+    font-family: ui-monospace, monospace;
+    color: #64748b;
+    font-weight: 700;
+    padding: 0 4px;
+  }
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .stat-card {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    padding: 6px 8px;
+    text-align: center;
+  }
+  .stat-card .label {
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: #64748b;
+    margin-bottom: 2px;
+  }
+  .stat-card .val {
+    font-size: 13px;
+    font-family: ui-monospace, monospace;
+    font-weight: 800;
+    color: #f1f5f9;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="title">AFTERTOUCH PRESSURE MONITOR</div>
+    <div id="status-pill" class="status-pill">AWAITING TOUCH</div>
+  </div>
+
+  <div class="pad-info-box">
+    <div id="pad-title" class="active-pad-title">NO PAD HELD</div>
+    <div id="pressure-text" class="pressure-value">0.0%</div>
+  </div>
+
+  <div class="bar-section">
+    <div class="bar-label-row">
+      <span>AFTERTOUCH PRESSURE</span>
+      <span id="pressure-state">RELEASED</span>
+    </div>
+    <div class="track-wrapper">
+      <div id="fill-bar" class="fill-bar"></div>
+      <div id="dot" class="cursor-dot idle"></div>
+    </div>
+    <div class="ticks-row">
+      <span>0%</span>
+      <span>25%</span>
+      <span>50%</span>
+      <span>75%</span>
+      <span>100%</span>
+    </div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="label">PEAK PRESSURE</div>
+      <div id="stat-peak" class="val">0%</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">HOLD DURATION</div>
+      <div id="stat-dur" class="val">0 ms</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">TOTAL TOUCHES</div>
+      <div id="stat-count" class="val">0</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  window.encdr = {
+    onMessage: function(channel, data) {
+      if (channel === 'pressure_state') {
+        const pill = document.getElementById('status-pill');
+        const padTitle = document.getElementById('pad-title');
+        const pressureText = document.getElementById('pressure-text');
+        const pressureState = document.getElementById('pressure-state');
+        const fillBar = document.getElementById('fill-bar');
+        const dot = document.getElementById('dot');
+        const statPeak = document.getElementById('stat-peak');
+        const statDur = document.getElementById('stat-dur');
+        const statCount = document.getElementById('stat-count');
+
+        if (data.total_touches !== undefined) {
+          statCount.textContent = data.total_touches;
+        }
+
+        if (data.active) {
+          pill.textContent = 'ACTIVE TOUCH';
+          pill.classList.add('active');
+
+          padTitle.textContent = data.pad_name.toUpperCase();
+          padTitle.classList.add('lit');
+
+          const pct = Math.round(data.pressure * 100);
+          pressureText.textContent = pct + '%';
+          pressureState.textContent = 'HELD (' + pct + '%)';
+
+          // Move the dot and fill bar
+          const clamped = Math.min(1.0, Math.max(0.0, data.pressure));
+          fillBar.style.width = (clamped * 100) + '%';
+
+          // Calculate left pixel offset (track has ~450px usable width, offset by 14px padding)
+          dot.classList.remove('idle');
+          dot.style.left = `calc(14px + ${clamped} * (100% - 28px))`;
+
+          if (data.peak !== undefined) {
+            statPeak.textContent = Math.round(data.peak * 100) + '%';
+          }
+          if (data.duration_ms !== undefined) {
+            statDur.textContent = Math.round(data.duration_ms) + ' ms';
+          }
+        } else {
+          // As soon as the pad is released, it should become unlit and screen resets
+          pill.textContent = 'AWAITING TOUCH';
+          pill.classList.remove('active');
+
+          padTitle.textContent = 'NO PAD HELD';
+          padTitle.classList.remove('lit');
+
+          pressureText.textContent = '0.0%';
+          pressureState.textContent = 'RELEASED';
+
+          fillBar.style.width = '0%';
+          dot.classList.add('idle');
+          dot.style.left = '14px';
+
+          if (data.duration_ms !== undefined && data.duration_ms > 0) {
+            statDur.textContent = Math.round(data.duration_ms) + ' ms';
+          }
+        }
+      }
+    }
+  };
+</script>
+</body>
+</html>

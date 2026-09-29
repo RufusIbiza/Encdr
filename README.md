@@ -224,6 +224,18 @@ encdr/
 - [NI Traktor Kontrol X1 MK3](docs/hardware/ni_kontrol_x1_mk3.md) — X1 MK3 hardware reference
 
 ## Changelog
+### v0.5.0
+- **nusb 0.2 Upgrade**:
+  - Upgraded `nusb` from `0.1` to `0.2` (0.2.7) in `encdr` and `encdr-examples`.
+  - Migrated to the 0.2 API: blocking calls via `MaybeFuture::wait()`, `Endpoint<Interrupt/Bulk, In/Out>` transfers with recycled zero-copy buffers, and `busnum()` / `bus_id()` for device IDs.
+  - `EncdrError::Io` now converts from `std::io::Error` via `#[from]`.
+- **Pad Responsiveness Fix (Maschine Mk3 / Plus)**:
+  - Fixed quick pad taps being dropped, aftertouch updating at ~1 Hz, and pad releases arriving late enough to hit the tap timeout. Interrupt IN reads used a fixed 1024-byte buffer, but a USB transfer only completes on a short packet or a full buffer. The Mk3's 64-byte pad report exactly fills its 64-byte endpoint packet, so pad reports piled up in the kernel until 16 had arrived or a short button report flushed them, and reports were glued together so the parser could not dispatch them.
+  - The read buffer in [`run_device`](encdr/src/usb/device_thread.rs) is now sized to the largest input report in the descriptor, rounded up to the endpoint's max packet size, so every report completes its own transfer. The read queue depth went from 4 to 8.
+  - The Mk3 pad parser now decodes all 21 tuples a 64-byte set can hold (previously 16), and per-tuple `eprintln!` logging on the real-time read thread has been replaced with `tracing::trace!`.
+- **New Example**:
+  - Added `mk3_pad_response`, a pad latency and aftertouch demo with dual-screen pad matrix and pressure monitor views.
+
 ### v0.4.5
 - **wgpu v30 Compute Pipeline Upgrade**:
   - Upgraded `wgpu` from `23` to `30.0.1` in `encdr`.

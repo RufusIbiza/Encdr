@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use nusb::DeviceInfo;
+use nusb::{DeviceInfo, MaybeFuture};
 
 use crate::core::descriptor::DeviceDescriptor;
 use crate::core::event::DeviceId;
@@ -18,7 +18,7 @@ pub struct DetectedDevice {
 pub fn scan_devices(registry: &DescriptorRegistry) -> Vec<DetectedDevice> {
     let mut found = Vec::new();
 
-    let devices = match nusb::list_devices() {
+    let devices = match nusb::list_devices().wait() {
         Ok(d) => d,
         Err(e) => {
             tracing::warn!("Failed to list USB devices: {}", e);
@@ -31,8 +31,13 @@ pub fn scan_devices(registry: &DescriptorRegistry) -> Vec<DetectedDevice> {
         let pid = info.product_id();
 
         if let Some(desc) = registry.find(vid, pid) {
+            #[cfg(target_os = "linux")]
+            let bus = info.busnum();
+            #[cfg(not(target_os = "linux"))]
+            let bus = info.bus_id().parse::<u8>().unwrap_or(0);
+
             let device_id = DeviceId::from_usb(
-                info.bus_number(),
+                bus,
                 info.device_address(),
                 vid,
                 pid,

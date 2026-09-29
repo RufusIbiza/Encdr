@@ -237,7 +237,8 @@ impl PacketParser {
                     if chunk.is_empty() || chunk[0] != 0x02 {
                         continue;
                     }
-                    for i in 0..16 {
+                    // Up to 21 3-byte tuples fit after the marker byte of a 64-byte set.
+                    for i in 0..(chunk.len() - 1) / 3 {
                         let p_idx = 1 + i * 3;
                         if p_idx + 2 >= chunk.len() {
                             break;
@@ -267,7 +268,7 @@ impl PacketParser {
                             let pad_name = *self.names.get(PAD_MAP[p_usize]).unwrap_or(&PAD_MAP[p_usize]);
                             let t = self.created_at.elapsed().as_secs_f32();
 
-                            eprintln!(
+                            tracing::trace!(
                                 "[{:.4}s][PARSER-USB] set={} tuple={}: p={} ({}) d1=0x{:02x} d2=0x{:02x} evt=0x{:02x} raw_p={} prev_pressed={}",
                                 t,
                                 if chunk_idx == 0 { "A" } else { "B" },
@@ -288,7 +289,7 @@ impl PacketParser {
                                     if !prev_pressed {
                                         state.pad_states[p_usize] = true;
                                         state.aftertouch_count[p_usize] = 0;
-                                        eprintln!(
+                                        tracing::trace!(
                                             "[{:.4}s][PARSER-EVT] => Event::Button {{ name: {}, pressed: true }} (hit, raw_p={})",
                                             t, pad_name, pressure_raw
                                         );
@@ -316,7 +317,7 @@ impl PacketParser {
                                         state.pad_pressures[p_usize] = 0.0;
                                         state.last_strike[p_usize] = None;
                                         state.aftertouch_count[p_usize] = 0;
-                                        eprintln!(
+                                        tracing::trace!(
                                             "[{:.4}s][PARSER-EVT] => Event::Button {{ name: {}, pressed: false }} (explicit NoteOff/0x{:02x})",
                                             t, pad_name, evt
                                         );
@@ -354,7 +355,7 @@ impl PacketParser {
                                             state.pad_pressures[p_usize] = 0.0;
                                             state.last_strike[p_usize] = None;
                                             state.aftertouch_count[p_usize] = 0;
-                                            eprintln!(
+                                            tracing::trace!(
                                                 "[{:.4}s][PARSER-EVT] => Event::Button {{ name: {}, pressed: false }} (pressure {} <= {})",
                                                 t, pad_name, pressure_raw, PAD_RELEASE_THRESHOLD
                                             );
@@ -375,7 +376,7 @@ impl PacketParser {
                                         if !prev_pressed {
                                             state.pad_states[p_usize] = true;
                                             state.aftertouch_count[p_usize] = 1;
-                                            eprintln!(
+                                            tracing::trace!(
                                                 "[{:.4}s][PARSER-EVT] => Event::Button {{ name: {}, pressed: true }} (0x40 press, raw_p={})",
                                                 t, pad_name, pressure_raw
                                             );
@@ -437,7 +438,7 @@ impl PacketParser {
                                             state.pad_pressures[p_usize] = 0.0;
                                             state.last_strike[p_usize] = None;
                                             state.aftertouch_count[p_usize] = 0;
-                                            eprintln!(
+                                            tracing::trace!(
                                                 "[{:.4}s][PARSER-EVT] => Event::Button {{ name: {}, pressed: false }} (0x00 pressure {} <= {})",
                                                 t, pad_name, pressure_raw, PAD_RELEASE_THRESHOLD
                                             );
@@ -459,7 +460,7 @@ impl PacketParser {
                                             state.pad_states[p_usize] = true;
                                             state.aftertouch_count[p_usize] = 0;
                                             state.last_strike[p_usize] = Some(Instant::now());
-                                            eprintln!(
+                                            tracing::trace!(
                                                 "[{:.4}s][PARSER-EVT] => Event::Button {{ name: {}, pressed: true }} (0x00 switch press, raw_p={})",
                                                 t, pad_name, pressure_raw
                                             );
@@ -503,7 +504,7 @@ impl PacketParser {
                                         if pressure_raw <= PAD_RELEASE_THRESHOLD {
                                             state.pad_states[p_usize] = false;
                                             state.pad_pressures[p_usize] = 0.0;
-                                            eprintln!(
+                                            tracing::trace!(
                                                 "[{:.4}s][PARSER-EVT] => Event::Button {{ name: {}, pressed: false }} (fallback nibble 0x{:02x}, raw_p={})",
                                                 t, pad_name, evt, pressure_raw
                                             );
@@ -523,7 +524,7 @@ impl PacketParser {
                                         state.pad_states[p_usize] = true;
                                         let pressure = pressure_raw as f32 / 4095.0;
                                         state.pad_pressures[p_usize] = pressure;
-                                        eprintln!(
+                                        tracing::trace!(
                                             "[{:.4}s][PARSER-EVT] => Event::Button {{ name: {}, pressed: true }} (fallback nibble 0x{:02x}, raw_p={})",
                                             t, pad_name, evt, pressure_raw
                                         );
@@ -792,7 +793,7 @@ impl PacketParser {
                 state.aftertouch_count[p] = 0;
                 let pad_name = *self.names.get(PAD_MAP[p]).unwrap_or(&PAD_MAP[p]);
                 let t = self.created_at.elapsed().as_secs_f32();
-                eprintln!(
+                tracing::trace!(
                     "[{:.4}s][PARSER-TIMEOUT] Pad {} ({}) isolated tap silence={:.1}ms >= 150ms => RELEASE",
                     t, p, pad_name, silence_duration.as_secs_f32() * 1000.0
                 );
@@ -819,7 +820,7 @@ impl PacketParser {
                 state.aftertouch_count[p] = 0;
                 let pad_name = *self.names.get(PAD_MAP[p]).unwrap_or(&PAD_MAP[p]);
                 let t = self.created_at.elapsed().as_secs_f32();
-                eprintln!(
+                tracing::trace!(
                     "[{:.4}s][PARSER-TIMEOUT] Pad {} ({}) watchdog timeout 30s => RELEASE",
                     t, p, pad_name
                 );

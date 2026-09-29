@@ -6,7 +6,8 @@ use std::time::{Duration, Instant};
 use async_io::Timer;
 use crossbeam_channel::Sender;
 use futures_lite::future::block_on;
-use nusb::transfer::{Completion, ControlOut, ControlType, Recipient, RequestBuffer};
+use nusb::transfer::{Bulk, Completion, ControlOut, ControlType, In, Interrupt, Out, Recipient};
+use nusb::MaybeFuture;
 
 use crate::core::descriptor::*;
 use crate::core::event::{DeviceId, Event};
@@ -119,7 +120,7 @@ impl DeviceHandle {
             captured
         };
 
-        let usb_device = usb_info.open()?;
+        let usb_device = usb_info.open().wait()?;
 
         #[cfg(target_os = "linux")]
         if let Some(before) = tids_before {
@@ -244,7 +245,7 @@ fn run_device(
 
     for iface_desc in &descriptor.interfaces {
         if !claimed_by_num.contains_key(&iface_desc.number) {
-            match usb_device.detach_and_claim_interface(iface_desc.number) {
+            match usb_device.detach_and_claim_interface(iface_desc.number).wait() {
                 Ok(iface) => {
                     tracing::info!(
                         "Claimed interface {} ('{}')",
@@ -354,7 +355,7 @@ fn run_device(
     const PAD_TIMEOUT_POLL_INTERVAL: Duration = Duration::from_millis(40);
 
     enum Woken {
-        Read(Completion<Vec<u8>>),
+        Read(Completion),
         Cmd(DeviceCmd),
         CmdChannelClosed,
         TimeoutTick,
@@ -363,18 +364,43 @@ fn run_device(
     block_on(async {
         // Pipeline interrupt IN reads: keep multiple reads pending with the kernel
         // at all times, rather than submitting one and waiting for it to complete
-        // before submitting the next. Without this, there's a window on every
-        // packet where no read is in flight, during which NI's firmware — whose
-        // pad protocol already batches up to 21 tuples per 64-byte set specifically
-        // to tolerate a slow host — queues up backlog that then arrives all at once
-        // in a burst, showing up as delayed input followed by several pads
-        // appearing to trigger simultaneously. See nusb::transfer::Queue's own docs.
-        const READ_QUEUE_DEPTH: usize = 4;
-        const READ_BUF_SIZE: usize = 1024;
+        // before submitting the next, so there's never a window with no read in
+        // flight.
+        const READ_QUEUE_DEPTH: usize = 8;
 
-        let mut read_queue = control_iface.interrupt_in_queue(input_ep);
-        while read_queue.pending() < READ_QUEUE_DEPTH {
-            read_queue.submit(RequestBuffer::new(READ_BUF_SIZE));
+        let mut ep_in = match control_iface.endpoint::<Interrupt, In>(input_ep) {
+            Ok(ep) => ep,
+            Err(e) => {
+                tracing::error!("Failed to open input endpoint 0x{:02x}: {}", input_ep, e);
+                return;
+            }
+        };
+
+        // A USB transfer only completes on a short packet or when its buffer is
+        // full. Sizing the buffer larger than the biggest report makes full-size
+        // reports (e.g. the Mk3's 64-byte pad report on a 64-byte endpoint)
+        // accumulate in the kernel until the buffer fills or an unrelated short
+        // report happens to flush them — seconds of latency, and reports glued
+        // together that the parser can't dispatch. Size the buffer to the
+        // largest report, rounded up to a whole number of packets, so every
+        // report completes its own transfer.
+        let mps = ep_in.max_packet_size().max(1);
+        let max_report = descriptor
+            .input_packets
+            .iter()
+            .filter(|p| p.interface == control_iface_id)
+            .map(|p| p.size)
+            .max()
+            .unwrap_or(mps);
+        let read_buf_size = max_report.div_ceil(mps) * mps;
+        tracing::debug!(
+            "Input ep 0x{:02x}: max packet {} bytes, read buffer {} bytes",
+            input_ep, mps, read_buf_size
+        );
+
+        while ep_in.pending() < READ_QUEUE_DEPTH {
+            let buf = ep_in.allocate(read_buf_size);
+            ep_in.submit(buf);
         }
 
         let mut last_timeout_sweep = Instant::now();
@@ -383,7 +409,7 @@ fn run_device(
             let remaining = PAD_TIMEOUT_POLL_INTERVAL.saturating_sub(last_timeout_sweep.elapsed());
             let woken = futures_lite::future::or(
                 futures_lite::future::or(
-                    async { Woken::Read(read_queue.next_complete().await) },
+                    async { Woken::Read(ep_in.next_complete().await) },
                     async {
                         match cmd_rx.recv().await {
                             Ok(cmd) => Woken::Cmd(cmd),
@@ -414,15 +440,16 @@ fn run_device(
                     }
                 }
                 Woken::Read(completion) => {
+                    let buf = completion.buffer;
                     match completion.status {
                         Ok(()) => {
-                            let data = completion.data;
+                            let data = &buf[..completion.actual_len];
                             tracing::trace!("USB RECV [len={}] header={:02x?}", data.len(), &data[0..data.len().min(8)]);
 
                             // Parse the packet
                             event_buf.clear();
-                            if !hook.on_packet(device_id, &data, &mut event_buf) {
-                                parser.parse(&data, &mut event_buf);
+                            if !hook.on_packet(device_id, data, &mut event_buf) {
+                                parser.parse(data, &mut event_buf);
                             }
 
                             // Emit events
@@ -434,10 +461,10 @@ fn run_device(
                             }
 
                             if running {
-                                // Resubmit immediately, reusing the buffer allocation,
+                                // Resubmit immediately, recycling the zero-copy buffer,
                                 // to keep the queue at constant depth so the kernel
                                 // always has a read pending.
-                                read_queue.submit(RequestBuffer::reuse(data, READ_BUF_SIZE));
+                                ep_in.submit(buf);
                             }
                         }
                         Err(e) => {
@@ -469,6 +496,11 @@ fn run_device(
     tracing::info!("Device thread exiting for {:?}", device_id);
 }
 
+enum ScreenOutEndpoint {
+    Bulk(nusb::Endpoint<Bulk, Out>),
+    Interrupt(nusb::Endpoint<Interrupt, Out>),
+}
+
 /// Dedicated screen worker thread. Runs completely decoupled from the interrupt IN input loop
 /// so that large bulk pixel transfers never delay button, pad, or encoder events.
 fn run_screens(
@@ -478,36 +510,66 @@ fn run_screens(
     screen_rx: async_channel::Receiver<DeviceCmd>,
 ) {
     block_on(async {
-        // Send initial splash screen (blank frame)
-        for (screen_name, _sm) in &screen_managers {
-            if let Some(screen_desc) = descriptor.screens.iter().find(|s| s.name == *screen_name) {
-                if let Some(iface) = screen_ifaces.get(&screen_desc.interface) {
-                    let ep = descriptor
-                        .interface_by_id(&screen_desc.interface)
-                        .and_then(|i| i.endpoints.out.as_ref())
-                        .map(|ep| ep.address.0 as u8)
-                        .unwrap_or(0x02);
+        let mut endpoints: HashMap<(String, u8), ScreenOutEndpoint> = HashMap::new();
+        let mut screen_to_ep: HashMap<String, (String, u8)> = HashMap::new();
+
+        for s in &descriptor.screens {
+            if let Some(iface) = screen_ifaces.get(&s.interface) {
+                let ep_addr = descriptor
+                    .interface_by_id(&s.interface)
+                    .and_then(|i| i.endpoints.out.as_ref())
+                    .map(|ep| ep.address.0 as u8)
+                    .unwrap_or(0x02);
+                let key = (s.interface.clone(), ep_addr);
+                screen_to_ep.insert(s.name.clone(), key.clone());
+
+                if !endpoints.contains_key(&key) {
                     let is_interrupt = descriptor
-                        .interface_by_id(&screen_desc.interface)
+                        .interface_by_id(&s.interface)
                         .and_then(|i| i.endpoints.out.as_ref())
                         .map(|ep| ep.transfer_type == crate::core::descriptor::TransferType::Interrupt)
                         .unwrap_or(false);
-
-                    let blank = vec![0u8; screen_desc.byte_size()];
-                    let blit_buf = crate::screen::protocol::build_full_blit(screen_desc, &blank);
-                    tracing::info!(
-                        "Sending splash screen: {} bytes to ep 0x{:02x} ({}) on interface '{}'",
-                        blit_buf.len(),
-                        ep,
-                        if is_interrupt { "interrupt" } else { "bulk" },
-                        screen_desc.interface
-                    );
                     if is_interrupt {
-                        let _ = iface.interrupt_out(ep, blit_buf).await;
+                        if let Ok(ep) = iface.endpoint::<Interrupt, Out>(ep_addr) {
+                            endpoints.insert(key, ScreenOutEndpoint::Interrupt(ep));
+                        } else {
+                            tracing::error!("Failed to open screen interrupt OUT ep 0x{:02x} for '{}'", ep_addr, s.name);
+                        }
                     } else {
-                        let _ = iface.bulk_out(ep, blit_buf).await;
+                        if let Ok(ep) = iface.endpoint::<Bulk, Out>(ep_addr) {
+                            endpoints.insert(key, ScreenOutEndpoint::Bulk(ep));
+                        } else {
+                            tracing::error!("Failed to open screen bulk OUT ep 0x{:02x} for '{}'", ep_addr, s.name);
+                        }
                     }
-                    tracing::info!("Splash screen sent successfully");
+                }
+            }
+        }
+
+        // Send initial splash screen (blank frame)
+        for (screen_name, _sm) in &screen_managers {
+            if let Some(screen_desc) = descriptor.screens.iter().find(|s| s.name == *screen_name) {
+                if let Some(key) = screen_to_ep.get(screen_name) {
+                    if let Some(ep) = endpoints.get_mut(key) {
+                        let blank = vec![0u8; screen_desc.byte_size()];
+                        let blit_buf = crate::screen::protocol::build_full_blit(screen_desc, &blank);
+                        tracing::info!(
+                            "Sending splash screen: {} bytes for '{}'",
+                            blit_buf.len(),
+                            screen_name
+                        );
+                        match ep {
+                            ScreenOutEndpoint::Bulk(ep) => {
+                                ep.submit(blit_buf.into());
+                                let _ = ep.next_complete().await;
+                            }
+                            ScreenOutEndpoint::Interrupt(ep) => {
+                                ep.submit(blit_buf.into());
+                                let _ = ep.next_complete().await;
+                            }
+                        }
+                        tracing::info!("Splash screen sent successfully for '{}'", screen_name);
+                    }
                 }
             }
         }
@@ -519,26 +581,23 @@ fn run_screens(
                     if let Some(sm) = screen_managers.get_mut(&screen) {
                         if let Some(screen_desc) = descriptor.screens.iter().find(|s| s.name == screen) {
                             if let Some(blit_data) = sm.submit(&pixels, format, screen_desc) {
-                                if let Some(iface) = screen_ifaces.get(&screen_desc.interface) {
-                                    let ep = descriptor
-                                        .interface_by_id(&screen_desc.interface)
-                                        .and_then(|i| i.endpoints.out.as_ref())
-                                        .map(|ep| ep.address.0 as u8)
-                                        .unwrap_or(0x02);
-                                    let is_interrupt = descriptor
-                                        .interface_by_id(&screen_desc.interface)
-                                        .and_then(|i| i.endpoints.out.as_ref())
-                                        .map(|ep| ep.transfer_type == crate::core::descriptor::TransferType::Interrupt)
-                                        .unwrap_or(false);
-                                    tracing::debug!("Sending {} bytes to ep 0x{:02x}...", blit_data.len(), ep);
-                                    if is_interrupt {
-                                        let _ = iface.interrupt_out(ep, blit_data).await;
+                                if let Some(key) = screen_to_ep.get(&screen) {
+                                    if let Some(ep) = endpoints.get_mut(key) {
+                                        tracing::debug!("Sending {} bytes for screen '{}'...", blit_data.len(), screen);
+                                        match ep {
+                                            ScreenOutEndpoint::Bulk(ep) => {
+                                                ep.submit(blit_data.into());
+                                                let _ = ep.next_complete().await;
+                                            }
+                                            ScreenOutEndpoint::Interrupt(ep) => {
+                                                ep.submit(blit_data.into());
+                                                let _ = ep.next_complete().await;
+                                            }
+                                        }
+                                        tracing::debug!("Bulk out completed for screen '{}'", screen);
                                     } else {
-                                        let _ = iface.bulk_out(ep, blit_data).await;
+                                        tracing::warn!("Screen endpoint for '{}' not found", screen);
                                     }
-                                    tracing::debug!("Bulk out completed for screen '{}'", screen);
-                                } else {
-                                    tracing::warn!("Interface '{}' not found in screen_ifaces", screen_desc.interface);
                                 }
                             }
                         } else {
@@ -565,6 +624,18 @@ fn run_leds(
     led_rx: async_channel::Receiver<DeviceCmd>,
 ) {
     block_on(async {
+        let mut led_endpoints: HashMap<u8, nusb::Endpoint<Interrupt, Out>> = HashMap::new();
+        for lb in &led_builders {
+            let ep = lb.endpoint();
+            if !led_endpoints.contains_key(&ep) {
+                if let Ok(endpoint) = iface.endpoint::<Interrupt, Out>(ep) {
+                    led_endpoints.insert(ep, endpoint);
+                } else {
+                    tracing::error!("Failed to open LED interrupt OUT ep 0x{:02x}", ep);
+                }
+            }
+        }
+
         // Tracks cumulative mask and dirty state per feature subcommand (e.g. 0x26 -> (mask, dirty))
         let mut feature_cmd_masks: HashMap<u8, (u8, bool)> = HashMap::new();
 
@@ -670,9 +741,12 @@ fn run_leds(
                     let ep = lb.endpoint();
                     let group = lb.group_id().to_string();
                     let len = wire_buf.len();
-                    let res = iface.interrupt_out(ep, wire_buf).await.into_result();
-                    if let Err(e) = res {
-                        eprintln!("[LED-USB-ERR] Failed to flush {} bytes to group '{}' ep 0x{:02x}: {}", len, group, ep, e);
+                    if let Some(endpoint) = led_endpoints.get_mut(&ep) {
+                        endpoint.submit(wire_buf.into());
+                        let comp = endpoint.next_complete().await;
+                        if let Err(e) = comp.status {
+                            eprintln!("[LED-USB-ERR] Failed to flush {} bytes to group '{}' ep 0x{:02x}: {}", len, group, ep, e);
+                        }
                     }
                 }
             }
@@ -700,7 +774,7 @@ fn run_leds(
                             index: quirk.interface as u16,
                             data: &buf,
                         };
-                        let res = iface.control_out(control).await.into_result();
+                        let res = iface.control_out(control, Duration::from_millis(100)).await;
                         if let Err(e) = res {
                             eprintln!(
                                 "[LED-CTRL-ERR] Failed to flush feature LED report 0x{:02x} cmd 0x{:02x}: {}",
@@ -717,7 +791,10 @@ fn run_leds(
             lb.clear();
             if let Some(wire_buf) = lb.flush() {
                 let ep = lb.endpoint();
-                let _ = iface.interrupt_out(ep, wire_buf).await;
+                if let Some(endpoint) = led_endpoints.get_mut(&ep) {
+                    endpoint.submit(wire_buf.into());
+                    let _ = endpoint.next_complete().await;
+                }
             }
         }
 
@@ -740,7 +817,7 @@ fn run_leds(
                         index: quirk.interface as u16,
                         data: &buf,
                     };
-                    let _ = iface.control_out(control).await;
+                    let _ = iface.control_out(control, Duration::from_millis(100)).await;
                 }
             }
         }
