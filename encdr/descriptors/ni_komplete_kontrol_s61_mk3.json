@@ -1,0 +1,92 @@
+{
+  "name": "NI Komplete Kontrol S61 Mk3",
+  "manufacturer": "Native Instruments",
+  "vendor_id": "0x17cc",
+  "product_id": "0x2110",
+  "_comment": "Preliminary placeholder descriptor based on Native Instruments Komplete Kontrol 3.3.3 protocol definitions",
+  "interfaces": [
+    {
+      "id": "control",
+      "number": 0,
+      "endpoints": {
+        "in": {
+          "address": "0x81",
+          "type": "interrupt"
+        },
+        "out": {
+          "address": "0x01",
+          "type": "interrupt"
+        }
+      }
+    }
+  ],
+  "input_packets": [
+    {
+      "id": "buttons",
+      "interface": "control",
+      "size": 7,
+      "_comment": "NI protocol: I-1 b28 n2 (40 bits buttons + 4D encoder notched wrap16)",
+      "items": [
+        {
+          "type": "encoder",
+          "name": "encoder_main",
+          "byte": 6,
+          "bits": 4,
+          "bit_offset": 0,
+          "encoding": "wrap16"
+        }
+      ]
+    },
+    {
+      "id": "touchstrip",
+      "interface": "control",
+      "size": 32,
+      "_comment": "NI protocol: I-2 b8 WC b10",
+      "items": []
+    },
+    {
+      "id": "encoders",
+      "interface": "control",
+      "size": 39,
+      "_comment": "NI protocol: I-AA W19 (19 words / 8 touch-sensitive continuous encoders)",
+      "items": []
+    }
+  ],
+  "leds": [
+    {
+      "id": "button_leds",
+      "interface": "control",
+      "buffer_size": 42,
+      "prefix_byte": "0x80",
+      "_comment": "NI protocol: O-80 B2A (42 bytes)",
+      "items": []
+    },
+    {
+      "id": "navigation_leds",
+      "interface": "control",
+      "buffer_size": 30,
+      "prefix_byte": "0x81",
+      "_comment": "NI protocol: O-81 B1E (30 bytes)",
+      "items": []
+    },
+    {
+      "id": "light_guide",
+      "interface": "control",
+      "buffer_size": 61,
+      "prefix_byte": "0x82",
+      "_comment": "NI protocol: O-82 B3D (61 keys Light Guide)",
+      "items": [
+        {
+          "type": "strip",
+          "name": "light_guide",
+          "offset": 1,
+          "count": 61
+        }
+      ]
+    }
+  ],
+  "screens": [],
+  "quirks": {
+    "detach_kernel_driver": true
+  }
+}

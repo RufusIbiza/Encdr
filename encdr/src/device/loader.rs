@@ -54,6 +54,12 @@ impl DescriptorRegistry {
         self.load_json(s4_mk3_json)?;
         let jam_json = include_str!("../../descriptors/ni_maschine_jam.json");
         self.load_json(jam_json)?;
+        let s49_mk3_json = include_str!("../../descriptors/ni_komplete_kontrol_s49_mk3.json");
+        self.load_json(s49_mk3_json)?;
+        let s61_mk3_json = include_str!("../../descriptors/ni_komplete_kontrol_s61_mk3.json");
+        self.load_json(s61_mk3_json)?;
+        let s88_mk3_json = include_str!("../../descriptors/ni_komplete_kontrol_s88_mk3.json");
+        self.load_json(s88_mk3_json)?;
         Ok(())
     }
 
@@ -580,6 +586,29 @@ mod tests {
         }
         let touch_event = events.iter().find(|e| matches!(e, crate::core::event::Event::Touch { name, touched, .. } if *name == "touchstrip_1_touch" && *touched));
         assert!(touch_event.is_some(), "Expected touchstrip_1_touch event on Jam");
+    }
+
+    #[test]
+    fn load_builtin_kk_mk3() {
+        let mut reg = DescriptorRegistry::new();
+        reg.load_builtins().unwrap();
+
+        let s49 = reg.find(0x17cc, 0x2100).expect("S49 Mk3 not found");
+        assert_eq!(s49.name, "NI Komplete Kontrol S49 Mk3");
+        assert_eq!(s49.input_packets.len(), 3);
+        assert_eq!(s49.leds.len(), 3);
+        let s49_lg = s49.leds.iter().find(|l| l.id == "light_guide").expect("S49 Light Guide missing");
+        assert_eq!(s49_lg.buffer_size, 49);
+
+        let s61 = reg.find(0x17cc, 0x2110).expect("S61 Mk3 not found");
+        assert_eq!(s61.name, "NI Komplete Kontrol S61 Mk3");
+        let s61_lg = s61.leds.iter().find(|l| l.id == "light_guide").expect("S61 Light Guide missing");
+        assert_eq!(s61_lg.buffer_size, 61);
+
+        let s88 = reg.find(0x17cc, 0x2120).expect("S88 Mk3 not found");
+        assert_eq!(s88.name, "NI Komplete Kontrol S88 Mk3");
+        let s88_lg = s88.leds.iter().find(|l| l.id == "light_guide").expect("S88 Light Guide missing");
+        assert_eq!(s88_lg.buffer_size, 88);
     }
 }
 
