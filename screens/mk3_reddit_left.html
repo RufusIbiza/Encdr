@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Reddit Feed - Maschine Mk3 Left Display</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 480px;
+    height: 272px;
+    overflow: hidden;
+    background: #080d10;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #e2e8f0;
+    user-select: none;
+  }
+
+  .container {
+    width: 480px;
+    height: 272px;
+    display: flex;
+    flex-direction: column;
+    padding: 6px 8px 6px 8px;
+    background: radial-gradient(circle at 50% 0%, #142127 0%, #080d10 100%);
+  }
+
+  /* Header Bar - Cleaned: No Online pill */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 28px;
+    padding: 0 4px 6px 4px;
+    border-bottom: 2.5px solid #ff4500;
+  }
+
+  .brand-group {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .snoo-icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #ff4500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 10px rgba(255, 69, 0, 0.7);
+  }
+
+  .brand-title {
+    font-size: 14.5px;
+    font-weight: 900;
+    letter-spacing: 0.3px;
+    color: #ffffff;
+  }
+
+  .brand-title span {
+    color: #ff4500;
+  }
+
+  .sub-badge {
+    font-size: 10px;
+    font-weight: 800;
+    background: #172830;
+    color: #00d2ff;
+    padding: 2px 7px;
+    border-radius: 4px;
+    border: 1px solid rgba(0, 210, 255, 0.4);
+    letter-spacing: 0.4px;
+  }
+
+  .counter-pill {
+    font-size: 11px;
+    font-weight: 800;
+    background: #152228;
+    color: #cbd5e1;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid #283e4a;
+  }
+
+  /* Viewport & List */
+  .viewport {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    margin-top: 5px;
+  }
+
+  .posts-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    position: absolute;
+    width: 100%;
+    top: 0;
+    left: 0;
+  }
+
+  /* Single Floating Orange Border Indicator */
+  .selection-indicator {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 74px;
+    border: 2.5px solid #ff4500;
+    border-radius: 7px;
+    box-shadow: 0 0 16px rgba(255, 69, 0, 0.65), inset 0 0 6px rgba(255, 69, 0, 0.2);
+    pointer-events: none;
+    z-index: 10;
+    box-sizing: border-box;
+  }
+
+  /* Clean Dark Post Cards - NO borders or background changes on cards */
+  .post-card {
+    height: 74px;
+    min-height: 74px;
+    background: #121c21;
+    border: 1px solid #1f313a;
+    border-radius: 7px;
+    padding: 6px 10px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    position: relative;
+    box-sizing: border-box;
+  }
+
+  /* Score Column */
+  .score-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 46px;
+    background: rgba(0, 0, 0, 0.35);
+    border-radius: 5px;
+    padding: 4px 3px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .rank-num {
+    font-size: 9px;
+    color: #64748b;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 3px;
+  }
+
+  .score-val {
+    font-size: 12px;
+    font-weight: 900;
+    color: #ff4500;
+    line-height: 1;
+  }
+
+  /* Content Column */
+  .content-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    overflow: hidden;
+    height: 100%;
+  }
+
+  .post-meta-top {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 10px;
+    color: #94a3b8;
+  }
+
+  .sub-tag {
+    font-weight: 800;
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 0.12);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  .author-tag {
+    color: #64748b;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+  }
+
+  .time-tag {
+    color: #64748b;
+  }
+
+  .flair-tag {
+    background: rgba(255, 69, 0, 0.25);
+    color: #ff8555;
+    border: 1px solid rgba(255, 69, 0, 0.45);
+    padding: 0 5px;
+    border-radius: 3px;
+    font-size: 8.5px;
+    font-weight: 800;
+  }
+
+  /* High contrast, bold post title */
+  .post-title {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #f1f5f9;
+    line-height: 1.25;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    letter-spacing: -0.1px;
+  }
+
+  .post-meta-bot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 9.5px;
+    color: #64748b;
+    font-weight: 600;
+  }
+
+  .comments-count {
+    color: #94a3b8;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="brand-group">
+      <div class="snoo-icon">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="#ffffff">
+          <circle cx="12" cy="12" r="10" />
+        </svg>
+      </div>
+      <div class="brand-title">reddit<span>•</span>encdr</div>
+      <div class="sub-badge" id="feed-title">r/popular • Front Page</div>
+    </div>
+    <div class="counter-pill" id="counter">1 / 8</div>
+  </div>
+
+  <div class="viewport" id="viewport">
+    <div class="posts-list" id="posts-list">
+      <div class="selection-indicator" id="selection-indicator" style="top: 0px;"></div>
+      <!-- Cards injected by JS -->
+    </div>
+  </div>
+</div>
+
+<script>
+  let currentPosts = [];
+  const CARD_HEIGHT = 74;
+  const CARD_GAP = 6;
+  const STEP = CARD_HEIGHT + CARD_GAP; // 80px per post
+
+  function renderPosts() {
+    const list = document.getElementById('posts-list');
+    list.innerHTML = '<div class="selection-indicator" id="selection-indicator" style="top: 0px;"></div>';
+
+    currentPosts.forEach((post, i) => {
+      const card = document.createElement('div');
+      card.className = 'post-card';
+      card.id = 'post-' + i;
+
+      card.innerHTML = `
+        <div class="score-col">
+          <div class="rank-num">#${i + 1}</div>
+          <div class="score-val">▲ ${post.score_short || post.score}</div>
+        </div>
+        <div class="content-col">
+          <div class="post-meta-top">
+            <span class="sub-tag">${post.subreddit}</span>
+            <span class="author-tag">u/${post.author}</span>
+            <span class="time-tag">• ${post.time_ago}</span>
+            ${post.flair ? `<span class="flair-tag">${post.flair}</span>` : ''}
+          </div>
+          <div class="post-title">${post.title}</div>
+          <div class="post-meta-bot">
+            <span class="comments-count">💬 ${post.comments_count} comments</span>
+          </div>
+        </div>
+      `;
+      list.appendChild(card);
+    });
+
+    applyPosition(0, 0);
+  }
+
+  function applyPosition(selectedIndex, visualPos) {
+    const counter = document.getElementById('counter');
+    if (counter && currentPosts.length > 0) {
+      counter.textContent = `${selectedIndex + 1} / ${currentPosts.length}`;
+    }
+
+    const indicator = document.getElementById('selection-indicator');
+    const list = document.getElementById('posts-list');
+    const viewport = document.getElementById('viewport');
+
+    if (indicator && list && viewport) {
+      // The indicator top moves along the list: visualPos * 80px
+      const indTop = visualPos * STEP;
+      indicator.style.top = `${indTop}px`;
+
+      // Centered scrolling:
+      // viewport center = viewport.clientHeight / 2
+      // indicator center = indTop + (CARD_HEIGHT / 2)
+      // target list translateY = viewportCenter - indicatorCenter
+      const vpCenter = viewport.clientHeight / 2;
+      const indCenter = indTop + (CARD_HEIGHT / 2);
+      const listY = Math.min(0, vpCenter - indCenter);
+
+      list.style.transform = `translateY(${listY}px)`;
+    }
+  }
+
+  window.encdr = {
+    onMessage: function(channel, data) {
+      if (channel === 'init_feed') {
+        currentPosts = data.posts || [];
+        if (data.feed_title) {
+          document.getElementById('feed-title').textContent = data.feed_title;
+        }
+        renderPosts();
+        applyPosition(data.selected_index || 0, data.selected_index || 0);
+      } else if (channel === 'set_pos') {
+        // data has: { selected_index: number, visual_pos: number }
+        applyPosition(data.selected_index, data.visual_pos);
+      } else if (channel === 'update_score') {
+        if (currentPosts[data.index]) {
+          currentPosts[data.index].score_short = data.new_score;
+          const scoreEl = document.querySelector(`#post-${data.index} .score-val`);
+          if (scoreEl) scoreEl.textContent = '▲ ' + data.new_score;
+        }
+      }
+    }
+  };
+</script>
+</body>
+</html>

@@ -40,6 +40,10 @@ name = "mk3_pad_response"
 path = "maschine_mk3/pad_response.rs"
 
 [[bin]]
+name = "mk3_reddit"
+path = "maschine_mk3/reddit_browser.rs"
+
+[[bin]]
 name = "touchstrip_monitor"
 
 path = "maschine_mk3/touchstrip_monitor.rs"

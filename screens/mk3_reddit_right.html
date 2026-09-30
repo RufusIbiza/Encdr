@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Reddit Post Reader - Maschine Mk3 Right Display</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 480px;
+    height: 272px;
+    overflow: hidden;
+    background: #080d10;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #cbd5e1;
+    user-select: none;
+  }
+
+  .container {
+    width: 480px;
+    height: 272px;
+    display: flex;
+    flex-direction: column;
+    padding: 6px 10px 6px 10px;
+    background: radial-gradient(circle at 50% 0%, #142127 0%, #080d10 100%);
+    position: relative;
+  }
+
+  /* Header Bar - Cleaned: Scroll position panel removed */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 28px;
+    padding: 0 2px 6px 2px;
+    border-bottom: 2.5px solid #ff4500;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    overflow: hidden;
+  }
+
+  .sub-tag {
+    font-size: 11px;
+    font-weight: 800;
+    color: #38bdf8;
+    background: #172830;
+    border: 1px solid rgba(56, 189, 248, 0.4);
+    padding: 2px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+  }
+
+  .author-meta {
+    font-size: 10px;
+    color: #64748b;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .score-badge {
+    font-size: 11px;
+    font-weight: 900;
+    color: #ff4500;
+    background: rgba(255, 69, 0, 0.15);
+    border: 1px solid rgba(255, 69, 0, 0.45);
+    padding: 2px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+
+  /* Viewport and Content Container */
+  .viewport {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    margin-top: 5px;
+  }
+
+  .content-inner {
+    position: absolute;
+    width: calc(100% - 12px);
+    top: 0;
+    left: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-bottom: 30px;
+    will-change: transform;
+  }
+
+  /* Post Header Card */
+  .post-header-card {
+    background: #121c21;
+    border: 1px solid #1f313a;
+    border-radius: 7px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .flair-pill {
+    display: inline-block;
+    align-self: flex-start;
+    background: rgba(255, 69, 0, 0.22);
+    color: #ff8555;
+    border: 1px solid rgba(255, 69, 0, 0.45);
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-size: 9px;
+    font-weight: 800;
+  }
+
+  /* Large, bold title for video */
+  .post-title {
+    font-size: 17.5px;
+    font-weight: 800;
+    color: #ffffff;
+    line-height: 1.25;
+    letter-spacing: -0.2px;
+  }
+
+  /* Body Text - 13.5px readable text */
+  .post-body {
+    font-size: 13.5px;
+    color: #f1f5f9;
+    line-height: 1.48;
+    background: #10181d;
+    border: 1px solid #1c2b33;
+    border-radius: 7px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .post-body p {
+    margin: 0;
+  }
+
+  .post-body ul {
+    margin: 0;
+    padding-left: 18px;
+  }
+
+  .post-body li {
+    margin-bottom: 4px;
+  }
+
+  .code-snippet {
+    background: #080d10;
+    border: 1px solid #23343d;
+    border-radius: 5px;
+    padding: 6px 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 11.5px;
+    color: #38bdf8;
+    line-height: 1.35;
+    white-space: pre-wrap;
+  }
+
+  /* Comments Section */
+  .comments-divider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 0 2px 0;
+    font-size: 10.5px;
+    font-weight: 800;
+    color: #64748b;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  .comments-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: #23343d;
+  }
+
+  .comment-card {
+    background: #10181d;
+    border-left: 3px solid #334155;
+    border-radius: 0 5px 5px 0;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .comment-card.nested {
+    margin-left: 14px;
+    border-left-color: #ff4500;
+    background: #131d22;
+  }
+
+  .comment-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 10.5px;
+  }
+
+  .comment-author {
+    font-weight: 800;
+    color: #94a3b8;
+  }
+
+  .comment-author.op {
+    color: #ff4500;
+    background: rgba(255, 69, 0, 0.15);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  .comment-score {
+    color: #64748b;
+  }
+
+  .comment-text {
+    font-size: 12.5px;
+    color: #cbd5e1;
+    line-height: 1.4;
+  }
+
+  /* Vertical Scrollbar Track & Thumb */
+  .scrollbar-track {
+    position: absolute;
+    right: 0;
+    top: 5px;
+    bottom: 5px;
+    width: 4px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 2px;
+  }
+
+  .scrollbar-thumb {
+    position: absolute;
+    width: 4px;
+    background: #ff4500;
+    border-radius: 2px;
+    min-height: 24px;
+    box-shadow: 0 0 8px rgba(255, 69, 0, 0.8);
+    transition: top 0.04s linear;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="header-left">
+      <span class="sub-tag" id="sub-tag">r/technology</span>
+      <span class="author-meta" id="author-meta">Posted by u/TripleShotPls • 4h ago</span>
+    </div>
+    <div class="header-right">
+      <div class="score-badge" id="score-badge">▲ 18,450</div>
+    </div>
+  </div>
+
+  <div class="viewport" id="viewport">
+    <div class="content-inner" id="content-inner">
+      <!-- Injected post content -->
+    </div>
+    <div class="scrollbar-track">
+      <div class="scrollbar-thumb" id="scrollbar-thumb" style="top: 0px; height: 35px;"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let currentScrollY = 0;
+  let targetScrollY = 0;
+  let maxScrollY = 0;
+  let isScrollAnimating = false;
+
+  function setPost(post) {
+    currentScrollY = 0;
+    targetScrollY = 0;
+    document.getElementById('sub-tag').textContent = post.subreddit;
+    document.getElementById('author-meta').textContent = `Posted by u/${post.author} • ${post.time_ago}`;
+    document.getElementById('score-badge').textContent = `▲ ${post.score_full || post.score}`;
+
+    const inner = document.getElementById('content-inner');
+    inner.innerHTML = '';
+
+    // Header Card
+    const headerCard = document.createElement('div');
+    headerCard.className = 'post-header-card';
+    headerCard.innerHTML = `
+      ${post.flair ? `<div class="flair-pill">${post.flair}</div>` : ''}
+      <div class="post-title">${post.title}</div>
+    `;
+    inner.appendChild(headerCard);
+
+    // Body text card
+    if (post.body_html) {
+      const bodyCard = document.createElement('div');
+      bodyCard.className = 'post-body';
+      bodyCard.innerHTML = post.body_html;
+      inner.appendChild(bodyCard);
+    }
+
+    // Comments section
+    if (post.comments && post.comments.length > 0) {
+      const divider = document.createElement('div');
+      divider.className = 'comments-divider';
+      divider.textContent = `💬 Top Comments (${post.comments.length})`;
+      inner.appendChild(divider);
+
+      post.comments.forEach(c => {
+        const cCard = document.createElement('div');
+        cCard.className = 'comment-card' + (c.is_nested ? ' nested' : '');
+        cCard.innerHTML = `
+          <div class="comment-header">
+            <span class="comment-author ${c.is_op ? 'op' : ''}">u/${c.author} ${c.is_op ? '[OP]' : ''}</span>
+            <span class="comment-score">▲ ${c.score} • ${c.time_ago}</span>
+          </div>
+          <div class="comment-text">${c.text}</div>
+        `;
+        inner.appendChild(cCard);
+      });
+    }
+
+    applyScroll(0);
+  }
+
+  function scrollStep() {
+    const diff = targetScrollY - currentScrollY;
+    if (Math.abs(diff) > 0.5) {
+      currentScrollY += diff * 0.3;
+      applyScroll(currentScrollY);
+      if (window.encdr && window.encdr.requestCapture) {
+        window.encdr.requestCapture();
+      }
+      requestAnimationFrame(scrollStep);
+    } else {
+      currentScrollY = targetScrollY;
+      applyScroll(currentScrollY);
+      if (window.encdr && window.encdr.requestCapture) {
+        window.encdr.requestCapture();
+      }
+      isScrollAnimating = false;
+    }
+  }
+
+  function applyScroll(scrollY) {
+    const viewport = document.getElementById('viewport');
+    const inner = document.getElementById('content-inner');
+    const thumb = document.getElementById('scrollbar-thumb');
+
+    if (!viewport || !inner) return;
+
+    const viewportHeight = viewport.clientHeight;
+    const contentHeight = inner.offsetHeight;
+    maxScrollY = Math.max(0, contentHeight - viewportHeight + 10);
+
+    const clamped = Math.max(0, Math.min(scrollY, maxScrollY));
+    inner.style.transform = `translateY(-${clamped}px)`;
+
+    if (thumb) {
+      const trackHeight = viewportHeight;
+      const thumbHeight = Math.max(22, Math.round((viewportHeight / Math.max(contentHeight, viewportHeight)) * trackHeight));
+      thumb.style.height = `${thumbHeight}px`;
+
+      const maxThumbTop = trackHeight - thumbHeight;
+      const thumbTop = maxScrollY > 0 ? (clamped / maxScrollY) * maxThumbTop : 0;
+      thumb.style.top = `${thumbTop}px`;
+    }
+  }
+
+  window.encdr = {
+    onMessage: function(channel, data) {
+      if (channel === 'load_post') {
+        setPost(data);
+      } else if (channel === 'scroll_delta') {
+        const viewport = document.getElementById('viewport');
+        const inner = document.getElementById('content-inner');
+        if (viewport && inner) {
+          maxScrollY = Math.max(0, inner.offsetHeight - viewport.clientHeight + 10);
+          targetScrollY = Math.max(0, Math.min(targetScrollY + data.delta, maxScrollY));
+          if (!isScrollAnimating) {
+            isScrollAnimating = true;
+            requestAnimationFrame(scrollStep);
+          }
+        }
+      } else if (channel === 'reset_scroll') {
+        currentScrollY = 0;
+        targetScrollY = 0;
+        applyScroll(0);
+      }
+    }
+  };
+</script>
+</body>
+</html>

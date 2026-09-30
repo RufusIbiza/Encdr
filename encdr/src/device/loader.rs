@@ -52,6 +52,8 @@ impl DescriptorRegistry {
         self.load_json(s4_mk2_json)?;
         let s4_mk3_json = include_str!("../../descriptors/ni_kontrol_s4_mk3.json");
         self.load_json(s4_mk3_json)?;
+        let jam_json = include_str!("../../descriptors/ni_maschine_jam.json");
+        self.load_json(jam_json)?;
         Ok(())
     }
 
@@ -530,6 +532,54 @@ mod tests {
 
         let play_event = events.iter().find(|e| matches!(e, crate::core::event::Event::Button { name, pressed, .. } if *name == "left_play" && *pressed));
         assert!(play_event.is_some(), "Expected left_play pressed event on S4 MK3");
+    }
+
+    #[test]
+    fn load_maschine_jam_descriptor() {
+        let mut reg = DescriptorRegistry::new();
+        reg.load_builtins().unwrap();
+
+        let desc = reg.find(0x17cc, 0x1500).expect("Maschine Jam should be registered").clone();
+        assert_eq!(desc.name, "NI Maschine Jam");
+        assert_eq!(desc.input_packets.len(), 2);
+        assert_eq!(desc.leds.len(), 3);
+        assert!(desc.leds.iter().any(|l| l.id == "button_leds" && l.prefix_byte.0 == 0x80));
+        assert!(desc.leds.iter().any(|l| l.id == "matrix_and_groups" && l.prefix_byte.0 == 0x81));
+        assert!(desc.leds.iter().any(|l| l.id == "touchstrip_meters" && l.prefix_byte.0 == 0x82));
+
+        let names = reg.intern_descriptor_names(&desc);
+        let mut parser = crate::device::parser::PacketParser::new(crate::core::event::DeviceId(1), &desc, names);
+        let mut events = Vec::new();
+
+        // 1. Simulate button packet (17 bytes): press "play" (byte 15, mask 0x04)
+        let mut btn_buf = vec![0u8; 17];
+        btn_buf[15] = 0x04;
+        parser.parse(&btn_buf, &mut events);
+        let play_event = events.iter().find(|e| matches!(e, crate::core::event::Event::Button { name, pressed, .. } if *name == "play" && *pressed));
+        assert!(play_event.is_some(), "Expected play button pressed event on Jam");
+
+        // 2. Simulate matrix button: row 1, col 1 (matrix_1_1: byte 4, mask 0x04)
+        events.clear();
+        btn_buf[4] = 0x04;
+        parser.parse(&btn_buf, &mut events);
+        let matrix_event = events.iter().find(|e| matches!(e, crate::core::event::Event::Button { name, pressed, .. } if *name == "matrix_1_1" && *pressed));
+        assert!(matrix_event.is_some(), "Expected matrix_1_1 button pressed event on Jam");
+
+        // 3. Simulate touchstrip packet (49 bytes): touchstrip 1 touched with position 512
+        events.clear();
+        let mut ts_buf = vec![0u8; 49];
+        ts_buf[0] = 0x02;
+        // strip 1 offset = 1: position at bytes 3, 4 (little-endian 512 = 0x0200)
+        ts_buf[3] = 0x00;
+        ts_buf[4] = 0x02;
+        parser.parse(&ts_buf, &mut events);
+        let slider_event = events.iter().find(|e| matches!(e, crate::core::event::Event::Slider { name, .. } if *name == "touchstrip_1"));
+        assert!(slider_event.is_some(), "Expected touchstrip_1 slider event on Jam");
+        if let Some(crate::core::event::Event::Slider { value, .. }) = slider_event {
+            assert!((*value - 0.5).abs() < 0.01, "Expected normalized value ~0.5, got {}", value);
+        }
+        let touch_event = events.iter().find(|e| matches!(e, crate::core::event::Event::Touch { name, touched, .. } if *name == "touchstrip_1_touch" && *touched));
+        assert!(touch_event.is_some(), "Expected touchstrip_1_touch event on Jam");
     }
 }
 

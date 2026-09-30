@@ -162,6 +162,7 @@ encdr/
         ├── ni_kontrol_s5.md            Traktor Kontrol S5 reference
         ├── ni_kontrol_s8.md            S8 hardware reference
         ├── ni_kontrol_x1_mk3.md        Traktor Kontrol X1 MK3 hardware reference
+        ├── ni_maschine_jam.md          Maschine Jam hardware reference
         ├── ni_maschine_mk2.md          Maschine Mk2 hardware reference
         ├── ni_maschine_mk3.md          Mk3 hardware reference
         ├── ni_maschine_plus.md         Maschine Plus hardware reference
@@ -179,6 +180,7 @@ encdr/
 | NI Kontrol S4 Mk3         | `17cc:1720`       | Implemented | 72 buttons, 6 encoders, 2 motorized jogwheels, 28 faders/knobs | 16 RGB pads, 45 singles, 8-seg VU, LED rings, Haptic Drive | 2x 320x240 BGR565 |
 | NI Kontrol S5             | `17cc:1420`       | Implemented | 70 buttons/touches, 6 encoders, 21 faders/knobs | 16 RGB pads, 34 singles                     | 2x 480x272 BGR565 |
 | NI Kontrol S8             | `17cc:1370`       | Implemented | 114 buttons/encoders, 29 faders/knobs         | 16 RGB pads, 100+ singles, EP0 feature LEDs | 2x 480x272 BGR565 |
+| NI Maschine Jam           | `17cc:1500`       | Implemented | 103 buttons, 1 encoder, 8 dual-touch strips   | 64 RGB matrix, 16 RGB buttons, 35 singles, 8x 11-seg strip meters, stereo VU | — |
 | NI Maschine Mk2           | `17cc:1200`       | Implemented | 47 buttons, 11 encoders, 16 velocity pads     | 16 RGB pads, 31 singles                     | 2x 256x64 1-bit   |
 | NI Maschine Mk3           | `17cc:1600`       | Implemented | 63 buttons, 10 touches, 9 encoders, 1 slider, 16 pads | 16 RGB pads, 62 singles, 1 strip     | 2x 480x272 BGR565 |
 | NI Maschine Plus          | `17cc:1820`       | Implemented | 63 buttons, 10 touches, 9 encoders, 1 slider, 16 pads | 16 RGB pads, 62 singles, 1 strip     | 2x 480x272 BGR565 |
@@ -216,6 +218,7 @@ encdr/
 - [NI Kontrol S4 Mk3](docs/hardware/ni_kontrol_s4_mk3.md) — Traktor Kontrol S4 MK3 (Haptic Drive, dual screens) hardware reference
 - [NI Kontrol S5](docs/hardware/ni_kontrol_s5.md) — Traktor Kontrol S5 hardware reference & screen protocol
 - [NI Kontrol S8](docs/hardware/ni_kontrol_s8.md) — S8 hardware reference
+- [NI Maschine Jam](docs/hardware/ni_maschine_jam.md) — Maschine Jam hardware reference
 - [NI Maschine Mk2](docs/hardware/ni_maschine_mk2.md) — Mk2 hardware reference
 - [NI Maschine Mk3](docs/hardware/ni_maschine_mk3.md) — Mk3 hardware reference
 - [NI Maschine Plus](docs/hardware/ni_maschine_plus.md) — Maschine Plus (Controller Mode) hardware reference
@@ -224,6 +227,16 @@ encdr/
 - [NI Traktor Kontrol X1 MK3](docs/hardware/ni_kontrol_x1_mk3.md) — X1 MK3 hardware reference
 
 ## Changelog
+### v0.5.2
+- **NI Maschine Jam Hardware Support**:
+  - Added full hardware support for Maschine Jam (`17cc:1500`).
+  - Added data-driven descriptor [`encdr/descriptors/ni_maschine_jam.json`](encdr/descriptors/ni_maschine_jam.json) with 103 buttons (including the full 64-pad $8\times 8$ Click-Pad matrix `matrix_1_1` through `matrix_8_8`), 1 notched endless encoder with capacitive touch detection, and 8 dual-touch Smart Strips (`touchstrip_1` through `touchstrip_8` with 10-bit position resolution, dual-touch tracking, and touch state detection).
+  - Added complete LED output support across 3 distinct USB reports: Report `0x80` for surrounding mode/transport buttons and stereo 8-segment VU meters, Report `0x81` for the $8\times 8$ RGB Click-Pad matrix and top/group buttons via NI packed color palette, and Report `0x82` for the 8 Smart Strip 11-segment LED bar graph meters.
+  - Added hardware reference documentation in [`docs/hardware/ni_maschine_jam.md`](docs/hardware/ni_maschine_jam.md).
+  - Added built-in loader registration and unit test coverage in [`encdr/src/device/loader.rs`](encdr/src/device/loader.rs).
+- **New Example (Maschine Mk3 Reddit Browser)**:
+  - Added `mk3_reddit`, demonstrating interactive HTML/Canvas dual-screen rendering, 4D encoder navigation, touchstrip scrolling, and live media feed browsing on the Maschine Mk3.
+
 ### v0.5.0
 - **nusb 0.2 Upgrade**:
   - Upgraded `nusb` from `0.1` to `0.2` (0.2.7) in `encdr` and `encdr-examples`.
