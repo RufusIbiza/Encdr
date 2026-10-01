@@ -96,6 +96,34 @@ fn main() {
                      └─────────────────┘
 ```
 
+## Supported Hardware
+
+| Device                    | VID:PID           | Status      | Controls                                      | LEDs                                        | Screens           |
+| ------------------------- | ----------------- | ----------- | --------------------------------------------- | ------------------------------------------- | ----------------- |
+| NI Kontrol D2             | `17cc:1400`       | Implemented | 57 buttons/touches, 6 encoders, 9 sliders     | 8 RGB pads, 5 singles, 2 strips             | 480x272 BGR565    |
+| NI Kontrol F1             | `17cc:1120`       | Implemented | 8 buttons, 4 faders, 4 rotary knobs, 1 encoder | 16 RGB matrix pads, 8 singles, 7-seg display | —                 |
+| NI Kontrol S2 Mk1         | `17cc:1101`       | Implemented | 34 buttons, 2 jogwheels, 7 encoders, 16 faders/knobs | 8 dual-color pads (G/B), 24 singles, VU meters | — |
+| NI Kontrol S2 Mk2         | `17cc:1320`       | Implemented | 38 buttons, 2 jogwheels, 7 encoders, 16 faders/knobs | 8 RGB pads, 20 singles, VU meters           | —                 |
+| NI Kontrol S4 Mk2         | `17cc:1310`       | Implemented | 48 buttons, 2 jogwheels, 29 faders/knobs      | 8 RGB pads, 24 singles, VU meters, 2x 2-digit 7-seg | — |
+| NI Kontrol S4 Mk3         | `17cc:1720`       | Implemented | 72 buttons, 6 encoders, 2 motorized jogwheels, 28 faders/knobs | 16 RGB pads, 45 singles, 8-seg VU, LED rings, Haptic Drive | 2x 320x240 BGR565 |
+| NI Kontrol S5             | `17cc:1420`       | Implemented | 70 buttons/touches, 6 encoders, 21 faders/knobs | 16 RGB pads, 34 singles                     | 2x 480x272 BGR565 |
+| NI Kontrol S8             | `17cc:1370`       | Implemented | 114 buttons/encoders, 29 faders/knobs         | 16 RGB pads, 100+ singles, EP0 feature LEDs | 2x 480x272 BGR565 |
+| NI Kontrol X1 Mk1         | `17cc:2305`/`1000` | Implemented | 30 buttons, 4 endless encoders, 8 potentiometers | 30 single-color LEDs                        | —                 |
+| NI Kontrol X1 Mk2         | `17cc:1220`       | Implemented | 31 buttons, 3 endless encoders, 1 touchstrip, 8 potentiometers | 8 RGB hotcue LEDs, 23 singles, 2x 7-seg displays, 22-seg strip | — |
+| NI Traktor Kontrol X1 Mk3 | `17cc:2200`       | Implemented | 21 buttons, 4 encoders, 8 knobs               | 14 singles, 8 RGB hotcues, 2 RGB underglow  | 5x 128x64 1-bit OLED |
+| NI Kontrol Z1             | `17cc:1210`       | Implemented | 7 buttons, 2 faders, 1 crossfader, 9 potentiometers, 1 encoder | 7 singles, stereo 7-segment VU meters       | —                 |
+| NI Kontrol Z2             | `17cc:1230`       | Implemented | 34 buttons, 3 faders, 10 potentiometers, 3 encoders | 8 RGB cue pads, 26 singles, stereo VU meters, 2x 7-seg displays | — |
+| NI Maschine Jam           | `17cc:1500`       | Implemented | 103 buttons, 1 encoder, 8 dual-touch strips   | 64 RGB matrix, 16 RGB buttons, 35 singles, 8x 11-seg strip meters, stereo VU | — |
+| NI Maschine Mikro Mk1     | `17cc:1110`       | Implemented | 28 buttons, 1 rotary encoder, 16 velocity/pressure pads | 28 single-color LEDs, 16 single-color pad LEDs | 128x64 1-bit mono |
+| NI Maschine Mikro Mk2     | `17cc:1200`       | Implemented | 28 buttons, 1 rotary encoder, 16 velocity/pressure pads | 28 single-color LEDs, 16 RGB pads           | 128x64 1-bit mono |
+| NI Maschine Mikro Mk3     | `17cc:1700`       | Implemented | 29 buttons, 1 rotary encoder, 1 Smart Strip, 16 velocity/pressure pads | 29 singles, 16 RGB pads, 25-seg dual LED Smart Strip | 128x32 1-bit OLED |
+| NI Maschine Mk2           | `17cc:1140`       | Implemented | 47 buttons, 11 encoders, 16 velocity pads     | 16 RGB pads, 31 singles                     | 2x 256x64 1-bit   |
+| NI Maschine Mk3           | `17cc:1600`       | Implemented | 63 buttons, 10 touches, 9 encoders, 1 slider, 16 pads | 16 RGB pads, 62 singles, 1 strip     | 2x 480x272 BGR565 |
+| NI Maschine Plus          | `17cc:1820`       | Implemented | 63 buttons, 10 touches, 9 encoders, 1 slider, 16 pads | 16 RGB pads, 62 singles, 1 strip     | 2x 480x272 BGR565 |
+| NI Maschine Studio        | `17cc:1300`       | Implemented | 64 buttons, 5 touches, 10 encoders, 16 pads   | 16 RGB pads, 8 RGB groups, stereo meters, 32-seg ring | 2x 480x272 BGR565 |
+| NI Komplete Kontrol S-Mk2 | `17cc:1610/20/30` | Implemented | 28 buttons, 9 encoders, pitch/mod wheels, touchstrip | 20 singles, Light Guide (RGB per-key)       | 2x 480x272 BGR565 |
+| NI Komplete Kontrol S-Mk3 | `17cc:2100/10/20` | Preliminary | Keybed (49/61/88 keys), 4D encoder, touchstrip, high-res encoders | Light Guide RGB strips, RGB button backlights | Full-color wide LCD |
+
 ## Workspace Structure
 
 ```
@@ -103,15 +131,27 @@ encdr/
 ├── encdr/                  Core crate
 │   ├── descriptors/        Built-in JSON device descriptors
 │   │   ├── ni_komplete_kontrol_s49_mk2.json
+│   │   ├── ni_komplete_kontrol_s49_mk3.json
 │   │   ├── ni_komplete_kontrol_s61_mk2.json
+│   │   ├── ni_komplete_kontrol_s61_mk3.json
 │   │   ├── ni_komplete_kontrol_s88_mk2.json
+│   │   ├── ni_komplete_kontrol_s88_mk3.json
 │   │   ├── ni_kontrol_d2.json
+│   │   ├── ni_kontrol_f1.json
 │   │   ├── ni_kontrol_s2_mk1.json
 │   │   ├── ni_kontrol_s2_mk2.json
 │   │   ├── ni_kontrol_s4_mk2.json
 │   │   ├── ni_kontrol_s4_mk3.json
 │   │   ├── ni_kontrol_s5.json
 │   │   ├── ni_kontrol_s8.json
+│   │   ├── ni_kontrol_x1_mk1.json
+│   │   ├── ni_kontrol_x1_mk2.json
+│   │   ├── ni_kontrol_z1.json
+│   │   ├── ni_kontrol_z2.json
+│   │   ├── ni_maschine_jam.json
+│   │   ├── ni_maschine_mikro_mk1.json
+│   │   ├── ni_maschine_mikro_mk2.json
+│   │   ├── ni_maschine_mikro_mk3.json
 │   │   ├── ni_maschine_mk2.json
 │   │   ├── ni_maschine_mk3.json
 │   │   ├── ni_maschine_plus.json
@@ -136,10 +176,24 @@ encdr/
 │       └── capture_windows.rs  Windows: pixel capture via WebView2 CapturePreview
 │
 ├── examples/               Collection of examples organized by controller
-│   ├── kontrol_d2/         D2 examples (e.g. d2_screen_test)
-│   ├── kontrol_s8/         S8 examples (e.g. s8_monitor, s8_screen_test)
+│   ├── komplete_kontrol/   Komplete Kontrol Mk2 & Mk3 examples
+│   ├── kontrol_d2/         D2 examples (e.g. d2_screen_test, d2_vegas)
+│   ├── kontrol_f1/         F1 examples (e.g. f1_vegas)
+│   ├── kontrol_s2/         S2 Mk1 & Mk2 examples (e.g. s2_mk1_vegas, s2_mk2_vegas)
+│   ├── kontrol_s4/         S4 Mk2 & Mk3 examples (e.g. s4_mk2_vegas, s4_mk3_vegas)
+│   ├── kontrol_s5/         S5 examples (e.g. s5_vegas)
+│   ├── kontrol_s8/         S8 examples (e.g. s8_monitor, s8_screen_test, s8_vegas)
+│   ├── kontrol_x1_mk1/     X1 Mk1 examples (e.g. x1_mk1_vegas)
+│   ├── kontrol_x1_mk2/     X1 Mk2 examples (e.g. x1_mk2_vegas)
 │   ├── kontrol_x1_mk3/     X1 Mk3 examples (e.g. x1_mk3_test)
-│   ├── maschine_mk3/       Mk3 examples (e.g. mk3_screen_test, touchstrip_monitor)
+│   ├── kontrol_z1/         Z1 examples (e.g. z1_vegas)
+│   ├── kontrol_z2/         Z2 examples (e.g. z2_vegas)
+│   ├── maschine_jam/       Maschine Jam examples (e.g. jam_scroller)
+│   ├── maschine_mikro/     Maschine Mikro Mk1, Mk2, Mk3 examples (e.g. mikro_mk1/mk2/mk3_vegas)
+│   ├── maschine_mk2/       Maschine Mk2 examples (e.g. mk2_vegas)
+│   ├── maschine_mk3/       Maschine Mk3 examples (e.g. mk3_screen_test, mk3_vegas, pad_response)
+│   ├── maschine_plus/      Maschine Plus examples (e.g. plus_vegas)
+│   ├── maschine_studio/    Maschine Studio examples (e.g. studio_vegas)
 │   ├── mixer/              Mixer and LED testing examples
 │   └── utils/              General utilities (e.g. probe, monitor)
 │
@@ -152,41 +206,10 @@ encdr/
 │
 └── docs/                   Detailed documentation
     ├── usage.md            How to use the crate
-    └── hardware/
-        ├── ni_kontrol_d2.md            D2 hardware reference
-        ├── ni_komplete_kontrol_mk2.md  Komplete Kontrol S-Series Mk2 reference
-        ├── ni_kontrol_s2_mk1.md        Traktor Kontrol S2 MK1 reference
-        ├── ni_kontrol_s2_mk2.md        Traktor Kontrol S2 MK2 reference
-        ├── ni_kontrol_s4_mk2.md        Traktor Kontrol S4 MK2 reference
-        ├── ni_kontrol_s4_mk3.md        Traktor Kontrol S4 MK3 (Haptic Drive) reference
-        ├── ni_kontrol_s5.md            Traktor Kontrol S5 reference
-        ├── ni_kontrol_s8.md            S8 hardware reference
-        ├── ni_kontrol_x1_mk3.md        Traktor Kontrol X1 MK3 hardware reference
-        ├── ni_maschine_jam.md          Maschine Jam hardware reference
-        ├── ni_maschine_mk2.md          Maschine Mk2 hardware reference
-        ├── ni_maschine_mk3.md          Mk3 hardware reference
-        ├── ni_maschine_plus.md         Maschine Plus hardware reference
-        └── ni_maschine_studio.md       Maschine Studio hardware reference
+    ├── quickstart.md       Step-by-step tutorial
+    ├── api_reference.md    Complete API reference
+    └── hardware/           Hardware reference documents for all supported devices
 ```
-
-## Supported Hardware
-
-| Device                    | VID:PID           | Status      | Controls                                      | LEDs                                        | Screens           |
-| ------------------------- | ----------------- | ----------- | --------------------------------------------- | ------------------------------------------- | ----------------- |
-| NI Kontrol D2             | `17cc:1400`       | Implemented | 57 buttons/touches, 6 encoders, 9 sliders     | 8 RGB pads, 5 singles, 2 strips             | 480x272 BGR565    |
-| NI Kontrol S2 Mk1         | `17cc:1101`       | Implemented | 34 buttons, 2 jogwheels, 7 encoders, 16 faders/knobs | 8 dual-color pads (G/B), 24 singles, VU meters | — |
-| NI Kontrol S2 Mk2         | `17cc:1320`       | Implemented | 38 buttons, 2 jogwheels, 7 encoders, 16 faders/knobs | 8 RGB pads, 20 singles, VU meters           | —                 |
-| NI Kontrol S4 Mk2         | `17cc:1310`       | Implemented | 48 buttons, 2 jogwheels, 29 faders/knobs      | 8 RGB pads, 24 singles, VU meters           | —                 |
-| NI Kontrol S4 Mk3         | `17cc:1720`       | Implemented | 72 buttons, 6 encoders, 2 motorized jogwheels, 28 faders/knobs | 16 RGB pads, 45 singles, 8-seg VU, LED rings, Haptic Drive | 2x 320x240 BGR565 |
-| NI Kontrol S5             | `17cc:1420`       | Implemented | 70 buttons/touches, 6 encoders, 21 faders/knobs | 16 RGB pads, 34 singles                     | 2x 480x272 BGR565 |
-| NI Kontrol S8             | `17cc:1370`       | Implemented | 114 buttons/encoders, 29 faders/knobs         | 16 RGB pads, 100+ singles, EP0 feature LEDs | 2x 480x272 BGR565 |
-| NI Maschine Jam           | `17cc:1500`       | Implemented | 103 buttons, 1 encoder, 8 dual-touch strips   | 64 RGB matrix, 16 RGB buttons, 35 singles, 8x 11-seg strip meters, stereo VU | — |
-| NI Maschine Mk2           | `17cc:1200`       | Implemented | 47 buttons, 11 encoders, 16 velocity pads     | 16 RGB pads, 31 singles                     | 2x 256x64 1-bit   |
-| NI Maschine Mk3           | `17cc:1600`       | Implemented | 63 buttons, 10 touches, 9 encoders, 1 slider, 16 pads | 16 RGB pads, 62 singles, 1 strip     | 2x 480x272 BGR565 |
-| NI Maschine Plus          | `17cc:1820`       | Implemented | 63 buttons, 10 touches, 9 encoders, 1 slider, 16 pads | 16 RGB pads, 62 singles, 1 strip     | 2x 480x272 BGR565 |
-| NI Maschine Studio        | `17cc:1300`       | Implemented | 64 buttons, 5 touches, 10 encoders, 16 pads   | 16 RGB pads, 8 RGB groups, stereo meters, 32-seg ring | 2x 480x272 BGR565 |
-| NI Komplete Kontrol S-Mk2 | `17cc:1610/20/30` | Implemented | 28 buttons, 9 encoders                        | 20 singles, Light Guide (RGB per-key)       | 2x 480x272 BGR565 |
-| NI Traktor Kontrol X1 Mk3 | `17cc:2200`       | Implemented | 21 buttons, 4 encoders, 8 knobs               | 14 singles, 8 RGB hotcues, 2 RGB underglow  | 5x 128x64 1-bit OLED |
 
 ## Dependencies
 
@@ -237,6 +260,7 @@ encdr/
 - [NI Maschine Plus](docs/hardware/ni_maschine_plus.md)
 - [NI Maschine Studio](docs/hardware/ni_maschine_studio.md)
 - [NI Komplete Kontrol Mk2](docs/hardware/ni_komplete_kontrol_mk2.md)
+- [NI Komplete Kontrol Mk3](docs/hardware/ni_komplete_kontrol_mk3.md)
 
 
 ## Changelog
