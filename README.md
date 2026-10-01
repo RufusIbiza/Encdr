@@ -240,6 +240,11 @@ encdr/
 
 
 ## Changelog
+### v0.6.1
+- **Maschine Studio Pad Stream Fix**:
+  - Added missing `pads` input packet descriptor (Report `0x20` continuous 16-channel 12-bit ADC stream) to [`encdr/descriptors/ni_maschine_studio.json`](encdr/descriptors/ni_maschine_studio.json).
+  - Enables the active pad streaming state machine, sliding median filter, and hysteresis thresholds for NI Maschine Studio controllers (`17cc:1300`), ensuring full pad responsiveness parity across all Maschine family devices.
+
 ### v0.6.0
 - **New Hardware Controller Support (8 New Controllers & KK Mk3 Series)**:
   - **Traktor Kontrol Series**: Added JSON descriptors, built-in loader support, and documentation for **Traktor Kontrol F1** (`17cc:1120`), **X1 Mk1** (`17cc:2305`/`1000`), **X1 Mk2** (`17cc:1220`), **Z1** (`17cc:1210`), and **Z2** (`17cc:1230`).

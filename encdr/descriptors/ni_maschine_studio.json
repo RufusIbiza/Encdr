@@ -127,6 +127,13 @@
         { "type": "encoder_fine", "name": "knob_7", "bytes": [32, 33], "encoding": "signed16", "scale": 1.0 },
         { "type": "encoder_fine", "name": "knob_8", "bytes": [34, 35], "encoding": "signed16", "scale": 1.0 }
       ]
+    },
+    {
+      "_comment": "Pad data uses Report 0x20 continuous 16-channel 12-bit ADC stream.",
+      "id": "pads",
+      "interface": "control",
+      "size": 33,
+      "items": []
     }
   ],
   "leds": [
