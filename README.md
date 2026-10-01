@@ -208,25 +208,51 @@ encdr/
 
 ## Documentation
 
+### Getting Started with Encdr
 - [Quick Start Tutorial](docs/quickstart.md) — step-by-step tutorial with Maschine Mk3 dual-screen walkthrough
 - [API Reference](docs/api_reference.md) — complete programmer reference for all types, functions, and methods
 - [Usage Guide](docs/usage.md) — comprehensive usage guide
-- [NI Kontrol D2](docs/hardware/ni_kontrol_d2.md) — D2 hardware reference
-- [NI Kontrol S2 Mk1](docs/hardware/ni_kontrol_s2_mk1.md) — Traktor Kontrol S2 MK1 hardware reference
-- [NI Kontrol S2 Mk2](docs/hardware/ni_kontrol_s2_mk2.md) — Traktor Kontrol S2 MK2 hardware reference
-- [NI Kontrol S4 Mk2](docs/hardware/ni_kontrol_s4_mk2.md) — Traktor Kontrol S4 MK2 hardware reference
-- [NI Kontrol S4 Mk3](docs/hardware/ni_kontrol_s4_mk3.md) — Traktor Kontrol S4 MK3 (Haptic Drive, dual screens) hardware reference
-- [NI Kontrol S5](docs/hardware/ni_kontrol_s5.md) — Traktor Kontrol S5 hardware reference & screen protocol
-- [NI Kontrol S8](docs/hardware/ni_kontrol_s8.md) — S8 hardware reference
-- [NI Maschine Jam](docs/hardware/ni_maschine_jam.md) — Maschine Jam hardware reference
-- [NI Maschine Mk2](docs/hardware/ni_maschine_mk2.md) — Mk2 hardware reference
-- [NI Maschine Mk3](docs/hardware/ni_maschine_mk3.md) — Mk3 hardware reference
-- [NI Maschine Plus](docs/hardware/ni_maschine_plus.md) — Maschine Plus (Controller Mode) hardware reference
-- [NI Maschine Studio](docs/hardware/ni_maschine_studio.md) — Maschine Studio hardware reference
-- [NI Komplete Kontrol Mk2](docs/hardware/ni_komplete_kontrol_mk2.md) — Komplete Kontrol S-Series Mk2 hardware reference
-- [NI Traktor Kontrol X1 MK3](docs/hardware/ni_kontrol_x1_mk3.md) — X1 MK3 hardware reference
+- [Examples Guide](examples/README.md) — complete directory of hardware examples, screen tests, and diagnostic utilities
+
+### Hardware Reference
+- [NI Kontrol D2](docs/hardware/ni_kontrol_d2.md)
+- [NI Kontrol F1](docs/hardware/ni_kontrol_f1.md)
+- [NI Kontrol S2 Mk1](docs/hardware/ni_kontrol_s2_mk1.md)
+- [NI Kontrol S2 Mk2](docs/hardware/ni_kontrol_s2_mk2.md)
+- [NI Kontrol S4 Mk2](docs/hardware/ni_kontrol_s4_mk2.md)
+- [NI Kontrol S4 Mk3](docs/hardware/ni_kontrol_s4_mk3.md)
+- [NI Kontrol S5](docs/hardware/ni_kontrol_s5.md)
+- [NI Kontrol S8](docs/hardware/ni_kontrol_s8.md)
+- [NI Kontrol X1 Mk1](docs/hardware/ni_kontrol_x1_mk1.md)
+- [NI Kontrol X1 Mk2](docs/hardware/ni_kontrol_x1_mk2.md)
+- [NI Kontrol X1 Mk3](docs/hardware/ni_kontrol_x1_mk3.md)
+- [NI Kontrol Z1](docs/hardware/ni_kontrol_z1.md)
+- [NI Kontrol Z2](docs/hardware/ni_kontrol_z2.md)
+- [NI Maschine Jam](docs/hardware/ni_maschine_jam.md)
+- [NI Maschine Mikro Mk1](docs/hardware/ni_maschine_mikro_mk1.md)
+- [NI Maschine Mikro Mk2](docs/hardware/ni_maschine_mikro_mk2.md)
+- [NI Maschine Mikro Mk3](docs/hardware/ni_maschine_mikro_mk3.md)
+- [NI Maschine Mk2](docs/hardware/ni_maschine_mk2.md)
+- [NI Maschine Mk3](docs/hardware/ni_maschine_mk3.md)
+- [NI Maschine Plus](docs/hardware/ni_maschine_plus.md)
+- [NI Maschine Studio](docs/hardware/ni_maschine_studio.md)
+- [NI Komplete Kontrol Mk2](docs/hardware/ni_komplete_kontrol_mk2.md)
+
 
 ## Changelog
+### v0.6.0
+- **New Hardware Controller Support (8 New Controllers & KK Mk3 Series)**:
+  - **Traktor Kontrol Series**: Added JSON descriptors, built-in loader support, and documentation for **Traktor Kontrol F1** (`17cc:1120`), **X1 Mk1** (`17cc:2305`/`1000`), **X1 Mk2** (`17cc:1220`), **Z1** (`17cc:1210`), and **Z2** (`17cc:1230`).
+  - **Maschine Mikro Series**: Added full hardware support for **Maschine Mikro Mk1** (`17cc:1110`), **Mikro Mk2** (`17cc:1200`), and **Mikro Mk3** (`17cc:1700`).
+  - **Komplete Kontrol Mk3 Series**: Added preliminary descriptor definitions for **Komplete Kontrol S49 / S61 / S88 Mk3** (`17cc:2100`, `2110`, `2120`) including Light Guide keybed strips (49/61/88 keys), 4D encoder, touchstrip, and high-resolution encoders.
+- **Dedicated Interactive Vegas / Telemetry Example Suite**:
+  - Every single controller supported by Encdr now has a dedicated interactive Vegas demo and telemetry example in the `examples/` directory (`f1_vegas`, `x1_mk1_vegas`, `x1_mk2_vegas`, `z1_vegas`, `z2_vegas`, `s2_mk1_vegas`, `s2_mk2_vegas`, `s4_mk2_vegas`, `s4_mk3_vegas`, `s5_vegas`, `s8_vegas`, `d2_vegas`, `mikro_mk1_vegas`, `mikro_mk2_vegas`, `mikro_mk3_vegas`, `mk2_vegas`, `mk3_vegas`, `plus_vegas`, `studio_vegas`, `kk_mk2_vegas`, `kk_mk3_vegas`).
+  - Features real-time animated LED wave / VU meter patterns and complete console telemetry reporting for every button, fader, encoder, and pad strike.
+- **Documentation & Platform Guides**:
+  - Added dedicated hardware reference documents in [`docs/hardware/`](docs/hardware/) for all newly added devices.
+  - Added centralized example directory documentation in [`examples/README.md`](examples/README.md).
+  - Added macOS and Windows platform setup guidance in [`docs/usage.md`](docs/usage.md) and [`docs/quickstart.md`](docs/quickstart.md) for managing Native Instruments background services (`NIHardwareAgent` / `NIHardwareService`).
+
 ### v0.5.2
 - **NI Maschine Jam Hardware Support**:
   - Added full hardware support for Maschine Jam (`17cc:1500`).
@@ -234,8 +260,10 @@ encdr/
   - Added complete LED output support across 3 distinct USB reports: Report `0x80` for surrounding mode/transport buttons and stereo 8-segment VU meters, Report `0x81` for the $8\times 8$ RGB Click-Pad matrix and top/group buttons via NI packed color palette, and Report `0x82` for the 8 Smart Strip 11-segment LED bar graph meters.
   - Added hardware reference documentation in [`docs/hardware/ni_maschine_jam.md`](docs/hardware/ni_maschine_jam.md).
   - Added built-in loader registration and unit test coverage in [`encdr/src/device/loader.rs`](encdr/src/device/loader.rs).
-- **New Example (Maschine Mk3 Reddit Browser)**:
+- **New Examples**:
+  - Added `jam_scroller` for the NI Maschine Jam, featuring smooth "Encdr" right-to-left text scrolling in purple over orange on the 8x8 Click-Pad matrix, phase-synchronized scrolling sine waves on the 8 Smart Strip 11-segment LED meters, and full console telemetry / visual feedback for all buttons, encoder, and touchstrips.
   - Added `mk3_reddit`, demonstrating interactive HTML/Canvas dual-screen rendering, 4D encoder navigation, touchstrip scrolling, and live media feed browsing on the Maschine Mk3.
+
 
 ### v0.5.0
 - **nusb 0.2 Upgrade**:

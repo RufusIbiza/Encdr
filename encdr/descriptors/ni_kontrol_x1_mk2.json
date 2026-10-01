@@ -1,0 +1,135 @@
+{
+  "name": "NI Kontrol X1 Mk2",
+  "manufacturer": "Native Instruments",
+  "vendor_id": "0x17cc",
+  "product_id": "0x1220",
+
+  "interfaces": [
+    {
+      "id": "control",
+      "number": 0,
+      "endpoints": {
+        "in":  { "address": "0x81", "type": "interrupt" },
+        "out": { "address": "0x01", "type": "interrupt" }
+      }
+    }
+  ],
+
+  "input_packets": [
+    {
+      "id": "controls",
+      "interface": "control",
+      "size": 32,
+      "items": [
+        { "type": "slider", "name": "fx1_knob_1", "bytes": [1, 2], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fx1_knob_2", "bytes": [3, 4], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fx1_knob_3", "bytes": [5, 6], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fx1_knob_4", "bytes": [7, 8], "bits": 12, "normalize": true, "max_value": 4096 },
+
+        { "type": "slider", "name": "fx2_knob_1", "bytes": [9, 10], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fx2_knob_2", "bytes": [11, 12], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fx2_knob_3", "bytes": [13, 14], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fx2_knob_4", "bytes": [15, 16], "bits": 12, "normalize": true, "max_value": 4096 },
+
+        { "type": "slider", "name": "touchstrip_left",  "bytes": [17, 18], "bits": 10, "normalize": true, "max_value": 1023 },
+        { "type": "slider", "name": "touchstrip_right", "bytes": [19, 20], "bits": 10, "normalize": true, "max_value": 1023 },
+        { "type": "touch",  "name": "touchstrip_left_touch",  "bytes": [17, 18] },
+        { "type": "touch",  "name": "touchstrip_right_touch", "bytes": [19, 20] },
+
+        { "type": "encoder", "name": "loop_left_encoder",   "byte": 21, "bits": 4, "bit_offset": 0, "encoding": "wrap16" },
+        { "type": "encoder", "name": "browse_left_encoder", "byte": 21, "bits": 4, "bit_offset": 4, "encoding": "wrap16" },
+        { "type": "encoder", "name": "loop_right_encoder",  "byte": 22, "bits": 4, "bit_offset": 0, "encoding": "wrap16" },
+        { "type": "encoder", "name": "browse_right_encoder","byte": 22, "bits": 4, "bit_offset": 4, "encoding": "wrap16" },
+
+        { "type": "button", "name": "fx1_on",       "byte": 23, "mask": "0x01" },
+        { "type": "button", "name": "fx1_1",        "byte": 23, "mask": "0x02" },
+        { "type": "button", "name": "fx1_2",        "byte": 23, "mask": "0x04" },
+        { "type": "button", "name": "fx1_3",        "byte": 23, "mask": "0x08" },
+        { "type": "button", "name": "fx2_on",       "byte": 23, "mask": "0x10" },
+        { "type": "button", "name": "fx2_1",        "byte": 23, "mask": "0x20" },
+        { "type": "button", "name": "fx2_2",        "byte": 23, "mask": "0x40" },
+        { "type": "button", "name": "fx2_3",        "byte": 23, "mask": "0x80" },
+
+        { "type": "button", "name": "loop_left_press",   "byte": 24, "mask": "0x01" },
+        { "type": "button", "name": "browse_left_press", "byte": 24, "mask": "0x02" },
+        { "type": "button", "name": "loop_right_press",  "byte": 24, "mask": "0x04" },
+        { "type": "button", "name": "browse_right_press","byte": 24, "mask": "0x08" },
+        { "type": "button", "name": "loop_left_touch",   "byte": 24, "mask": "0x10" },
+        { "type": "button", "name": "browse_left_touch", "byte": 24, "mask": "0x20" },
+        { "type": "button", "name": "loop_right_touch",  "byte": 24, "mask": "0x40" },
+        { "type": "button", "name": "browse_right_touch","byte": 24, "mask": "0x80" },
+
+        { "type": "button", "name": "hotcue_left_1",  "byte": 25, "mask": "0x01" },
+        { "type": "button", "name": "hotcue_left_2",  "byte": 25, "mask": "0x02" },
+        { "type": "button", "name": "hotcue_left_3",  "byte": 25, "mask": "0x04" },
+        { "type": "button", "name": "hotcue_left_4",  "byte": 25, "mask": "0x08" },
+        { "type": "button", "name": "hotcue_right_1", "byte": 25, "mask": "0x10" },
+        { "type": "button", "name": "hotcue_right_2", "byte": 25, "mask": "0x20" },
+        { "type": "button", "name": "hotcue_right_3", "byte": 25, "mask": "0x40" },
+        { "type": "button", "name": "hotcue_right_4", "byte": 25, "mask": "0x80" },
+
+        { "type": "button", "name": "flux_left",      "byte": 26, "mask": "0x01" },
+        { "type": "button", "name": "sync_left",      "byte": 26, "mask": "0x02" },
+        { "type": "button", "name": "cue_left",       "byte": 26, "mask": "0x04" },
+        { "type": "button", "name": "play_left",      "byte": 26, "mask": "0x08" },
+        { "type": "button", "name": "flux_right",     "byte": 26, "mask": "0x10" },
+        { "type": "button", "name": "sync_right",     "byte": 26, "mask": "0x20" },
+        { "type": "button", "name": "cue_right",      "byte": 26, "mask": "0x40" },
+        { "type": "button", "name": "play_right",     "byte": 26, "mask": "0x80" },
+
+        { "type": "button", "name": "shift",          "byte": 27, "mask": "0x01" }
+      ]
+    }
+  ],
+
+  "leds": [
+    {
+      "id": "all_leds",
+      "interface": "control",
+      "buffer_size": 96,
+      "prefix_byte": "0x00",
+      "items": [
+        { "type": "single", "name": "fx1_on",        "offset": 1 },
+        { "type": "single", "name": "fx1_1",         "offset": 2 },
+        { "type": "single", "name": "fx1_2",         "offset": 3 },
+        { "type": "single", "name": "fx1_3",         "offset": 4 },
+        { "type": "single", "name": "fx2_on",        "offset": 5 },
+        { "type": "single", "name": "fx2_1",         "offset": 6 },
+        { "type": "single", "name": "fx2_2",         "offset": 7 },
+        { "type": "single", "name": "fx2_3",         "offset": 8 },
+
+        { "_comment": "Dual 8-segment loop displays (7 segments + dot) driven via SevenSegment bitmasks", "type": "single", "name": "display_left_1",  "offset": 9 },
+        { "type": "single", "name": "display_left_2",  "offset": 10 },
+        { "type": "single", "name": "display_right_1", "offset": 11 },
+        { "type": "single", "name": "display_right_2", "offset": 12 },
+
+        { "type": "strip",  "name": "touchstrip_leds_left",  "offset": 13, "count": 11 },
+        { "type": "strip",  "name": "touchstrip_leds_right", "offset": 24, "count": 11 },
+
+        { "type": "rgb",    "name": "hotcue_left_1",   "offsets": { "r": 35, "g": 36, "b": 37 } },
+        { "type": "rgb",    "name": "hotcue_left_2",   "offsets": { "r": 38, "g": 39, "b": 40 } },
+        { "type": "rgb",    "name": "hotcue_left_3",   "offsets": { "r": 41, "g": 42, "b": 43 } },
+        { "type": "rgb",    "name": "hotcue_left_4",   "offsets": { "r": 44, "g": 45, "b": 46 } },
+        { "type": "rgb",    "name": "hotcue_right_1",  "offsets": { "r": 47, "g": 48, "b": 49 } },
+        { "type": "rgb",    "name": "hotcue_right_2",  "offsets": { "r": 50, "g": 51, "b": 52 } },
+        { "type": "rgb",    "name": "hotcue_right_3",  "offsets": { "r": 53, "g": 54, "b": 55 } },
+        { "type": "rgb",    "name": "hotcue_right_4",  "offsets": { "r": 56, "g": 57, "b": 58 } },
+
+        { "type": "single", "name": "flux_left",       "offset": 59 },
+        { "type": "single", "name": "sync_left",       "offset": 60 },
+        { "type": "single", "name": "cue_left",        "offset": 61 },
+        { "type": "single", "name": "play_left",       "offset": 62 },
+        { "type": "single", "name": "flux_right",      "offset": 63 },
+        { "type": "single", "name": "sync_right",      "offset": 64 },
+        { "type": "single", "name": "cue_right",       "offset": 65 },
+        { "type": "single", "name": "play_right",      "offset": 66 },
+        { "type": "single", "name": "shift",           "offset": 67 }
+      ]
+    }
+  ],
+
+  "screens": [],
+  "quirks": {
+    "detach_kernel_driver": true
+  }
+}

@@ -14,10 +14,59 @@ crossbeam-channel = "0.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# ── General Utilities ──
+
+[[bin]]
+name = "probe"
+path = "utils/probe.rs"
+
+[[bin]]
+name = "monitor"
+path = "utils/monitor.rs"
+
+# ── Traktor Kontrol D2 ──
+
 [[bin]]
 name = "d2_screen_test"
 path = "kontrol_d2/d2_screen_test.rs"
 
+[[bin]]
+name = "d2_vegas"
+path = "kontrol_d2/d2_vegas.rs"
+
+# ── Traktor Kontrol F1 ──
+
+[[bin]]
+name = "f1_vegas"
+path = "kontrol_f1/f1_vegas.rs"
+
+# ── Traktor Kontrol S2 ──
+
+[[bin]]
+name = "s2_mk1_vegas"
+path = "kontrol_s2/s2_mk1_vegas.rs"
+
+[[bin]]
+name = "s2_mk2_vegas"
+path = "kontrol_s2/s2_mk2_vegas.rs"
+
+# ── Traktor Kontrol S4 ──
+
+[[bin]]
+name = "s4_mk2_vegas"
+path = "kontrol_s4/s4_mk2_vegas.rs"
+
+[[bin]]
+name = "s4_mk3_vegas"
+path = "kontrol_s4/s4_mk3_vegas.rs"
+
+# ── Traktor Kontrol S5 ──
+
+[[bin]]
+name = "s5_vegas"
+path = "kontrol_s5/s5_vegas.rs"
+
+# ── Traktor Kontrol S8 ──
 
 [[bin]]
 name = "s8_monitor"
@@ -26,6 +75,62 @@ path = "kontrol_s8/s8_monitor.rs"
 [[bin]]
 name = "s8_screen_test"
 path = "kontrol_s8/s8_screen_test.rs"
+
+[[bin]]
+name = "s8_vegas"
+path = "kontrol_s8/s8_vegas.rs"
+
+# ── Traktor Kontrol X1 ──
+
+[[bin]]
+name = "x1_mk1_vegas"
+path = "kontrol_x1_mk1/x1_mk1_vegas.rs"
+
+[[bin]]
+name = "x1_mk2_vegas"
+path = "kontrol_x1_mk2/x1_mk2_vegas.rs"
+
+[[bin]]
+name = "x1_mk3_test"
+path = "kontrol_x1_mk3/x1_mk3_test.rs"
+
+# ── Traktor Kontrol Z1 & Z2 ──
+
+[[bin]]
+name = "z1_vegas"
+path = "kontrol_z1/z1_vegas.rs"
+
+[[bin]]
+name = "z2_vegas"
+path = "kontrol_z2/z2_vegas.rs"
+
+# ── Maschine Jam ──
+
+[[bin]]
+name = "jam_scroller"
+path = "maschine_jam/jam_scroller.rs"
+
+# ── Maschine Mikro ──
+
+[[bin]]
+name = "mikro_mk1_vegas"
+path = "maschine_mikro/mikro_mk1_vegas.rs"
+
+[[bin]]
+name = "mikro_mk2_vegas"
+path = "maschine_mikro/mikro_mk2_vegas.rs"
+
+[[bin]]
+name = "mikro_mk3_vegas"
+path = "maschine_mikro/mikro_mk3_vegas.rs"
+
+# ── Maschine Mk2 ──
+
+[[bin]]
+name = "mk2_vegas"
+path = "maschine_mk2/mk2_vegas.rs"
+
+# ── Maschine Mk3 ──
 
 [[bin]]
 name = "mk3_screen_test"
@@ -45,12 +150,37 @@ path = "maschine_mk3/reddit_browser.rs"
 
 [[bin]]
 name = "touchstrip_monitor"
-
 path = "maschine_mk3/touchstrip_monitor.rs"
 
 [[bin]]
 name = "touchstrip_position_test"
 path = "maschine_mk3/touchstrip_position_test.rs"
+
+[[bin]]
+name = "mk3_vegas"
+path = "maschine_mk3/mk3_vegas.rs"
+
+# ── Maschine Plus & Studio ──
+
+[[bin]]
+name = "plus_vegas"
+path = "maschine_plus/plus_vegas.rs"
+
+[[bin]]
+name = "studio_vegas"
+path = "maschine_studio/studio_vegas.rs"
+
+# ── Komplete Kontrol ──
+
+[[bin]]
+name = "kk_mk2_vegas"
+path = "komplete_kontrol/kk_mk2_vegas.rs"
+
+[[bin]]
+name = "kk_mk3_vegas"
+path = "komplete_kontrol/kk_mk3_vegas.rs"
+
+# ── Mixer & Probing Tests ──
 
 [[bin]]
 name = "mixer_led_test"
@@ -63,15 +193,3 @@ path = "mixer/mixer_offset_probe.rs"
 [[bin]]
 name = "mixer_s5_style_test"
 path = "mixer/mixer_s5_style_test.rs"
-
-[[bin]]
-name = "monitor"
-path = "utils/monitor.rs"
-
-[[bin]]
-name = "probe"
-path = "utils/probe.rs"
-
-[[bin]]
-name = "x1_mk3_test"
-path = "kontrol_x1_mk3/x1_mk3_test.rs"

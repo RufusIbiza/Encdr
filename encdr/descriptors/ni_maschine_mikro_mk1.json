@@ -1,0 +1,141 @@
+{
+  "name": "NI Maschine Mikro Mk1",
+  "manufacturer": "Native Instruments",
+  "vendor_id": "0x17cc",
+  "product_id": "0x1110",
+
+  "interfaces": [
+    {
+      "id": "control",
+      "number": 0,
+      "endpoints": {
+        "in":  { "address": "0x81", "type": "interrupt" },
+        "out": { "address": "0x01", "type": "interrupt" }
+      }
+    }
+  ],
+
+  "input_packets": [
+    {
+      "id": "buttons",
+      "interface": "control",
+      "size": 16,
+      "items": [
+        { "type": "encoder", "name": "encoder", "byte": 1, "bits": 4, "bit_offset": 0, "encoding": "wrap16" },
+
+        { "type": "button", "name": "f1",         "byte": 2, "mask": "0x01" },
+        { "type": "button", "name": "f2",         "byte": 2, "mask": "0x02" },
+        { "type": "button", "name": "f3",         "byte": 2, "mask": "0x04" },
+        { "type": "button", "name": "group",      "byte": 2, "mask": "0x08" },
+        { "type": "button", "name": "browse",     "byte": 2, "mask": "0x10" },
+        { "type": "button", "name": "sampling",   "byte": 2, "mask": "0x20" },
+        { "type": "button", "name": "step",       "byte": 2, "mask": "0x40" },
+        { "type": "button", "name": "encoder_press", "byte": 2, "mask": "0x80" },
+
+        { "type": "button", "name": "scene",      "byte": 3, "mask": "0x01" },
+        { "type": "button", "name": "pattern",    "byte": 3, "mask": "0x02" },
+        { "type": "button", "name": "pad_mode",   "byte": 3, "mask": "0x04" },
+        { "type": "button", "name": "navigate",   "byte": 3, "mask": "0x08" },
+        { "type": "button", "name": "duplicate",  "byte": 3, "mask": "0x10" },
+        { "type": "button", "name": "select",     "byte": 3, "mask": "0x20" },
+        { "type": "button", "name": "solo",       "byte": 3, "mask": "0x40" },
+        { "type": "button", "name": "mute",       "byte": 3, "mask": "0x80" },
+
+        { "type": "button", "name": "restart",    "byte": 4, "mask": "0x01" },
+        { "type": "button", "name": "play",       "byte": 4, "mask": "0x02" },
+        { "type": "button", "name": "rec",        "byte": 4, "mask": "0x04" },
+        { "type": "button", "name": "erase",      "byte": 4, "mask": "0x08" },
+        { "type": "button", "name": "grid",       "byte": 4, "mask": "0x10" },
+        { "type": "button", "name": "note_repeat","byte": 4, "mask": "0x20" },
+        { "type": "button", "name": "left",       "byte": 4, "mask": "0x40" },
+        { "type": "button", "name": "right",      "byte": 4, "mask": "0x80" },
+
+        { "type": "button", "name": "shift",      "byte": 5, "mask": "0x01" },
+        { "type": "button", "name": "view",       "byte": 5, "mask": "0x02" },
+        { "type": "button", "name": "nav",        "byte": 5, "mask": "0x04" }
+      ]
+    },
+    {
+      "id": "pads",
+      "interface": "control",
+      "size": 64,
+      "items": []
+    }
+
+  ],
+
+  "leds": [
+    {
+      "id": "all_leds",
+      "interface": "control",
+      "buffer_size": 48,
+      "prefix_byte": "0x00",
+      "items": [
+        { "type": "single", "name": "f1",          "offset": 1 },
+        { "type": "single", "name": "f2",          "offset": 2 },
+        { "type": "single", "name": "f3",          "offset": 3 },
+        { "type": "single", "name": "group",       "offset": 4 },
+        { "type": "single", "name": "browse",      "offset": 5 },
+        { "type": "single", "name": "sampling",    "offset": 6 },
+        { "type": "single", "name": "step",        "offset": 7 },
+
+        { "type": "single", "name": "scene",       "offset": 8 },
+        { "type": "single", "name": "pattern",     "offset": 9 },
+        { "type": "single", "name": "pad_mode",    "offset": 10 },
+        { "type": "single", "name": "navigate",    "offset": 11 },
+        { "type": "single", "name": "duplicate",   "offset": 12 },
+        { "type": "single", "name": "select",      "offset": 13 },
+        { "type": "single", "name": "solo",        "offset": 14 },
+        { "type": "single", "name": "mute",        "offset": 15 },
+
+        { "type": "single", "name": "restart",     "offset": 16 },
+        { "type": "single", "name": "play",        "offset": 17 },
+        { "type": "single", "name": "rec",         "offset": 18 },
+        { "type": "single", "name": "erase",       "offset": 19 },
+        { "type": "single", "name": "grid",        "offset": 20 },
+        { "type": "single", "name": "note_repeat", "offset": 21 },
+        { "type": "single", "name": "left",        "offset": 22 },
+        { "type": "single", "name": "right",       "offset": 23 },
+
+        { "type": "single", "name": "shift",       "offset": 24 },
+        { "type": "single", "name": "view",        "offset": 25 },
+        { "type": "single", "name": "nav",         "offset": 26 },
+
+        { "type": "single", "name": "pad_1",       "offset": 27 },
+        { "type": "single", "name": "pad_2",       "offset": 28 },
+        { "type": "single", "name": "pad_3",       "offset": 29 },
+        { "type": "single", "name": "pad_4",       "offset": 30 },
+        { "type": "single", "name": "pad_5",       "offset": 31 },
+        { "type": "single", "name": "pad_6",       "offset": 32 },
+        { "type": "single", "name": "pad_7",       "offset": 33 },
+        { "type": "single", "name": "pad_8",       "offset": 34 },
+        { "type": "single", "name": "pad_9",       "offset": 35 },
+        { "type": "single", "name": "pad_10",      "offset": 36 },
+        { "type": "single", "name": "pad_11",      "offset": 37 },
+        { "type": "single", "name": "pad_12",      "offset": 38 },
+        { "type": "single", "name": "pad_13",      "offset": 39 },
+        { "type": "single", "name": "pad_14",      "offset": 40 },
+        { "type": "single", "name": "pad_15",      "offset": 41 },
+        { "type": "single", "name": "pad_16",      "offset": 42 }
+      ]
+    }
+  ],
+
+  "screens": [
+    {
+      "name": "screen",
+      "interface": "control",
+      "width": 128,
+      "height": 64,
+      "pixel_format": "mono",
+      "full_blit": {
+        "header": "0xe0",
+        "footer": ""
+      }
+    }
+  ],
+
+  "quirks": {
+    "detach_kernel_driver": true
+  }
+}

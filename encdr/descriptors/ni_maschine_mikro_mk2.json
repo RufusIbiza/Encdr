@@ -1,0 +1,141 @@
+{
+  "name": "NI Maschine Mikro Mk2",
+  "manufacturer": "Native Instruments",
+  "vendor_id": "0x17cc",
+  "product_id": "0x1200",
+
+  "interfaces": [
+    {
+      "id": "control",
+      "number": 0,
+      "endpoints": {
+        "in":  { "address": "0x81", "type": "interrupt" },
+        "out": { "address": "0x01", "type": "interrupt" }
+      }
+    }
+  ],
+
+  "input_packets": [
+    {
+      "id": "buttons",
+      "interface": "control",
+      "size": 16,
+      "items": [
+        { "type": "encoder", "name": "encoder", "byte": 1, "bits": 4, "bit_offset": 0, "encoding": "wrap16" },
+
+        { "type": "button", "name": "f1",         "byte": 2, "mask": "0x01" },
+        { "type": "button", "name": "f2",         "byte": 2, "mask": "0x02" },
+        { "type": "button", "name": "f3",         "byte": 2, "mask": "0x04" },
+        { "type": "button", "name": "group",      "byte": 2, "mask": "0x08" },
+        { "type": "button", "name": "browse",     "byte": 2, "mask": "0x10" },
+        { "type": "button", "name": "sampling",   "byte": 2, "mask": "0x20" },
+        { "type": "button", "name": "step",       "byte": 2, "mask": "0x40" },
+        { "type": "button", "name": "encoder_press", "byte": 2, "mask": "0x80" },
+
+        { "type": "button", "name": "scene",      "byte": 3, "mask": "0x01" },
+        { "type": "button", "name": "pattern",    "byte": 3, "mask": "0x02" },
+        { "type": "button", "name": "pad_mode",   "byte": 3, "mask": "0x04" },
+        { "type": "button", "name": "navigate",   "byte": 3, "mask": "0x08" },
+        { "type": "button", "name": "duplicate",  "byte": 3, "mask": "0x10" },
+        { "type": "button", "name": "select",     "byte": 3, "mask": "0x20" },
+        { "type": "button", "name": "solo",       "byte": 3, "mask": "0x40" },
+        { "type": "button", "name": "mute",       "byte": 3, "mask": "0x80" },
+
+        { "type": "button", "name": "restart",    "byte": 4, "mask": "0x01" },
+        { "type": "button", "name": "play",       "byte": 4, "mask": "0x02" },
+        { "type": "button", "name": "rec",        "byte": 4, "mask": "0x04" },
+        { "type": "button", "name": "erase",      "byte": 4, "mask": "0x08" },
+        { "type": "button", "name": "grid",       "byte": 4, "mask": "0x10" },
+        { "type": "button", "name": "note_repeat","byte": 4, "mask": "0x20" },
+        { "type": "button", "name": "left",       "byte": 4, "mask": "0x40" },
+        { "type": "button", "name": "right",      "byte": 4, "mask": "0x80" },
+
+        { "type": "button", "name": "shift",      "byte": 5, "mask": "0x01" },
+        { "type": "button", "name": "view",       "byte": 5, "mask": "0x02" },
+        { "type": "button", "name": "nav",        "byte": 5, "mask": "0x04" }
+      ]
+    },
+    {
+      "id": "pads",
+      "interface": "control",
+      "size": 64,
+      "items": []
+    }
+
+  ],
+
+  "leds": [
+    {
+      "id": "all_leds",
+      "interface": "control",
+      "buffer_size": 80,
+      "prefix_byte": "0x00",
+      "items": [
+        { "type": "single", "name": "f1",          "offset": 1 },
+        { "type": "single", "name": "f2",          "offset": 2 },
+        { "type": "single", "name": "f3",          "offset": 3 },
+        { "type": "single", "name": "group",       "offset": 4 },
+        { "type": "single", "name": "browse",      "offset": 5 },
+        { "type": "single", "name": "sampling",    "offset": 6 },
+        { "type": "single", "name": "step",        "offset": 7 },
+
+        { "type": "single", "name": "scene",       "offset": 8 },
+        { "type": "single", "name": "pattern",     "offset": 9 },
+        { "type": "single", "name": "pad_mode",    "offset": 10 },
+        { "type": "single", "name": "navigate",    "offset": 11 },
+        { "type": "single", "name": "duplicate",   "offset": 12 },
+        { "type": "single", "name": "select",      "offset": 13 },
+        { "type": "single", "name": "solo",        "offset": 14 },
+        { "type": "single", "name": "mute",        "offset": 15 },
+
+        { "type": "single", "name": "restart",     "offset": 16 },
+        { "type": "single", "name": "play",        "offset": 17 },
+        { "type": "single", "name": "rec",         "offset": 18 },
+        { "type": "single", "name": "erase",       "offset": 19 },
+        { "type": "single", "name": "grid",        "offset": 20 },
+        { "type": "single", "name": "note_repeat", "offset": 21 },
+        { "type": "single", "name": "left",        "offset": 22 },
+        { "type": "single", "name": "right",       "offset": 23 },
+
+        { "type": "single", "name": "shift",       "offset": 24 },
+        { "type": "single", "name": "view",        "offset": 25 },
+        { "type": "single", "name": "nav",         "offset": 26 },
+
+        { "type": "rgb",    "name": "pad_1",        "offsets": { "r": 27, "g": 28, "b": 29 } },
+        { "type": "rgb",    "name": "pad_2",        "offsets": { "r": 30, "g": 31, "b": 32 } },
+        { "type": "rgb",    "name": "pad_3",        "offsets": { "r": 33, "g": 34, "b": 35 } },
+        { "type": "rgb",    "name": "pad_4",        "offsets": { "r": 36, "g": 37, "b": 38 } },
+        { "type": "rgb",    "name": "pad_5",        "offsets": { "r": 39, "g": 40, "b": 41 } },
+        { "type": "rgb",    "name": "pad_6",        "offsets": { "r": 42, "g": 43, "b": 44 } },
+        { "type": "rgb",    "name": "pad_7",        "offsets": { "r": 45, "g": 46, "b": 47 } },
+        { "type": "rgb",    "name": "pad_8",        "offsets": { "r": 48, "g": 49, "b": 50 } },
+        { "type": "rgb",    "name": "pad_9",        "offsets": { "r": 51, "g": 52, "b": 53 } },
+        { "type": "rgb",    "name": "pad_10",       "offsets": { "r": 54, "g": 55, "b": 56 } },
+        { "type": "rgb",    "name": "pad_11",       "offsets": { "r": 57, "g": 58, "b": 59 } },
+        { "type": "rgb",    "name": "pad_12",       "offsets": { "r": 60, "g": 61, "b": 62 } },
+        { "type": "rgb",    "name": "pad_13",       "offsets": { "r": 63, "g": 64, "b": 65 } },
+        { "type": "rgb",    "name": "pad_14",       "offsets": { "r": 66, "g": 67, "b": 68 } },
+        { "type": "rgb",    "name": "pad_15",       "offsets": { "r": 69, "g": 70, "b": 71 } },
+        { "type": "rgb",    "name": "pad_16",       "offsets": { "r": 72, "g": 73, "b": 74 } }
+      ]
+    }
+  ],
+
+  "screens": [
+    {
+      "name": "screen",
+      "interface": "control",
+      "width": 128,
+      "height": 64,
+      "pixel_format": "mono",
+      "full_blit": {
+        "header": "0xe0",
+        "footer": ""
+      }
+    }
+  ],
+
+  "quirks": {
+    "detach_kernel_driver": true
+  }
+}

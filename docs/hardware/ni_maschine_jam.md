@@ -201,3 +201,17 @@ Controls the 11-segment LED bar graphs above each of the 8 Smart Strips (88 LEDs
 * `touchstrip_meter_6`: offset 56, count 11
 * `touchstrip_meter_7`: offset 67, count 11
 * `touchstrip_meter_8`: offset 78, count 11
+
+---
+
+## Example: Pad Scroller & Sine Meters
+
+An interactive demonstration is available in `examples/maschine_jam/jam_scroller.rs`:
+- Scrolls the word **"Encdr"** across the 8x8 Click-Pad matrix in purple on an orange background.
+- Animates scrolling sine waves across the 8 Smart Strip 11-segment LED meters at the bottom at the exact same horizontal speed as the text.
+- Provides real-time console logging and visual feedback for all 103 buttons, pads, encoder rotation/touch/press, and touchstrips.
+
+```bash
+cargo run -p encdr-examples --bin jam_scroller
+```
+

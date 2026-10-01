@@ -17,8 +17,6 @@ The Komplete Kontrol S-Series Mk3 is Native Instruments' flagship keyboard contr
 
 ## Hardware Protocol Definition
 
-Extracted from the Native Instruments Komplete Kontrol 3.3.3 controller registry (`Komplete Kontrol.exe` @ `0x3e9ad98`):
-
 ```text
 I-1 b28 n2 I-2 b8 WC b10 I-3 b8 W3 W2 B1 I-AA W19 O-80 B2A O-81 B1E O-82 B31 O-A0 BE O-A1 BC8 W1 B1 O-A2 B2C O-A3 B90 O-A4 B80 O-AF B2 O-F3 B1 O-F4 B20 F-D0 D1 B1C F-D8 D2 W4 B10 F-D9 B20 F-F8 W2 B6
 ```

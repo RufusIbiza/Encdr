@@ -37,9 +37,13 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="17cc", MODE="0666"
 
 Then reload: `sudo udevadm control --reload-rules && sudo udevadm trigger`
 
-**macOS:** No additional system dependencies — `encdr-view` uses the built-in WKWebView via `tao` + `wry`.
+**macOS:**
+- No additional system dependencies — `encdr-view` uses the built-in WKWebView via `tao` + `wry`.
+- **NI Services**: If you have Native Instruments software installed (Komplete Kontrol, Maschine, Traktor), background daemons (such as `NIHardwareAgent`, `NIHostIntegrationAgent`, or `NTKDaemon`) may hold exclusive USB connections to your controllers. Stop or suspend these services (via Activity Monitor, `launchctl`, or `killall NIHardwareAgent NIHostIntegrationAgent`) before running Encdr apps. Once your Encdr session is finished, the NI services can be restarted without incident.
 
-**Windows:** No additional system dependencies — `encdr-view` uses the built-in WebView2 runtime (included with Windows 10/11) via `tao` + `wry`.
+**Windows:**
+- No additional system dependencies — `encdr-view` uses the built-in WebView2 runtime (included with Windows 10/11) via `tao` + `wry`.
+- **NI Services**: If Native Instruments software is installed, background services (such as `NIHardwareService` or `NIHostIntegrationAgent`) may claim controller USB interfaces. Stop or suspend these services (via Task Manager, Services Manager `services.msc`, or `net stop NIHardwareService`) before running Encdr apps. Once your Encdr application finishes running, they can be restarted without incident to resume standard NI software operation.
 
 ---
 
@@ -63,15 +67,7 @@ Call `scan()` to detect connected devices. This matches USB VID:PID against load
 let device_ids = encdr.scan().unwrap();
 ```
 
-Encdr loads built-in descriptors automatically:
-- **NI Kontrol D2** (`17cc:1400`)
-- **NI Kontrol S8** (`17cc:1370`)
-- **NI Maschine Mk2** (`17cc:1140`)
-- **NI Maschine Mk3** (`17cc:1600`)
-- **NI Maschine Plus** (`17cc:1820` — USB controller mode)
-- **NI Maschine Studio** (`17cc:1300`)
-- **NI Komplete Kontrol S49 / S61 / S88 Mk2** (`17cc:1610`, `1620`, `1630`)
-- **NI Traktor Kontrol X1 Mk3** (`17cc:2200`)
+Encdr loads built-in descriptors automatically for any supported connected NI hardware ( See [README.md](README.md#supported-hardware) for the list of supported controllers).
 
 You can also add custom descriptors:
 

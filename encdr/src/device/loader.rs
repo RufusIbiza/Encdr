@@ -60,8 +60,25 @@ impl DescriptorRegistry {
         self.load_json(s61_mk3_json)?;
         let s88_mk3_json = include_str!("../../descriptors/ni_komplete_kontrol_s88_mk3.json");
         self.load_json(s88_mk3_json)?;
+        let f1_json = include_str!("../../descriptors/ni_kontrol_f1.json");
+        self.load_json(f1_json)?;
+        let x1_mk1_json = include_str!("../../descriptors/ni_kontrol_x1_mk1.json");
+        self.load_json(x1_mk1_json)?;
+        let x1_mk2_json = include_str!("../../descriptors/ni_kontrol_x1_mk2.json");
+        self.load_json(x1_mk2_json)?;
+        let z1_json = include_str!("../../descriptors/ni_kontrol_z1.json");
+        self.load_json(z1_json)?;
+        let z2_json = include_str!("../../descriptors/ni_kontrol_z2.json");
+        self.load_json(z2_json)?;
+        let mikro_mk1_json = include_str!("../../descriptors/ni_maschine_mikro_mk1.json");
+        self.load_json(mikro_mk1_json)?;
+        let mikro_mk2_json = include_str!("../../descriptors/ni_maschine_mikro_mk2.json");
+        self.load_json(mikro_mk2_json)?;
+        let mikro_mk3_json = include_str!("../../descriptors/ni_maschine_mikro_mk3.json");
+        self.load_json(mikro_mk3_json)?;
         Ok(())
     }
+
 
 
     /// Load all .json files from a directory.
@@ -610,7 +627,57 @@ mod tests {
         let s88_lg = s88.leds.iter().find(|l| l.id == "light_guide").expect("S88 Light Guide missing");
         assert_eq!(s88_lg.buffer_size, 88);
     }
+
+    #[test]
+    fn load_f1_x1_z1_z2_mikro_descriptors() {
+        let mut reg = DescriptorRegistry::new();
+        reg.load_builtins().unwrap();
+
+        // 1. Traktor Kontrol F1
+        let f1 = reg.find(0x17cc, 0x1120).expect("F1 not found");
+        assert_eq!(f1.name, "NI Kontrol F1");
+        assert_eq!(f1.input_packets.len(), 1);
+        assert_eq!(f1.leds.len(), 1);
+
+        // 2. Traktor Kontrol X1 Mk1
+        let x1_mk1 = reg.find(0x17cc, 0x2305).expect("X1 Mk1 not found");
+        assert_eq!(x1_mk1.name, "NI Kontrol X1 Mk1");
+        assert_eq!(x1_mk1.input_packets.len(), 1);
+
+        // 3. Traktor Kontrol X1 Mk2
+        let x1_mk2 = reg.find(0x17cc, 0x1220).expect("X1 Mk2 not found");
+        assert_eq!(x1_mk2.name, "NI Kontrol X1 Mk2");
+        assert_eq!(x1_mk2.input_packets.len(), 1);
+
+        // 4. Traktor Kontrol Z1
+        let z1 = reg.find(0x17cc, 0x1210).expect("Z1 not found");
+        assert_eq!(z1.name, "NI Kontrol Z1");
+        assert_eq!(z1.input_packets.len(), 1);
+
+        // 5. Traktor Kontrol Z2
+        let z2 = reg.find(0x17cc, 0x1230).expect("Z2 not found");
+        assert_eq!(z2.name, "NI Kontrol Z2");
+        assert_eq!(z2.input_packets.len(), 1);
+
+        // 6. Maschine Mikro Mk1
+        let mm1 = reg.find(0x17cc, 0x1110).expect("Mikro Mk1 not found");
+        assert_eq!(mm1.name, "NI Maschine Mikro Mk1");
+        assert_eq!(mm1.screens.len(), 1);
+
+        // 7. Maschine Mikro Mk2
+        let mm2 = reg.find(0x17cc, 0x1200).expect("Mikro Mk2 not found");
+        assert_eq!(mm2.name, "NI Maschine Mikro Mk2");
+        assert_eq!(mm2.screens.len(), 1);
+
+        // 8. Maschine Mikro Mk3
+        let mm3 = reg.find(0x17cc, 0x1700).expect("Mikro Mk3 not found");
+        assert_eq!(mm3.name, "NI Maschine Mikro Mk3");
+        assert_eq!(mm3.screens.len(), 1);
+        assert_eq!(mm3.input_packets.len(), 3);
+        assert_eq!(mm3.leds.len(), 2);
+    }
 }
+
 
 
 

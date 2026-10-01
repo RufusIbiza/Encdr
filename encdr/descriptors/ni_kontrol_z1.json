@@ -1,0 +1,70 @@
+{
+  "name": "NI Kontrol Z1",
+  "manufacturer": "Native Instruments",
+  "vendor_id": "0x17cc",
+  "product_id": "0x1210",
+
+  "interfaces": [
+    {
+      "id": "control",
+      "number": 0,
+      "endpoints": {
+        "in":  { "address": "0x81", "type": "interrupt" },
+        "out": { "address": "0x01", "type": "interrupt" }
+      }
+    }
+  ],
+
+  "input_packets": [
+    {
+      "id": "controls",
+      "interface": "control",
+      "size": 28,
+      "items": [
+        { "type": "slider", "name": "crossfader",  "bytes": [1, 2],   "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fader_a",     "bytes": [3, 4],   "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fader_b",     "bytes": [5, 6],   "bits": 12, "normalize": true, "max_value": 4096 },
+
+        { "type": "slider", "name": "gain_a",      "bytes": [7, 8],   "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "high_a",      "bytes": [9, 10],  "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "mid_a",       "bytes": [11, 12], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "low_a",       "bytes": [13, 14], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "filter_a",    "bytes": [15, 16], "bits": 12, "normalize": true, "max_value": 4096 },
+
+        { "type": "slider", "name": "gain_b",      "bytes": [17, 18], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "high_b",      "bytes": [19, 20], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "mid_b",       "bytes": [21, 22], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "low_b",       "bytes": [23, 24], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "filter_b",    "bytes": [25, 26], "bits": 12, "normalize": true, "max_value": 4096 },
+
+        { "type": "button", "name": "mode_a",      "byte": 27, "mask": "0x01" },
+        { "type": "button", "name": "cue_a",       "byte": 27, "mask": "0x02" },
+        { "type": "button", "name": "mode_b",      "byte": 27, "mask": "0x04" },
+        { "type": "button", "name": "cue_b",       "byte": 27, "mask": "0x08" }
+      ]
+    }
+  ],
+
+  "leds": [
+    {
+      "id": "all_leds",
+      "interface": "control",
+      "buffer_size": 32,
+      "prefix_byte": "0x00",
+      "items": [
+        { "type": "single", "name": "mode_a",      "offset": 1 },
+        { "type": "single", "name": "cue_a",       "offset": 2 },
+        { "type": "single", "name": "mode_b",      "offset": 3 },
+        { "type": "single", "name": "cue_b",       "offset": 4 },
+
+        { "type": "strip",  "name": "vu_meter_a",  "offset": 5, "count": 7 },
+        { "type": "strip",  "name": "vu_meter_b",  "offset": 12, "count": 7 }
+      ]
+    }
+  ],
+
+  "screens": [],
+  "quirks": {
+    "detach_kernel_driver": true
+  }
+}

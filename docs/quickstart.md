@@ -18,8 +18,8 @@ Add `encdr` and `encdr-view` to your project's `Cargo.toml`:
 
 ```toml
 [dependencies]
-encdr = "0.5.0"
-encdr-view = "0.5.0"
+encdr = "0.6.0"
+encdr-view = "0.6.0"
 crossbeam-channel = "0.5"
 serde_json = "1.0"
 tracing = "0.1"
@@ -49,10 +49,14 @@ Encdr uses `nusb` for asynchronous USB access and `webkit2gtk` for offscreen Web
    ```
 
 #### macOS
-No additional system packages are required. `encdr-view` uses macOS's built-in `WKWebView` via `tao` and `wry`.
+No additional system packages are required (`encdr-view` uses macOS's built-in `WKWebView` via `tao` and `wry`).
+
+> **Native Instruments Services on macOS**: If you have official NI software installed (such as Maschine, Komplete Kontrol, or Traktor), background agents like `NIHardwareAgent` and `NIHostIntegrationAgent` will attempt to maintain exclusive USB communication with the hardware. Stop or suspend these processes (via Activity Monitor, `launchctl`, or `killall NIHardwareAgent NIHostIntegrationAgent`) before launching Encdr applications. Once your Encdr session finishes, you can start the services again without incident.
 
 #### Windows
-No additional system packages are required. `encdr-view` uses the Microsoft Edge WebView2 runtime (pre-installed on Windows 10/11).
+No additional system packages are required (`encdr-view` uses the Microsoft Edge WebView2 runtime pre-installed on Windows 10/11).
+
+> **Native Instruments Services on Windows**: If official NI software is installed, background services such as `NIHardwareService` or `NIHostIntegrationAgent` may hold open USB handles to connected controllers. Stop or suspend these services (via Task Manager, the Services management console `services.msc`, or running `net stop NIHardwareService` in an Administrator prompt) before launching Encdr. When your Encdr application has finished running, the services can be started again without incident.
 
 ---
 

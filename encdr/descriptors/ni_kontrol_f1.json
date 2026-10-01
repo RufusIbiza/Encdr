@@ -1,0 +1,125 @@
+{
+  "name": "NI Kontrol F1",
+  "manufacturer": "Native Instruments",
+  "vendor_id": "0x17cc",
+  "product_id": "0x1120",
+
+  "interfaces": [
+    {
+      "id": "control",
+      "number": 0,
+      "endpoints": {
+        "in":  { "address": "0x81", "type": "interrupt" },
+        "out": { "address": "0x01", "type": "interrupt" }
+      }
+    }
+  ],
+
+  "input_packets": [
+    {
+      "id": "controls",
+      "interface": "control",
+      "size": 22,
+      "items": [
+        { "type": "slider", "name": "fader_1", "bytes": [1, 2], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fader_2", "bytes": [3, 4], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fader_3", "bytes": [5, 6], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "fader_4", "bytes": [7, 8], "bits": 12, "normalize": true, "max_value": 4096 },
+
+        { "type": "slider", "name": "knob_1", "bytes": [9, 10], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "knob_2", "bytes": [11, 12], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "knob_3", "bytes": [13, 14], "bits": 12, "normalize": true, "max_value": 4096 },
+        { "type": "slider", "name": "knob_4", "bytes": [15, 16], "bits": 12, "normalize": true, "max_value": 4096 },
+
+        { "type": "encoder", "name": "browse_encoder", "byte": 17, "bits": 4, "bit_offset": 0, "encoding": "wrap16" },
+
+        { "type": "button", "name": "shift",        "byte": 18, "mask": "0x01" },
+        { "type": "button", "name": "reverse",      "byte": 18, "mask": "0x02" },
+        { "type": "button", "name": "type",         "byte": 18, "mask": "0x04" },
+        { "type": "button", "name": "size",         "byte": 18, "mask": "0x08" },
+        { "type": "button", "name": "browse_press", "byte": 18, "mask": "0x10" },
+        { "type": "button", "name": "quant",        "byte": 18, "mask": "0x20" },
+        { "type": "button", "name": "capture",      "byte": 18, "mask": "0x40" },
+
+        { "type": "button", "name": "stop_1", "byte": 19, "mask": "0x01" },
+        { "type": "button", "name": "stop_2", "byte": 19, "mask": "0x02" },
+        { "type": "button", "name": "stop_3", "byte": 19, "mask": "0x04" },
+        { "type": "button", "name": "stop_4", "byte": 19, "mask": "0x08" },
+        { "type": "button", "name": "sync_1", "byte": 19, "mask": "0x10" },
+        { "type": "button", "name": "sync_2", "byte": 19, "mask": "0x20" },
+        { "type": "button", "name": "sync_3", "byte": 19, "mask": "0x40" },
+        { "type": "button", "name": "sync_4", "byte": 19, "mask": "0x80" },
+
+        { "type": "button", "name": "pad_1",  "byte": 20, "mask": "0x01" },
+        { "type": "button", "name": "pad_2",  "byte": 20, "mask": "0x02" },
+        { "type": "button", "name": "pad_3",  "byte": 20, "mask": "0x04" },
+        { "type": "button", "name": "pad_4",  "byte": 20, "mask": "0x08" },
+        { "type": "button", "name": "pad_5",  "byte": 20, "mask": "0x10" },
+        { "type": "button", "name": "pad_6",  "byte": 20, "mask": "0x20" },
+        { "type": "button", "name": "pad_7",  "byte": 20, "mask": "0x40" },
+        { "type": "button", "name": "pad_8",  "byte": 20, "mask": "0x80" },
+
+        { "type": "button", "name": "pad_9",  "byte": 21, "mask": "0x01" },
+        { "type": "button", "name": "pad_10", "byte": 21, "mask": "0x02" },
+        { "type": "button", "name": "pad_11", "byte": 21, "mask": "0x04" },
+        { "type": "button", "name": "pad_12", "byte": 21, "mask": "0x08" },
+        { "type": "button", "name": "pad_13", "byte": 21, "mask": "0x10" },
+        { "type": "button", "name": "pad_14", "byte": 21, "mask": "0x20" },
+        { "type": "button", "name": "pad_15", "byte": 21, "mask": "0x40" },
+        { "type": "button", "name": "pad_16", "byte": 21, "mask": "0x80" }
+      ]
+    }
+  ],
+
+  "leds": [
+    {
+      "id": "all_leds",
+      "interface": "control",
+      "buffer_size": 80,
+      "prefix_byte": "0x00",
+      "items": [
+        { "type": "single", "name": "shift",        "offset": 1 },
+        { "type": "single", "name": "reverse",      "offset": 2 },
+        { "type": "single", "name": "type",         "offset": 3 },
+        { "type": "single", "name": "size",         "offset": 4 },
+        { "type": "single", "name": "browse_press", "offset": 5 },
+        { "type": "single", "name": "quant",        "offset": 6 },
+        { "type": "single", "name": "capture",      "offset": 7 },
+
+        { "_comment": "Dual 8-segment display digits (7 segments + dot) driven via SevenSegment bitmasks", "type": "single", "name": "display_left",  "offset": 8 },
+        { "type": "single", "name": "display_right", "offset": 9 },
+
+        { "type": "single", "name": "stop_1", "offset": 10 },
+        { "type": "single", "name": "stop_2", "offset": 11 },
+        { "type": "single", "name": "stop_3", "offset": 12 },
+        { "type": "single", "name": "stop_4", "offset": 13 },
+        { "type": "single", "name": "sync_1", "offset": 14 },
+        { "type": "single", "name": "sync_2", "offset": 15 },
+        { "type": "single", "name": "sync_3", "offset": 16 },
+        { "type": "single", "name": "sync_4", "offset": 17 },
+
+        { "type": "rgb", "name": "pad_1",  "offsets": { "r": 18, "g": 19, "b": 20 } },
+        { "type": "rgb", "name": "pad_2",  "offsets": { "r": 21, "g": 22, "b": 23 } },
+        { "type": "rgb", "name": "pad_3",  "offsets": { "r": 24, "g": 25, "b": 26 } },
+        { "type": "rgb", "name": "pad_4",  "offsets": { "r": 27, "g": 28, "b": 29 } },
+        { "type": "rgb", "name": "pad_5",  "offsets": { "r": 30, "g": 31, "b": 32 } },
+        { "type": "rgb", "name": "pad_6",  "offsets": { "r": 33, "g": 34, "b": 35 } },
+        { "type": "rgb", "name": "pad_7",  "offsets": { "r": 36, "g": 37, "b": 38 } },
+        { "type": "rgb", "name": "pad_8",  "offsets": { "r": 39, "g": 40, "b": 41 } },
+        { "type": "rgb", "name": "pad_9",  "offsets": { "r": 42, "g": 43, "b": 44 } },
+        { "type": "rgb", "name": "pad_10", "offsets": { "r": 45, "g": 46, "b": 47 } },
+        { "type": "rgb", "name": "pad_11", "offsets": { "r": 48, "g": 49, "b": 50 } },
+        { "type": "rgb", "name": "pad_12", "offsets": { "r": 51, "g": 52, "b": 53 } },
+        { "type": "rgb", "name": "pad_13", "offsets": { "r": 54, "g": 55, "b": 56 } },
+        { "type": "rgb", "name": "pad_14", "offsets": { "r": 57, "g": 58, "b": 59 } },
+        { "type": "rgb", "name": "pad_15", "offsets": { "r": 60, "g": 61, "b": 62 } },
+        { "type": "rgb", "name": "pad_16", "offsets": { "r": 63, "g": 64, "b": 65 } }
+      ]
+    }
+  ],
+
+  "screens": [],
+  "quirks": {
+    "detach_kernel_driver": true
+  }
+}
