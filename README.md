@@ -268,27 +268,6 @@ encdr/
 
 
 ## Changelog
-### Unreleased
-- **NI Maschine Mk1 Hardware Support** (`17cc:0808`), validated on physical hardware:
-  - Added descriptor [`encdr/descriptors/ni_maschine_mk1.json`](encdr/descriptors/ni_maschine_mk1.json), covering:
-    - 41 buttons
-    - 11 endless rotary potentiometer knobs, with relative deltas in fractions of a turn
-    - 16 pressure pads
-    - 58 single-color LEDs, including the display backlight
-    - both 255x64 grayscale LCDs
-  - Added hardware reference documentation in [`docs/hardware/ni_maschine_mk1.md`](docs/hardware/ni_maschine_mk1.md).
-  - Added `mk1_vegas`, an interactive LED animation and dual-screen demo with live knob bars and a pad pressure grid.
-- **Descriptor & Engine Extensions** (all opt-in; existing descriptors are unchanged):
-  - Reads from multiple input endpoints (interrupt or bulk), selects an interface `alt_setting`, and routes packets by `report_id`.
-  - New `id_pressure_words` pad format for self-identifying pad streams.
-  - New `erp` encoder encoding (ported from the Linux `snd-usb-caiaq` decoder), with a `deadband` option.
-  - Multi-byte LED `prefix`, bulk LED endpoints, and per-LED `default` values.
-  - `quirks.init_writes` sends one-shot writes on connect, after input reads are queued.
-  - New `st7529_gray5` pixel format and `ni_st7529` screen protocol, which handle controller init and chunked frames.
-  - The screen thread now queues all transfers of a frame at once, and keeps only the newest pending frame per screen. A fast-updating screen can no longer starve another.
-  - ST7529 screens send only the band of rows that changed. A typical update drops from 10,880 bytes (~34 ms) to a few hundred bytes (2–5 ms).
-- **Redundant LED Writes Skipped** (all devices): an LED group is no longer flushed when its contents match the last write. On the Maschine Mk1, each LED write stalls the display stream for ~5 ms.
-
 ### v0.6.1
 - **Maschine Studio Pad Stream Fix**:
   - Added missing `pads` input packet descriptor (Report `0x20` continuous 16-channel 12-bit ADC stream) to [`encdr/descriptors/ni_maschine_studio.json`](encdr/descriptors/ni_maschine_studio.json).
