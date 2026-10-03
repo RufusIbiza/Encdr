@@ -24,6 +24,8 @@ impl DescriptorRegistry {
         // Embedded at compile time
         let d2_json = include_str!("../../descriptors/ni_kontrol_d2.json");
         self.load_json(d2_json)?;
+        let mk1_json = include_str!("../../descriptors/ni_maschine_mk1.json");
+        self.load_json(mk1_json)?;
         let mk2_json = include_str!("../../descriptors/ni_maschine_mk2.json");
         self.load_json(mk2_json)?;
         let mk3_json = include_str!("../../descriptors/ni_maschine_mk3.json");
@@ -104,6 +106,8 @@ impl DescriptorRegistry {
     /// Load a single JSON descriptor string.
     pub fn load_json(&mut self, json: &str) -> Result<Arc<DeviceDescriptor>> {
         let desc: DeviceDescriptor = serde_json::from_str(json)?;
+        desc.validate()
+            .map_err(|e| EncdrError::Descriptor(format!("{}: {}", desc.name, e)))?;
         let key = (desc.vendor_id.0, desc.product_id.0);
         let arc = Arc::new(desc);
         self.descriptors.insert(key, arc.clone());
@@ -196,7 +200,7 @@ mod tests {
         assert_eq!(desc.name, "NI Maschine Mk3");
 
         let pad_leds = desc.leds.iter().find(|l| l.id == "pad_leds").expect("pad_leds layout missing");
-        assert_eq!(pad_leds.prefix_byte.0, 0x81);
+        assert_eq!(pad_leds.prefix_bytes(), [0x81]);
 
         // Verify pad 13 is offset 25 and pad 1 is offset 37
         let p13 = pad_leds.items.iter().find(|i| i.name() == "pad_13").expect("pad_13 missing");
@@ -416,10 +420,10 @@ mod tests {
             assert_eq!(screen.pixel_format, crate::core::descriptor::PixelFormat::Bgr565Be);
         }
         assert_eq!(desc.leds.len(), 4);
-        assert!(desc.leds.iter().any(|l| l.id == "buttons" && l.prefix_byte.0 == 0x80));
-        assert!(desc.leds.iter().any(|l| l.id == "pad_leds" && l.prefix_byte.0 == 0x81));
-        assert!(desc.leds.iter().any(|l| l.id == "master_meters" && l.prefix_byte.0 == 0x82));
-        assert!(desc.leds.iter().any(|l| l.id == "jogwheel_ring" && l.prefix_byte.0 == 0x83));
+        assert!(desc.leds.iter().any(|l| l.id == "buttons" && l.prefix_bytes() == [0x80]));
+        assert!(desc.leds.iter().any(|l| l.id == "pad_leds" && l.prefix_bytes() == [0x81]));
+        assert!(desc.leds.iter().any(|l| l.id == "master_meters" && l.prefix_bytes() == [0x82]));
+        assert!(desc.leds.iter().any(|l| l.id == "jogwheel_ring" && l.prefix_bytes() == [0x83]));
 
         let names = reg.intern_descriptor_names(&desc);
         let mut parser = crate::device::parser::PacketParser::new(crate::core::event::DeviceId(1), &desc, names);
@@ -514,7 +518,7 @@ mod tests {
         assert_eq!(desc.name, "NI Kontrol S4 Mk2");
         assert_eq!(desc.input_packets.len(), 2);
         assert_eq!(desc.leds.len(), 3);
-        assert!(desc.leds.iter().any(|g| g.id == "loop_displays" && g.prefix_byte.0 == 0xd5));
+        assert!(desc.leds.iter().any(|g| g.id == "loop_displays" && g.prefix_bytes() == [0xd5]));
 
         let names = reg.intern_descriptor_names(&desc);
         let mut parser = crate::device::parser::PacketParser::new(crate::core::event::DeviceId(1), &desc, names);
@@ -542,8 +546,8 @@ mod tests {
             assert_eq!(screen.pixel_format, crate::core::descriptor::PixelFormat::Bgr565Be);
         }
         assert_eq!(desc.leds.len(), 4);
-        assert!(desc.leds.iter().any(|l| l.id == "motor_command" && l.prefix_byte.0 == 0x31));
-        assert!(desc.leds.iter().any(|l| l.id == "wheel_leds" && l.prefix_byte.0 == 0x32));
+        assert!(desc.leds.iter().any(|l| l.id == "motor_command" && l.prefix_bytes() == [0x31]));
+        assert!(desc.leds.iter().any(|l| l.id == "wheel_leds" && l.prefix_bytes() == [0x32]));
 
         let names = reg.intern_descriptor_names(&desc);
         let mut parser = crate::device::parser::PacketParser::new(crate::core::event::DeviceId(1), &desc, names);
@@ -566,9 +570,9 @@ mod tests {
         assert_eq!(desc.name, "NI Maschine Jam");
         assert_eq!(desc.input_packets.len(), 2);
         assert_eq!(desc.leds.len(), 3);
-        assert!(desc.leds.iter().any(|l| l.id == "button_leds" && l.prefix_byte.0 == 0x80));
-        assert!(desc.leds.iter().any(|l| l.id == "matrix_and_groups" && l.prefix_byte.0 == 0x81));
-        assert!(desc.leds.iter().any(|l| l.id == "touchstrip_meters" && l.prefix_byte.0 == 0x82));
+        assert!(desc.leds.iter().any(|l| l.id == "button_leds" && l.prefix_bytes() == [0x80]));
+        assert!(desc.leds.iter().any(|l| l.id == "matrix_and_groups" && l.prefix_bytes() == [0x81]));
+        assert!(desc.leds.iter().any(|l| l.id == "touchstrip_meters" && l.prefix_bytes() == [0x82]));
 
         let names = reg.intern_descriptor_names(&desc);
         let mut parser = crate::device::parser::PacketParser::new(crate::core::event::DeviceId(1), &desc, names);
@@ -675,6 +679,136 @@ mod tests {
         assert_eq!(mm3.screens.len(), 1);
         assert_eq!(mm3.input_packets.len(), 3);
         assert_eq!(mm3.leds.len(), 2);
+    }
+
+    #[test]
+    fn load_maschine_mk1_descriptor() {
+        use crate::core::event::Event;
+
+        let mut reg = DescriptorRegistry::new();
+        reg.load_builtins().unwrap();
+
+        let desc = reg.find(0x17cc, 0x0808).expect("Maschine Mk1 should be registered").clone();
+        assert_eq!(desc.name, "NI Maschine Mk1");
+        assert_eq!(desc.screens.len(), 2);
+        for screen in &desc.screens {
+            assert_eq!(screen.pixel_format, crate::core::descriptor::PixelFormat::St7529Gray5);
+            assert_eq!(screen.byte_size(), 10880);
+        }
+        assert_eq!(
+            desc.leds.iter().map(|l| l.prefix_bytes()).collect::<Vec<_>>(),
+            vec![vec![0x0c, 0x00], vec![0x0c, 0x1e]]
+        );
+
+        let names = reg.intern_descriptor_names(&desc);
+        let mut parser = crate::device::parser::PacketParser::new(crate::core::event::DeviceId(1), &desc, names);
+        let mut events = Vec::new();
+
+        // Button report captured from hardware: Mute pressed. The 0x40 in
+        // byte 6 is an undocumented toggle bit and must not produce events.
+        parser.parse_from("control", &[0x04, 0x01, 0, 0, 0, 0, 0x40, 0x85], &mut events);
+        assert!(
+            matches!(events.as_slice(), [Event::Button { name: "mute", pressed: true, .. }]),
+            "{events:?}"
+        );
+
+        // Knob report captured at rest sets the baseline; then the `a` tap of
+        // screen_encoder_1 (pair at bytes 21..22) rises: 197 -> 225.
+        let mut knobs = vec![
+            0x02, 0xa0, 0x15, 0xb7, 0xcc, 0x03, 0x71, 0x85, 0x03, 0x1f, 0xa2, 0x85,
+            0x00, 0x3b, 0x3d, 0x5d, 0x17, 0x19, 0x5f, 0x0c, 0x86, 0xf7, 0x65,
+        ];
+        knobs.resize(33, 0);
+        events.clear();
+        parser.parse_from("control", &knobs, &mut events);
+        assert!(events.is_empty());
+        knobs[22] = 0x75;
+        parser.parse_from("control", &knobs, &mut events);
+        match events.as_slice() {
+            [Event::EncoderFine { name: "screen_encoder_1", delta, .. }] => {
+                assert!((*delta - 0.028).abs() < 1e-6, "{delta}")
+            }
+            other => panic!("unexpected events {other:?}"),
+        }
+
+        // Pad stream: words are self-identifying, so a frame starting
+        // mid-cycle still maps id 12 to pad_1.
+        let mut pads = Vec::new();
+        for id in (8u16..16).chain(0..8) {
+            let pressure = if id == 12 { 3000 } else { 0 };
+            pads.extend_from_slice(&(id << 12 | pressure).to_le_bytes());
+        }
+        events.clear();
+        parser.parse_from("pads", &pads, &mut events);
+        assert!(matches!(events[0], Event::Button { name: "pad_1", pressed: true, .. }), "{events:?}");
+        assert!(matches!(events[1], Event::Grid { name: "pad_1", index: 12, .. }), "{events:?}");
+
+        // An LED ack (0x0c) on the control interface is ignored.
+        events.clear();
+        parser.parse_from("control", &[0x0c], &mut events);
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn descriptor_validation_rejects_ambiguous_or_incomplete_fields() {
+        fn load(screens: &str, leds: &str, quirks: &str) -> Result<Arc<DeviceDescriptor>> {
+            DescriptorRegistry::new().load_json(&format!(
+                r#"{{ "name": "Test", "manufacturer": "Test", "vendor_id": "0x1234", "product_id": "0x5678",
+                      "interfaces": [ {{ "id": "control", "number": 0,
+                          "endpoints": {{ "out": {{ "address": "0x01", "type": "bulk" }} }} }} ],
+                      "input_packets": [], "screens": [{screens}], "leds": [{leds}], "quirks": {{ {quirks} }} }}"#
+            ))
+        }
+        let screen = |extra: &str| {
+            format!(r#"{{ "name": "main", "interface": "control", "width": 8, "height": 8, "pixel_format": "mono" {extra} }}"#)
+        };
+        let leds = |prefix: &str| {
+            format!(r#"{{ "id": "bank", "interface": "control", "buffer_size": 1, {prefix} "items": [] }}"#)
+        };
+
+        // Valid baselines.
+        assert!(load(&screen(r#", "full_blit": { "header": "0xe0", "footer": "" }"#), "", "").is_ok());
+        assert!(load("", &leds(r#""prefix_byte": "0x80","#), "").is_ok());
+        assert!(load("", &leds(r#""prefix": ["0x0c", "0x1e"],"#), "").is_ok());
+        assert!(load("", "", r#""init_writes": [ { "interface": "control", "data": ["0x0b"] } ]"#).is_ok());
+
+        // Screen without full_blit framing.
+        assert!(load(&screen(""), "", "").is_err());
+        // LED group with no prefix, or with both kinds.
+        assert!(load("", &leds(""), "").is_err());
+        assert!(load("", &leds(r#""prefix_byte": "0x80", "prefix": ["0x0c"],"#), "").is_err());
+        // Bytes that don't fit in a u8.
+        assert!(load("", &leds(r#""prefix": ["0x10c"],"#), "").is_err());
+        assert!(load("", "", r#""init_writes": [ { "interface": "control", "data": ["0x1ff"] } ]"#).is_err());
+        // Malformed hex and unknown interfaces.
+        assert!(load("", "", r#""init_writes": [ { "interface": "control", "data": ["0x5O"] } ]"#).is_err());
+        assert!(load("", "", r#""init_writes": [ { "interface": "nope", "data": ["0x0b"] } ]"#).is_err());
+    }
+
+    #[test]
+    fn maschine_mk1_held_pad_survives_stream_pause() {
+        use crate::core::event::Event;
+
+        let mut reg = DescriptorRegistry::new();
+        reg.load_builtins().unwrap();
+        let desc = reg.find(0x17cc, 0x0808).unwrap().clone();
+        let names = reg.intern_descriptor_names(&desc);
+        let mut parser = crate::device::parser::PacketParser::new(crate::core::event::DeviceId(1), &desc, names);
+        let mut events = Vec::new();
+
+        // Press pad_1 (id 12) and keep reporting it held.
+        let held = (12u16 << 12 | 2000).to_le_bytes();
+        for _ in 0..4 {
+            parser.parse_from("pads", &held, &mut events);
+        }
+        assert!(matches!(events[0], Event::Button { name: "pad_1", pressed: true, .. }));
+
+        // A pause longer than the 150 ms isolated-tap timeout must not
+        // synthesize a release for a sustained hold.
+        std::thread::sleep(std::time::Duration::from_millis(160));
+        events.clear();
+        parser.check_pad_timeouts(&mut events);
+        assert!(events.is_empty(), "{events:?}");
     }
 }
 

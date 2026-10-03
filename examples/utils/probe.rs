@@ -58,10 +58,10 @@ fn main() {
         // LEDs
         for leds in &desc.leds {
             println!(
-                "    LEDs: {} items, {} byte buffer (prefix 0x{:02x})",
+                "    LEDs: {} items, {} byte buffer (prefix {:02x?})",
                 leds.items.len(),
                 leds.buffer_size,
-                leds.prefix_byte.0
+                leds.prefix_bytes()
             );
         }
 

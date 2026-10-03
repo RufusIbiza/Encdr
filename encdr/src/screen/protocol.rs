@@ -1,4 +1,107 @@
-use crate::core::descriptor::ScreenDesc;
+use std::time::Duration;
+
+use crate::core::descriptor::{ScreenDesc, ScreenProtocol};
+
+/// One transfer of a screen controller's init sequence.
+pub struct InitStep {
+    pub data: Vec<u8>,
+    /// Pause after this transfer completes.
+    pub delay: Duration,
+}
+
+/// Transfers that bring a screen controller up after connect. Empty for
+/// screens that need no initialisation.
+pub fn init_sequence(desc: &ScreenDesc) -> Vec<InitStep> {
+    match desc.protocol {
+        Some(ScreenProtocol::NiSt7529 { display }) => st7529_init(display),
+        None => Vec::new(),
+    }
+}
+
+/// Split a frame produced by [`build_full_blit`] into the USB transfers the
+/// screen expects. Without a protocol the whole blit is one transfer.
+pub fn frame_transfers(desc: &ScreenDesc, blit: Vec<u8>) -> Vec<Vec<u8>> {
+    match desc.protocol {
+        Some(ScreenProtocol::NiSt7529 { display }) => st7529_frame(display, desc, &blit),
+        None => vec![blit],
+    }
+}
+
+// ── Sitronix ST7529 behind the NI EP8 display bridge (Maschine Mk1) ─────────
+//
+// Every transfer is `[header, len_hi, len_lo, payload…]` where `len` counts the
+// payload. `header = display << 1` marks a payload starting with a controller
+// command; `header | 1` marks a pure data continuation. Sequence and framing
+// follow shaduzlabs/cabl (MaschineMK1.cpp), verified on hardware.
+
+/// Data bytes per frame transfer: 502 fits one 512-byte high-speed packet
+/// together with the 3-byte header and the leading RAMWR command.
+const ST7529_CHUNK: usize = 502;
+
+fn st7529_command(display: u8, payload: &[u8]) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(3 + payload.len());
+    buf.push(display << 1);
+    buf.extend_from_slice(&(payload.len() as u16).to_be_bytes());
+    buf.extend_from_slice(payload);
+    buf
+}
+
+fn st7529_init(display: u8) -> Vec<InitStep> {
+    const SETTLE: Duration = Duration::from_millis(20);
+    let steps: [(&[u8], Duration); 22] = [
+        (&[0x30], Duration::ZERO),                   // EXT_IN: extension set 0
+        (&[0xCA, 0x04, 0x0F, 0x00], SETTLE),         // DISCTRL: display control
+        (&[0xBB, 0x00], Duration::ZERO),             // COMSCN: COM scan direction
+        (&[0xD1], Duration::ZERO),                   // OSC_ON
+        (&[0x94], Duration::ZERO),                   // SLEEP_OUT
+        (&[0x81, 0x1E, 0x02], SETTLE),               // VOLCTRL: contrast
+        (&[0x20, 0x08], SETTLE),                     // PWRCTRL: booster on
+        (&[0x20, 0x0B], SETTLE),                     // PWRCTRL: booster + regulator + follower
+        (&[0xA6], Duration::ZERO),                   // normal (non-inverted) display
+        (&[0x31], Duration::ZERO),                   // EXT_OUT: extension set 1
+        (&[0x32, 0x00, 0x00, 0x05], Duration::ZERO), // ANASET: analog circuit
+        (&[0x34], Duration::ZERO),                   // SWINT: software initial
+        (&[0x30], Duration::ZERO),                   // EXT_IN
+        (&[0xBC, 0x00, 0x01, 0x02], Duration::ZERO), // DATSDR: data scan direction
+        (&[0x75, 0x00, 0x3F], Duration::ZERO),       // LASET: lines 0..63
+        (&[0x15, 0x00, 0x54], Duration::ZERO),       // CASET: columns 0..84 (3 px each)
+        (&[0x5C], Duration::ZERO),                   // RAMWR
+        (&[0x25], SETTLE),                           // NOP
+        (&[0xAF], SETTLE),                           // DISPLAY_ON
+        (&[0xBC, 0x02, 0x01, 0x01], Duration::ZERO), // DATSDR: 3-pixel / 2-byte mode
+        (&[0xA6], Duration::ZERO),                   // normal display
+        (&[0x81, 0x25, 0x02], Duration::ZERO),       // VOLCTRL: final contrast
+    ];
+    steps
+        .iter()
+        .map(|&(payload, delay)| InitStep { data: st7529_command(display, payload), delay })
+        .collect()
+}
+
+fn st7529_frame(display: u8, desc: &ScreenDesc, pixels: &[u8]) -> Vec<Vec<u8>> {
+    let last_line = (desc.height - 1) as u8;
+    let last_column = (desc.width.div_ceil(3) - 1) as u8;
+    let mut transfers = vec![
+        st7529_command(display, &[0x75, 0x00, last_line]),   // LASET
+        st7529_command(display, &[0x15, 0x00, last_column]), // CASET
+    ];
+
+    for (i, chunk) in pixels.chunks(ST7529_CHUNK).enumerate() {
+        let mut buf = Vec::with_capacity(4 + chunk.len());
+        if i == 0 {
+            // First chunk carries the RAMWR command ahead of its data.
+            buf.push(display << 1);
+            buf.extend_from_slice(&(chunk.len() as u16 + 1).to_be_bytes());
+            buf.push(0x5C);
+        } else {
+            buf.push(display << 1 | 1);
+            buf.extend_from_slice(&(chunk.len() as u16).to_be_bytes());
+        }
+        buf.extend_from_slice(chunk);
+        transfers.push(buf);
+    }
+    transfers
+}
 
 /// Build a full-frame blit transfer buffer: header + pixel data + footer.
 pub fn build_full_blit(desc: &ScreenDesc, native_pixels: &[u8]) -> Vec<u8> {
@@ -110,6 +213,54 @@ fn expand_template(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn st7529_frame_chunking() {
+        let desc = ScreenDesc {
+            name: "right".to_string(),
+            interface: "display".to_string(),
+            width: 255,
+            height: 64,
+            pixel_format: crate::core::descriptor::PixelFormat::St7529Gray5,
+            full_blit: Default::default(),
+            partial_blit: None,
+            protocol: Some(ScreenProtocol::NiSt7529 { display: 1 }),
+        };
+        let frame = vec![0xAA; desc.byte_size()];
+        let transfers = frame_transfers(&desc, build_full_blit(&desc, &frame));
+
+        assert_eq!(transfers[0], vec![0x02, 0x00, 0x03, 0x75, 0x00, 0x3F]);
+        assert_eq!(transfers[1], vec![0x02, 0x00, 0x03, 0x15, 0x00, 0x54]);
+        // RAMWR + 502 data bytes, then 20 full continuations and a 338-byte tail.
+        assert_eq!(transfers[2][..4], [0x02, 0x01, 0xF7, 0x5C]);
+        assert_eq!(transfers[2].len(), 4 + 502);
+        assert_eq!(transfers.len(), 2 + 22);
+        for t in &transfers[3..23] {
+            assert_eq!(t[..3], [0x03, 0x01, 0xF6]);
+            assert_eq!(t.len(), 3 + 502);
+        }
+        assert_eq!(transfers[23][..3], [0x03, 0x01, 0x52]);
+        assert_eq!(transfers[23].len(), 3 + 338);
+    }
+
+    #[test]
+    fn st7529_init_framing() {
+        let desc = ScreenDesc {
+            name: "left".to_string(),
+            interface: "display".to_string(),
+            width: 255,
+            height: 64,
+            pixel_format: crate::core::descriptor::PixelFormat::St7529Gray5,
+            full_blit: Default::default(),
+            partial_blit: None,
+            protocol: Some(ScreenProtocol::NiSt7529 { display: 0 }),
+        };
+        let steps = init_sequence(&desc);
+        assert_eq!(steps.len(), 22);
+        assert_eq!(steps[0].data, vec![0x00, 0x00, 0x01, 0x30]);
+        assert_eq!(steps[1].data, vec![0x00, 0x00, 0x04, 0xCA, 0x04, 0x0F, 0x00]);
+        assert_eq!(steps[1].delay, Duration::from_millis(20));
+    }
 
     #[test]
     fn parse_hex_list() {

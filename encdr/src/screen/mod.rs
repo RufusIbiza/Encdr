@@ -146,6 +146,12 @@ fn convert_format(
         (PixelFormat::Rgb888, PixelFormat::Mono) => {
             rgb8_to_mono(pixels, width as usize, height as usize)
         }
+        (PixelFormat::Rgba8888, PixelFormat::St7529Gray5) => {
+            to_st7529_gray5(pixels, 4, width as usize, height as usize)
+        }
+        (PixelFormat::Rgb888, PixelFormat::St7529Gray5) => {
+            to_st7529_gray5(pixels, 3, width as usize, height as usize)
+        }
         _ => {
             tracing::warn!("Unsupported format conversion: {:?} -> {:?}", from, to);
             pixels.to_vec()
@@ -252,6 +258,36 @@ pub(crate) fn rgb8_to_mono(rgb: &[u8], width: usize, height: usize) -> Vec<u8> {
                     out[byte_idx] |= bit_mask;
                 }
             }
+        }
+    }
+
+    out
+}
+
+/// Convert RGB(A) to ST7529 5-bit grayscale, 3 pixels per 2 bytes:
+/// `[p0:5 p1_hi:3] [p1_lo:2 _:1 p2:5]`. Levels are stored inverted (0 = lit,
+/// 31 = black), so unused trailing pixels in the last group are black.
+pub(crate) fn to_st7529_gray5(src: &[u8], channels: usize, width: usize, height: usize) -> Vec<u8> {
+    let groups = width.div_ceil(3);
+    let mut out = vec![0u8; groups * 2 * height];
+
+    for y in 0..height {
+        for g in 0..groups {
+            let mut px = [0x1Fu8; 3];
+            for (i, level) in px.iter_mut().enumerate() {
+                let x = g * 3 + i;
+                let offset = (y * width + x) * channels;
+                if x < width && offset + 2 < src.len() {
+                    let lum = (src[offset] as u32 * 299
+                        + src[offset + 1] as u32 * 587
+                        + src[offset + 2] as u32 * 114)
+                        / 1000;
+                    *level = 0x1F - ((lum * 31 + 127) / 255) as u8;
+                }
+            }
+            let i = (y * groups + g) * 2;
+            out[i] = px[0] << 3 | px[1] >> 2;
+            out[i + 1] = (px[1] & 0x03) << 6 | px[2];
         }
     }
 
@@ -424,6 +460,18 @@ mod tests {
     }
 
     #[test]
+    fn rgba_to_st7529_gray5_packing() {
+        // 4 pixels: white, black, mid-gray, white. The 4th starts a second
+        // 3-pixel group whose two missing pixels pad as black (0x1F).
+        let rgba = [
+            255, 255, 255, 255, 0, 0, 0, 255, 128, 128, 128, 255, 255, 255, 255, 255,
+        ];
+        let out = to_st7529_gray5(&rgba, 4, 4, 1);
+        // Inverted levels: white 0, black 31, gray 31 - 16 = 15.
+        assert_eq!(out, vec![0 << 3 | 31 >> 2, (31 & 3) << 6 | 15, 0 << 3 | 31 >> 2, (31 & 3) << 6 | 31]);
+    }
+
+    #[test]
     fn test_screen_manager_lifecycle() {
         let desc = crate::core::descriptor::ScreenDesc {
             name: "test".to_string(),
@@ -442,6 +490,7 @@ mod tests {
                 header_template: "0x03".to_string(),
                 footer: "0x04".to_string(),
             }),
+            protocol: None,
         };
 
         let mut sm = ScreenManager::new(&desc, None);

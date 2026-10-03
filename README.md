@@ -117,6 +117,7 @@ fn main() {
 | NI Maschine Mikro Mk1     | `17cc:1110`       | Implemented | 28 buttons, 1 rotary encoder, 16 velocity/pressure pads | 28 single-color LEDs, 16 single-color pad LEDs | 128x64 1-bit mono |
 | NI Maschine Mikro Mk2     | `17cc:1200`       | Implemented | 28 buttons, 1 rotary encoder, 16 velocity/pressure pads | 28 single-color LEDs, 16 RGB pads           | 128x64 1-bit mono |
 | NI Maschine Mikro Mk3     | `17cc:1700`       | Implemented | 29 buttons, 1 rotary encoder, 1 Smart Strip, 16 velocity/pressure pads | 29 singles, 16 RGB pads, 25-seg dual LED Smart Strip | 128x32 1-bit OLED |
+| NI Maschine Mk1           | `17cc:0808`       | Implemented | 41 buttons, 11 endless knobs, 16 pressure pads | 16 pad LEDs, 41 singles, display backlight  | 2x 255x64 5-bit gray |
 | NI Maschine Mk2           | `17cc:1140`       | Implemented | 47 buttons, 11 encoders, 16 velocity pads     | 16 RGB pads, 31 singles                     | 2x 256x64 1-bit   |
 | NI Maschine Mk3           | `17cc:1600`       | Implemented | 63 buttons, 10 touches, 9 encoders, 1 slider, 16 pads | 16 RGB pads, 62 singles, 1 strip     | 2x 480x272 BGR565 |
 | NI Maschine Plus          | `17cc:1820`       | Implemented | 63 buttons, 10 touches, 9 encoders, 1 slider, 16 pads | 16 RGB pads, 62 singles, 1 strip     | 2x 480x272 BGR565 |
@@ -152,6 +153,7 @@ encdr/
 │   │   ├── ni_maschine_mikro_mk1.json
 │   │   ├── ni_maschine_mikro_mk2.json
 │   │   ├── ni_maschine_mikro_mk3.json
+│   │   ├── ni_maschine_mk1.json
 │   │   ├── ni_maschine_mk2.json
 │   │   ├── ni_maschine_mk3.json
 │   │   ├── ni_maschine_plus.json
@@ -190,6 +192,7 @@ encdr/
 │   ├── kontrol_z2/         Z2 examples (e.g. z2_vegas)
 │   ├── maschine_jam/       Maschine Jam examples (e.g. jam_scroller)
 │   ├── maschine_mikro/     Maschine Mikro Mk1, Mk2, Mk3 examples (e.g. mikro_mk1/mk2/mk3_vegas)
+│   ├── maschine_mk1/       Maschine Mk1 examples (e.g. mk1_vegas)
 │   ├── maschine_mk2/       Maschine Mk2 examples (e.g. mk2_vegas)
 │   ├── maschine_mk3/       Maschine Mk3 examples (e.g. mk3_screen_test, mk3_vegas, pad_response)
 │   ├── maschine_plus/      Maschine Plus examples (e.g. plus_vegas)
@@ -255,6 +258,7 @@ encdr/
 - [NI Maschine Mikro Mk1](docs/hardware/ni_maschine_mikro_mk1.md)
 - [NI Maschine Mikro Mk2](docs/hardware/ni_maschine_mikro_mk2.md)
 - [NI Maschine Mikro Mk3](docs/hardware/ni_maschine_mikro_mk3.md)
+- [NI Maschine Mk1](docs/hardware/ni_maschine_mk1.md)
 - [NI Maschine Mk2](docs/hardware/ni_maschine_mk2.md)
 - [NI Maschine Mk3](docs/hardware/ni_maschine_mk3.md)
 - [NI Maschine Plus](docs/hardware/ni_maschine_plus.md)
