@@ -264,6 +264,7 @@ impl PacketParser {
                 if raw >= ID_WORD_PRESS_THRESHOLD {
                     state.pad_states[p] = true;
                     state.pad_pressures[p] = pressure;
+                    state.aftertouch_count[p] = 0;
                     events.push(Event::Button {
                         device: self.device_id,
                         name: pad_name,
@@ -279,6 +280,7 @@ impl PacketParser {
             } else if raw < ID_WORD_RELEASE_THRESHOLD {
                 state.pad_states[p] = false;
                 state.pad_pressures[p] = 0.0;
+                state.aftertouch_count[p] = 0;
                 events.push(Event::Button {
                     device: self.device_id,
                     name: pad_name,
@@ -290,14 +292,20 @@ impl PacketParser {
                     index: p as u8,
                     pressure: 0.0,
                 });
-            } else if (pressure - state.pad_pressures[p]).abs() > 0.02 {
-                state.pad_pressures[p] = pressure;
-                events.push(Event::Grid {
-                    device: self.device_id,
-                    name: pad_name,
-                    index: p as u8,
-                    pressure,
-                });
+            } else {
+                // Count continuing reports so the timeout sweep treats this
+                // as a sustained hold rather than an isolated tap, and doesn't
+                // fake a release if the stream briefly pauses.
+                state.aftertouch_count[p] = state.aftertouch_count[p].saturating_add(1);
+                if (pressure - state.pad_pressures[p]).abs() > 0.02 {
+                    state.pad_pressures[p] = pressure;
+                    events.push(Event::Grid {
+                        device: self.device_id,
+                        name: pad_name,
+                        index: p as u8,
+                        pressure,
+                    });
+                }
             }
         }
     }

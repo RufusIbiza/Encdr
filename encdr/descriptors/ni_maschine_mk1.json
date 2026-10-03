@@ -219,7 +219,7 @@
     "detach_kernel_driver": true,
     "_comment": "AUTO_MSG (0x0b): enable spontaneous button/knob reports. The device stalls EP1 commands until earlier replies on 0x81 are read.",
     "init_writes": [
-      { "interface": "control", "data": "0x0b,0x01,0x0a,0x05" }
+      { "interface": "control", "data": ["0x0b", "0x01", "0x0a", "0x05"] }
     ]
   }
 }

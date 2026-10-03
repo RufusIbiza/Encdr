@@ -373,18 +373,18 @@ fn run_device(
             tracing::error!("Init write interface '{}' has no OUT endpoint", write.interface);
             continue;
         };
-        let data = crate::screen::protocol::parse_byte_list(&write.data);
+        let data: Vec<u8> = write.data.iter().map(|b| b.0 as u8).collect();
         let address = ep_desc.address.0 as u8;
         let result = match ep_desc.transfer_type {
             TransferType::Bulk => iface
                 .endpoint::<Bulk, Out>(address)
-                .map(|mut ep| ep.transfer_blocking(data.into(), INIT_WRITE_TIMEOUT).status),
+                .map(|mut ep| ep.transfer_blocking(data.clone().into(), INIT_WRITE_TIMEOUT).status),
             _ => iface
                 .endpoint::<Interrupt, Out>(address)
-                .map(|mut ep| ep.transfer_blocking(data.into(), INIT_WRITE_TIMEOUT).status),
+                .map(|mut ep| ep.transfer_blocking(data.clone().into(), INIT_WRITE_TIMEOUT).status),
         };
         match result {
-            Ok(Ok(())) => tracing::debug!("Init write to ep 0x{:02x}: {}", address, write.data),
+            Ok(Ok(())) => tracing::debug!("Init write to ep 0x{:02x}: {:02x?}", address, data),
             Ok(Err(e)) => tracing::warn!("Init write to ep 0x{:02x} failed: {}", address, e),
             Err(e) => tracing::warn!("Could not open ep 0x{:02x} for init write: {}", address, e),
         }
@@ -464,14 +464,21 @@ fn run_device(
 
     block_on(async {
         let mut last_timeout_sweep = Instant::now();
+        // Index of the input source served most recently (round-robin cursor).
+        let mut last_served = 0;
 
         while running {
             let remaining = PAD_TIMEOUT_POLL_INTERVAL.saturating_sub(last_timeout_sweep.elapsed());
             let woken = futures_lite::future::or(
                 futures_lite::future::or(
                     std::future::poll_fn(|cx| {
-                        for (idx, source) in input_sources.iter_mut().enumerate() {
-                            if let Poll::Ready(completion) = source.ep.poll_next_complete(cx) {
+                        // Start after the endpoint served last, so a busy
+                        // stream (e.g. continuous pads) can't starve the others.
+                        let count = input_sources.len();
+                        for offset in 1..=count {
+                            let idx = (last_served + offset) % count;
+                            if let Poll::Ready(completion) = input_sources[idx].ep.poll_next_complete(cx) {
+                                last_served = idx;
                                 return Poll::Ready(Woken::Read(idx, completion));
                             }
                         }
@@ -707,14 +714,22 @@ fn run_screens(
 
         // Initialise screen controllers that need it, then send an initial
         // splash screen (black frame).
-        for screen_desc in &descriptor.screens {
+        'screens: for screen_desc in &descriptor.screens {
             let Some(ep) = screen_to_ep.get(&screen_desc.name).and_then(|key| endpoints.get_mut(key)) else {
                 continue;
             };
-            for step in protocol::init_sequence(screen_desc) {
+            let steps = protocol::init_sequence(screen_desc);
+            let step_count = steps.len();
+            for (i, step) in steps.into_iter().enumerate() {
                 if let Err(e) = ep.write(step.data).await {
-                    tracing::error!("Screen init for '{}' failed: {}", screen_desc.name, e);
-                    break;
+                    tracing::error!(
+                        "Screen init for '{}' failed at step {}/{}: {}; the screen will stay blank",
+                        screen_desc.name,
+                        i + 1,
+                        step_count,
+                        e
+                    );
+                    continue 'screens;
                 }
                 if !step.delay.is_zero() {
                     Timer::after(step.delay).await;
@@ -730,8 +745,10 @@ fn run_screens(
                 transfers.len(),
                 screen_desc.name
             );
-            let _ = ep.write_all(transfers).await;
-            tracing::info!("Splash screen sent successfully for '{}'", screen_desc.name);
+            match ep.write_all(transfers).await {
+                Ok(()) => tracing::info!("Splash screen sent successfully for '{}'", screen_desc.name),
+                Err(e) => tracing::error!("Splash screen for '{}' failed: {}", screen_desc.name, e),
+            }
         }
 
         let mut frames: Vec<(String, Vec<u8>, PixelFormat)> = Vec::new();

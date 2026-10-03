@@ -436,9 +436,12 @@ By default, packets are matched to `input_packets` entries by their length. Devi
 - **`alt_setting`** (on an interface): selected right after the interface is claimed.
 - **`report_id`** (on a packet): routes by the packet's first byte instead of its length. Once any packet on an interface sets `report_id` or `pad_format`, that interface is routed this way, and unmatched packets are ignored.
 - **`pad_format: "id_pressure_words"`**: decodes a header-less stream of little-endian words, with the pad index in bits 15–12 and 12-bit pressure below.
-- **LED `prefix`**: a multi-byte header such as `["0x0c", "0x1e"]`. It replaces `prefix_byte`.
+- **LED `prefix`**: a multi-byte header such as `["0x0c", "0x1e"]`, used instead of `prefix_byte`. Each LED group must set exactly one of the two.
 - **Single LED `default`**: a value written on connect (for example, a display backlight).
-- **`quirks.init_writes`**: raw `{ "interface", "data" }` writes sent once on connect, after reads are queued.
+- **`quirks.init_writes`**: raw writes sent once on connect, after reads are queued, e.g. `{ "interface": "control", "data": ["0x0b", "0x01"] }`.
+- **Screen `protocol`**: controller-specific init and framing (e.g. `{ "type": "ni_st7529", "display": 0 }`). A screen without a `protocol` must set `full_blit`.
+
+Descriptors are checked when they load, so a missing prefix, framing, or OUT endpoint, or a byte value over `0xff`, is reported as a `Descriptor` error naming the device.
 
 The [Maschine Mk1 descriptor](hardware/ni_maschine_mk1.md) uses all of these.
 

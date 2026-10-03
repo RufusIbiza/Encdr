@@ -67,6 +67,22 @@ impl ScreenManager {
             convert_format(pixels, input_format, self.pixel_format, self.width, self.height)
         };
 
+        // A frame of the wrong size (bad caller buffer, or an input format
+        // with no conversion to this screen's format) would panic the diffing
+        // below and take the screen thread down with it.
+        if native_pixels.len() != self.prev_frame.len() {
+            tracing::warn!(
+                "Dropping {:?} frame for {}x{} {:?} screen: {} bytes after conversion, expected {}",
+                input_format,
+                self.width,
+                self.height,
+                self.pixel_format,
+                native_pixels.len(),
+                self.prev_frame.len()
+            );
+            return None;
+        }
+
         self.frame_count += 1;
 
         // Step 2: Determine if we need a keyframe (full blit on frame 1 and every ~60 frames / ~2s at 30fps)
@@ -515,6 +531,21 @@ mod tests {
         assert_eq!(changed_rows(&prev, &curr, 8), Some(2..6));
     }
 
+    #[test]
+    fn wrong_size_frame_is_dropped_not_panicking() {
+        let desc: ScreenDesc = serde_json::from_str(
+            r#"{ "name": "left", "interface": "display", "width": 255, "height": 64,
+                 "pixel_format": "st7529_gray5", "protocol": { "type": "ni_st7529", "display": 0 } }"#,
+        )
+        .unwrap();
+        let mut sm = ScreenManager::new(&desc, None);
+        // Truncated native buffer, and a format with no conversion path.
+        assert!(sm.submit(&[0u8; 100], PixelFormat::St7529Gray5, &desc).is_none());
+        assert!(sm.submit(&vec![0u8; 255 * 64 * 2], PixelFormat::Bgr565Be, &desc).is_none());
+        // A valid frame afterwards still goes out.
+        assert!(sm.submit(&vec![0u8; 255 * 64 * 4], PixelFormat::Rgba8888, &desc).is_some());
+    }
+
     /// The last 8 native bytes of rows 10..=12 of an RGBA frame.
     fn band_tail(rgba: &[u8]) -> Vec<u8> {
         let native = to_st7529_gray5(rgba, 4, 255, 64);
@@ -559,10 +590,10 @@ mod tests {
             width: 10,
             height: 10,
             pixel_format: PixelFormat::Bgr565Be,
-            full_blit: crate::core::descriptor::ScreenBlitDesc {
+            full_blit: Some(crate::core::descriptor::ScreenBlitDesc {
                 header: "0x01".to_string(),
                 footer: "0x02".to_string(),
-            },
+            }),
             partial_blit: Some(crate::core::descriptor::PartialBlitDesc {
                 supported: true,
                 x_align: 2,

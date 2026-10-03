@@ -37,6 +37,39 @@ impl DeviceDescriptor {
     pub fn all_inputs(&self) -> impl Iterator<Item = &InputItemDesc> {
         self.input_packets.iter().flat_map(|p| &p.items)
     }
+
+    /// Check constraints that serde can't express: fields that are optional
+    /// only when an alternative is given, and byte values that must fit a u8.
+    pub fn validate(&self) -> Result<(), String> {
+        let check_bytes = |what: String, bytes: &[HexU16]| match bytes.iter().find(|b| b.0 > 0xFF) {
+            Some(b) => Err(format!("{what}: 0x{:x} doesn't fit in a byte", b.0)),
+            None => Ok(()),
+        };
+
+        for screen in &self.screens {
+            if screen.full_blit.is_none() && screen.protocol.is_none() {
+                return Err(format!("screen '{}' needs `full_blit` or `protocol`", screen.name));
+            }
+        }
+        for leds in &self.leds {
+            match (&leds.prefix_byte, leds.prefix.is_empty()) {
+                (None, true) => return Err(format!("LED group '{}' needs `prefix_byte` or `prefix`", leds.id)),
+                (Some(_), false) => {
+                    return Err(format!("LED group '{}' sets both `prefix_byte` and `prefix`", leds.id));
+                }
+                _ => {}
+            }
+            let prefix: Vec<HexU16> = leds.prefix_byte.iter().chain(&leds.prefix).copied().collect();
+            check_bytes(format!("LED group '{}' prefix", leds.id), &prefix)?;
+        }
+        for write in &self.quirks.init_writes {
+            if self.interface_by_id(&write.interface).and_then(|i| i.endpoints.out.as_ref()).is_none() {
+                return Err(format!("init write interface '{}' has no OUT endpoint", write.interface));
+            }
+            check_bytes(format!("init write to '{}'", write.interface), &write.data)?;
+        }
+        Ok(())
+    }
 }
 
 /// Deserialize `leds` as either a single object or an array of objects.
@@ -58,7 +91,7 @@ where
 
 // ── Hex u16 helper for JSON "0x17cc" style values ──────────────────────────
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HexU16(pub u16);
 
 impl<'de> Deserialize<'de> for HexU16 {
@@ -271,9 +304,10 @@ pub struct LedLayoutDesc {
     pub id: String,
     pub interface: String,
     pub buffer_size: usize,
-    /// Single byte written before the LED data. Ignored when `prefix` is set.
+    /// Single byte written before the LED data. Exactly one of `prefix_byte`
+    /// and `prefix` must be set.
     #[serde(default)]
-    pub prefix_byte: HexU16,
+    pub prefix_byte: Option<HexU16>,
     /// Multi-byte header written before the LED data (e.g. `["0x0c", "0x1e"]`
     /// for a command byte plus bank offset).
     #[serde(default)]
@@ -284,11 +318,11 @@ pub struct LedLayoutDesc {
 impl LedLayoutDesc {
     /// Bytes written before the LED data on every flush.
     pub fn prefix_bytes(&self) -> Vec<u8> {
-        if self.prefix.is_empty() {
-            vec![self.prefix_byte.0 as u8]
-        } else {
-            self.prefix.iter().map(|b| b.0 as u8).collect()
-        }
+        self.prefix_byte
+            .iter()
+            .chain(&self.prefix)
+            .map(|b| b.0 as u8)
+            .collect()
     }
 }
 
@@ -352,8 +386,9 @@ pub struct ScreenDesc {
     pub width: u16,
     pub height: u16,
     pub pixel_format: PixelFormat,
+    /// Header/footer framing a full frame. Required unless `protocol` is set.
     #[serde(default)]
-    pub full_blit: ScreenBlitDesc,
+    pub full_blit: Option<ScreenBlitDesc>,
     #[serde(default)]
     pub partial_blit: Option<PartialBlitDesc>,
     /// Controller-specific framing and init. When absent, a frame is sent as
@@ -421,7 +456,7 @@ impl PixelFormat {
     }
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ScreenBlitDesc {
     pub header: String,
     pub footer: String,
@@ -458,8 +493,8 @@ pub struct QuirksDesc {
 pub struct InitWriteDesc {
     /// Interface id whose OUT endpoint receives the write.
     pub interface: String,
-    /// Comma-separated byte list, e.g. `"0x0b,0x01,0x0a,0x05"`.
-    pub data: String,
+    /// Bytes to write, e.g. `["0x0b", "0x01", "0x0a", "0x05"]`.
+    pub data: Vec<HexU16>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
