@@ -197,20 +197,15 @@ byte 1: [p1 1:0][unused][p2 4:0]
 
 Levels are 5-bit and **inverted**: 0 is fully lit and 31 is black. Submit RGBA8888 or RGB888 frames and Encdr converts luminance for you.
 
-**Partial updates.** The ST7529 can address any range of rows (via LASET), so after the first frame Encdr sends only the band of rows that changed. Every 60th submitted frame is still sent in full, as a keyframe.
-
 **Throughput.** All measurements are on hardware.
 
 | | Data rate | Time | Notes |
 | --- | --- | --- | --- |
 | Display bridge | ~310 KiB/s | — | Transfer time scales linearly with bytes |
 | Full frame | — | ~34 ms | About 29 full frames/s, shared by both screens |
-| Typical partial update | — | 2–5 ms | e.g. a moving knob bar or a pad cell |
 
-- Partial updates sustain 25+ updates per second on each screen at once.
+- Encdr sends each changed frame in full and skips frames identical to the last one sent, so a static screen costs nothing.
 - Transfers carrying more than 502 data bytes are far slower (hundreds of ms per frame), so frames are always chunked at 502.
-
-**Frame queueing.** Encdr keeps only the newest pending frame for each screen, so a fast producer never builds a backlog or starves the other screen.
 
 ---
 

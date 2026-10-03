@@ -2,10 +2,9 @@ pub mod gpu;
 pub mod gpu_pipeline;
 pub mod protocol;
 
-use std::ops::Range;
 use std::sync::Arc;
 
-use crate::core::descriptor::{PixelFormat, ScreenDesc, ScreenProtocol};
+use crate::core::descriptor::{PixelFormat, ScreenDesc};
 
 pub use gpu::GpuContext;
 pub use gpu_pipeline::GpuConvertPipeline;
@@ -44,14 +43,14 @@ impl ScreenManager {
         }
     }
 
-    /// Submit a new frame. Returns the USB transfers to send if the frame
+    /// Submit a new frame. Returns the USB transfer buffer if the frame
     /// has changed (or it's time for a keyframe), or None if identical.
     pub fn submit(
         &mut self,
         pixels: &[u8],
         input_format: PixelFormat,
         screen_desc: &ScreenDesc,
-    ) -> Option<Vec<Vec<u8>>> {
+    ) -> Option<Vec<u8>> {
         // Step 1: Format conversion (if needed)
         let native_pixels = if input_format == self.pixel_format {
             pixels.to_vec()
@@ -67,44 +66,12 @@ impl ScreenManager {
             convert_format(pixels, input_format, self.pixel_format, self.width, self.height)
         };
 
-        // A frame of the wrong size (bad caller buffer, or an input format
-        // with no conversion to this screen's format) would panic the diffing
-        // below and take the screen thread down with it.
-        if native_pixels.len() != self.prev_frame.len() {
-            tracing::warn!(
-                "Dropping {:?} frame for {}x{} {:?} screen: {} bytes after conversion, expected {}",
-                input_format,
-                self.width,
-                self.height,
-                self.pixel_format,
-                native_pixels.len(),
-                self.prev_frame.len()
-            );
-            return None;
-        }
-
         self.frame_count += 1;
 
         // Step 2: Determine if we need a keyframe (full blit on frame 1 and every ~60 frames / ~2s at 30fps)
         let force_full = self.frame_count == 1 || self.frame_count % 60 == 0;
 
         // Step 3: Frame diff
-        //
-        // Row-addressable controllers: send only the band of rows that
-        // changed. Their USB bridge is slow (ST7529: ~310 KiB/s), and transfer
-        // time scales with bytes sent.
-        if let Some(ScreenProtocol::NiSt7529 { .. }) = screen_desc.protocol {
-            let rows = if force_full {
-                0..self.height
-            } else {
-                changed_rows(&self.prev_frame, &native_pixels, self.height)?
-            };
-            let stride = native_pixels.len() / self.height as usize;
-            let band = native_pixels[rows.start as usize * stride..rows.end as usize * stride].to_vec();
-            self.prev_frame.copy_from_slice(&native_pixels);
-            return Some(protocol::frame_transfers(screen_desc, band, rows));
-        }
-
         if !force_full {
             if let Some(partial_blit) = &screen_desc.partial_blit {
                 if partial_blit.supported {
@@ -131,14 +98,14 @@ impl ScreenManager {
                                 w,
                                 h,
                             );
-                            return Some(vec![protocol::build_partial_blit(
+                            return Some(protocol::build_partial_blit(
                                 screen_desc,
                                 x,
                                 y,
                                 w,
                                 h,
                                 &region_pixels,
-                            )]);
+                            ));
                         }
                         DirtyRect::Full => {
                             // Fall through to full blit
@@ -153,25 +120,8 @@ impl ScreenManager {
             return None;
         }
         self.prev_frame.copy_from_slice(&native_pixels);
-        Some(protocol::frame_transfers(
-            screen_desc,
-            protocol::build_full_blit(screen_desc, &native_pixels),
-            0..self.height,
-        ))
+        Some(protocol::build_full_blit(screen_desc, &native_pixels))
     }
-}
-
-/// The smallest band of whole rows that differs between two frames of
-/// `height` equal-stride rows, or None if they're identical.
-fn changed_rows(prev: &[u8], curr: &[u8], height: u16) -> Option<Range<u16>> {
-    let stride = curr.len() / height as usize;
-    let differs = |y: &u16| {
-        let row = *y as usize * stride..(*y as usize + 1) * stride;
-        prev[row.clone()] != curr[row]
-    };
-    let first = (0..height).find(differs)?;
-    let last = (0..height).rev().find(differs)?;
-    Some(first..last + 1)
 }
 
 // ── Format conversion ──────────────────────────────────────────────────────
@@ -519,69 +469,6 @@ mod tests {
         let out = to_st7529_gray5(&rgba, 4, 4, 1);
         // Inverted levels: white 0, black 31, gray 31 - 16 = 15.
         assert_eq!(out, vec![0 << 3 | 31 >> 2, (31 & 3) << 6 | 15, 0 << 3 | 31 >> 2, (31 & 3) << 6 | 31]);
-    }
-
-    #[test]
-    fn changed_rows_finds_band() {
-        let prev = vec![0u8; 4 * 8]; // 8 rows, 4-byte stride
-        let mut curr = prev.clone();
-        assert_eq!(changed_rows(&prev, &curr, 8), None);
-        curr[2 * 4 + 1] = 1; // row 2
-        curr[5 * 4 + 3] = 1; // row 5
-        assert_eq!(changed_rows(&prev, &curr, 8), Some(2..6));
-    }
-
-    #[test]
-    fn wrong_size_frame_is_dropped_not_panicking() {
-        let desc: ScreenDesc = serde_json::from_str(
-            r#"{ "name": "left", "interface": "display", "width": 255, "height": 64,
-                 "pixel_format": "st7529_gray5", "full_blit": { "header": "", "footer": "" },
-                 "protocol": { "type": "ni_st7529", "display": 0 } }"#,
-        )
-        .unwrap();
-        let mut sm = ScreenManager::new(&desc, None);
-        // Truncated native buffer, and a format with no conversion path.
-        assert!(sm.submit(&[0u8; 100], PixelFormat::St7529Gray5, &desc).is_none());
-        assert!(sm.submit(&vec![0u8; 255 * 64 * 2], PixelFormat::Bgr565Be, &desc).is_none());
-        // A valid frame afterwards still goes out.
-        assert!(sm.submit(&vec![0u8; 255 * 64 * 4], PixelFormat::Rgba8888, &desc).is_some());
-    }
-
-    /// The last 8 native bytes of rows 10..=12 of an RGBA frame.
-    fn band_tail(rgba: &[u8]) -> Vec<u8> {
-        let native = to_st7529_gray5(rgba, 4, 255, 64);
-        native[13 * 170 - 8..13 * 170].to_vec()
-    }
-
-    #[test]
-    fn st7529_sends_only_changed_rows() {
-        let desc: ScreenDesc = serde_json::from_str(
-            r#"{ "name": "left", "interface": "display", "width": 255, "height": 64,
-                 "pixel_format": "st7529_gray5", "full_blit": { "header": "", "footer": "" },
-                 "protocol": { "type": "ni_st7529", "display": 0 } }"#,
-        )
-        .unwrap();
-        let mut sm = ScreenManager::new(&desc, None);
-        let mut frame = vec![0u8; 255 * 64 * 4];
-
-        // Frame 1 is a keyframe: every row.
-        let first = sm.submit(&frame, PixelFormat::Rgba8888, &desc).unwrap();
-        assert_eq!(first[0], vec![0x00, 0x00, 0x03, 0x75, 0x00, 0x3F]);
-
-        // Identical frame: nothing to send.
-        assert!(sm.submit(&frame, PixelFormat::Rgba8888, &desc).is_none());
-
-        // Light pixels on rows 10 and 12: LASET 10..=12, 3 rows x 170 bytes.
-        for y in [10, 12] {
-            let i = (y * 255 + 40) * 4;
-            frame[i..i + 4].copy_from_slice(&[255, 255, 255, 255]);
-        }
-        let band = sm.submit(&frame, PixelFormat::Rgba8888, &desc).unwrap();
-        assert_eq!(band[0], vec![0x00, 0x00, 0x03, 0x75, 10, 12]);
-        // LASET, CASET, then 510 data bytes: RAMWR + 502, continuation of 8.
-        assert_eq!(band.len(), 4);
-        assert_eq!(band[2][..4], [0x00, 0x01, 0xF7, 0x5C]);
-        assert_eq!(band[3], [&[0x01, 0x00, 0x08][..], &band_tail(&frame)].concat());
     }
 
     #[test]

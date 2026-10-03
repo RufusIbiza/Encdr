@@ -646,31 +646,24 @@ impl OutEndpoint {
 
     /// Submit one transfer and wait for it to complete.
     async fn write(&mut self, data: Vec<u8>) -> Result<(), nusb::transfer::TransferError> {
-        self.write_all(vec![data]).await
+        match self {
+            Self::Bulk(ep) => {
+                ep.submit(data.into());
+                ep.next_complete().await.status
+            }
+            Self::Interrupt(ep) => {
+                ep.submit(data.into());
+                ep.next_complete().await.status
+            }
+        }
     }
 
-    /// Queue every transfer with the kernel at once, then wait for all of
-    /// them, so multi-transfer frames don't pay a round trip per transfer.
-    /// Returns the first error, if any.
-    async fn write_all(&mut self, transfers: Vec<Vec<u8>>) -> Result<(), nusb::transfer::TransferError> {
-        let count = transfers.len();
+    /// Send transfers one after another, stopping at the first error.
+    async fn write_each(&mut self, transfers: Vec<Vec<u8>>) -> Result<(), nusb::transfer::TransferError> {
         for data in transfers {
-            match self {
-                Self::Bulk(ep) => ep.submit(data.into()),
-                Self::Interrupt(ep) => ep.submit(data.into()),
-            }
+            self.write(data).await?;
         }
-        let mut result = Ok(());
-        for _ in 0..count {
-            let status = match self {
-                Self::Bulk(ep) => ep.next_complete().await.status,
-                Self::Interrupt(ep) => ep.next_complete().await.status,
-            };
-            if result.is_ok() {
-                result = status;
-            }
-        }
-        result
+        Ok(())
     }
 }
 
@@ -738,66 +731,45 @@ fn run_screens(
 
             let blank = vec![screen_desc.pixel_format.black_fill(); screen_desc.byte_size()];
             let blit_buf = protocol::build_full_blit(screen_desc, &blank);
-            let transfers = protocol::frame_transfers(screen_desc, blit_buf, 0..screen_desc.height);
+            let transfers = protocol::frame_transfers(screen_desc, blit_buf);
             tracing::info!(
                 "Sending splash screen: {} bytes in {} transfer(s) for '{}'",
                 transfers.iter().map(Vec::len).sum::<usize>(),
                 transfers.len(),
                 screen_desc.name
             );
-            match ep.write_all(transfers).await {
+            match ep.write_each(transfers).await {
                 Ok(()) => tracing::info!("Splash screen sent successfully for '{}'", screen_desc.name),
                 Err(e) => tracing::error!("Splash screen for '{}' failed: {}", screen_desc.name, e),
             }
         }
 
-        let mut frames: Vec<(String, Vec<u8>, PixelFormat)> = Vec::new();
-        'frames: while let Ok(first_cmd) = screen_rx.recv().await {
-            // Coalesce: keep only the newest queued frame per screen, so one
-            // fast-updating screen can't starve another or build a backlog
-            // when the device accepts frames slower than they're produced.
-            let mut cmd = Some(first_cmd);
-            while let Some(c) = cmd.take() {
-                match c {
-                    DeviceCmd::Disconnect => break 'frames,
-                    DeviceCmd::SubmitScreen { screen, pixels, format } => {
-                        match frames.iter_mut().find(|(name, ..)| *name == screen) {
-                            Some(slot) => *slot = (screen, pixels, format),
-                            None => frames.push((screen, pixels, format)),
-                        }
-                    }
-                    _ => {}
-                }
-                cmd = screen_rx.try_recv().ok();
+        while let Ok(cmd) = screen_rx.recv().await {
+            let (screen, pixels, format) = match cmd {
+                DeviceCmd::Disconnect => break,
+                DeviceCmd::SubmitScreen { screen, pixels, format } => (screen, pixels, format),
+                _ => continue,
+            };
+            let Some(sm) = screen_managers.get_mut(&screen) else {
+                tracing::warn!("ScreenManager for '{}' not found", screen);
+                continue;
+            };
+            let Some(screen_desc) = descriptor.screens.iter().find(|s| s.name == screen) else {
+                tracing::warn!("screen_desc for '{}' not found in descriptor", screen);
+                continue;
+            };
+            let Some(blit_data) = sm.submit(&pixels, format, screen_desc) else {
+                continue;
+            };
+            let Some(ep) = screen_to_ep.get(&screen).and_then(|key| endpoints.get_mut(key)) else {
+                tracing::warn!("Screen endpoint for '{}' not found", screen);
+                continue;
+            };
+            tracing::debug!("Sending {} bytes for screen '{}'...", blit_data.len(), screen);
+            if let Err(e) = ep.write_each(protocol::frame_transfers(screen_desc, blit_data)).await {
+                tracing::warn!("Screen transfer for '{}' failed: {}", screen, e);
             }
-
-            for (screen, pixels, format) in frames.drain(..) {
-                let Some(sm) = screen_managers.get_mut(&screen) else {
-                    tracing::warn!("ScreenManager for '{}' not found", screen);
-                    continue;
-                };
-                let Some(screen_desc) = descriptor.screens.iter().find(|s| s.name == screen) else {
-                    tracing::warn!("screen_desc for '{}' not found in descriptor", screen);
-                    continue;
-                };
-                let Some(transfers) = sm.submit(&pixels, format, screen_desc) else {
-                    continue;
-                };
-                let Some(ep) = screen_to_ep.get(&screen).and_then(|key| endpoints.get_mut(key)) else {
-                    tracing::warn!("Screen endpoint for '{}' not found", screen);
-                    continue;
-                };
-                tracing::debug!(
-                    "Sending {} bytes in {} transfer(s) for screen '{}'...",
-                    transfers.iter().map(Vec::len).sum::<usize>(),
-                    transfers.len(),
-                    screen
-                );
-                if let Err(e) = ep.write_all(transfers).await {
-                    tracing::warn!("Screen transfer for '{}' failed: {}", screen, e);
-                }
-                tracing::debug!("Bulk out completed for screen '{}'", screen);
-            }
+            tracing::debug!("Bulk out completed for screen '{}'", screen);
         }
     });
 }

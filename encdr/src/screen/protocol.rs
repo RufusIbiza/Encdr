@@ -1,4 +1,3 @@
-use std::ops::Range;
 use std::time::Duration;
 
 use crate::core::descriptor::{ScreenDesc, ScreenProtocol};
@@ -19,12 +18,11 @@ pub fn init_sequence(desc: &ScreenDesc) -> Vec<InitStep> {
     }
 }
 
-/// Split a blit into the USB transfers the screen expects. `blit` holds the
-/// native pixels of `rows` (a full frame from [`build_full_blit`] covers every
-/// row). Without a protocol the whole blit is one transfer.
-pub fn frame_transfers(desc: &ScreenDesc, blit: Vec<u8>, rows: Range<u16>) -> Vec<Vec<u8>> {
+/// Split a frame produced by [`build_full_blit`] into the USB transfers the
+/// screen expects. Without a protocol the whole blit is one transfer.
+pub fn frame_transfers(desc: &ScreenDesc, blit: Vec<u8>) -> Vec<Vec<u8>> {
     match desc.protocol {
-        Some(ScreenProtocol::NiSt7529 { display }) => st7529_frame(display, desc, &blit, rows),
+        Some(ScreenProtocol::NiSt7529 { display }) => st7529_frame(display, desc, &blit),
         None => vec![blit],
     }
 }
@@ -80,11 +78,12 @@ fn st7529_init(display: u8) -> Vec<InitStep> {
         .collect()
 }
 
-fn st7529_frame(display: u8, desc: &ScreenDesc, pixels: &[u8], rows: Range<u16>) -> Vec<Vec<u8>> {
+fn st7529_frame(display: u8, desc: &ScreenDesc, pixels: &[u8]) -> Vec<Vec<u8>> {
+    let last_line = (desc.height - 1) as u8;
     let last_column = (desc.width.div_ceil(3) - 1) as u8;
     let mut transfers = vec![
-        st7529_command(display, &[0x75, rows.start as u8, (rows.end - 1) as u8]), // LASET
-        st7529_command(display, &[0x15, 0x00, last_column]),                     // CASET
+        st7529_command(display, &[0x75, 0x00, last_line]),   // LASET
+        st7529_command(display, &[0x15, 0x00, last_column]), // CASET
     ];
 
     for (i, chunk) in pixels.chunks(ST7529_CHUNK).enumerate() {
@@ -228,7 +227,7 @@ mod tests {
             protocol: Some(ScreenProtocol::NiSt7529 { display: 1 }),
         };
         let frame = vec![0xAA; desc.byte_size()];
-        let transfers = frame_transfers(&desc, build_full_blit(&desc, &frame), 0..64);
+        let transfers = frame_transfers(&desc, build_full_blit(&desc, &frame));
 
         assert_eq!(transfers[0], vec![0x02, 0x00, 0x03, 0x75, 0x00, 0x3F]);
         assert_eq!(transfers[1], vec![0x02, 0x00, 0x03, 0x15, 0x00, 0x54]);
