@@ -38,19 +38,14 @@ impl DeviceDescriptor {
         self.input_packets.iter().flat_map(|p| &p.items)
     }
 
-    /// Check constraints that serde can't express: fields that are optional
-    /// only when an alternative is given, and byte values that must fit a u8.
+    /// Check constraints that serde can't express: LED groups need exactly
+    /// one kind of prefix, and byte values must fit a u8.
     pub fn validate(&self) -> Result<(), String> {
         let check_bytes = |what: String, bytes: &[HexU16]| match bytes.iter().find(|b| b.0 > 0xFF) {
             Some(b) => Err(format!("{what}: 0x{:x} doesn't fit in a byte", b.0)),
             None => Ok(()),
         };
 
-        for screen in &self.screens {
-            if screen.full_blit.is_none() && screen.protocol.is_none() {
-                return Err(format!("screen '{}' needs `full_blit` or `protocol`", screen.name));
-            }
-        }
         for leds in &self.leds {
             match (&leds.prefix_byte, leds.prefix.is_empty()) {
                 (None, true) => return Err(format!("LED group '{}' needs `prefix_byte` or `prefix`", leds.id)),
@@ -386,9 +381,9 @@ pub struct ScreenDesc {
     pub width: u16,
     pub height: u16,
     pub pixel_format: PixelFormat,
-    /// Header/footer framing a full frame. Required unless `protocol` is set.
-    #[serde(default)]
-    pub full_blit: Option<ScreenBlitDesc>,
+    /// Header/footer framing a full frame. Screens with a `protocol` that
+    /// frames its own transfers use an empty header and footer.
+    pub full_blit: ScreenBlitDesc,
     #[serde(default)]
     pub partial_blit: Option<PartialBlitDesc>,
     /// Controller-specific framing and init. When absent, a frame is sent as
@@ -456,7 +451,7 @@ impl PixelFormat {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct ScreenBlitDesc {
     pub header: String,
     pub footer: String,

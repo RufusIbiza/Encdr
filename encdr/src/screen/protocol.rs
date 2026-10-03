@@ -106,10 +106,8 @@ fn st7529_frame(display: u8, desc: &ScreenDesc, pixels: &[u8], rows: Range<u16>)
 
 /// Build a full-frame blit transfer buffer: header + pixel data + footer.
 pub fn build_full_blit(desc: &ScreenDesc, native_pixels: &[u8]) -> Vec<u8> {
-    let (header, footer) = match &desc.full_blit {
-        Some(blit) => (parse_byte_list(&blit.header), parse_byte_list(&blit.footer)),
-        None => (Vec::new(), Vec::new()),
-    };
+    let header = parse_byte_list(&desc.full_blit.header);
+    let footer = parse_byte_list(&desc.full_blit.footer);
 
     let mut buf = Vec::with_capacity(header.len() + native_pixels.len() + footer.len());
     buf.extend_from_slice(&header);
@@ -225,7 +223,7 @@ mod tests {
             width: 255,
             height: 64,
             pixel_format: crate::core::descriptor::PixelFormat::St7529Gray5,
-            full_blit: None,
+            full_blit: Default::default(),
             partial_blit: None,
             protocol: Some(ScreenProtocol::NiSt7529 { display: 1 }),
         };
@@ -254,7 +252,7 @@ mod tests {
             width: 255,
             height: 64,
             pixel_format: crate::core::descriptor::PixelFormat::St7529Gray5,
-            full_blit: None,
+            full_blit: Default::default(),
             partial_blit: None,
             protocol: Some(ScreenProtocol::NiSt7529 { display: 0 }),
         };

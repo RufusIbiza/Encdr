@@ -535,7 +535,8 @@ mod tests {
     fn wrong_size_frame_is_dropped_not_panicking() {
         let desc: ScreenDesc = serde_json::from_str(
             r#"{ "name": "left", "interface": "display", "width": 255, "height": 64,
-                 "pixel_format": "st7529_gray5", "protocol": { "type": "ni_st7529", "display": 0 } }"#,
+                 "pixel_format": "st7529_gray5", "full_blit": { "header": "", "footer": "" },
+                 "protocol": { "type": "ni_st7529", "display": 0 } }"#,
         )
         .unwrap();
         let mut sm = ScreenManager::new(&desc, None);
@@ -556,7 +557,8 @@ mod tests {
     fn st7529_sends_only_changed_rows() {
         let desc: ScreenDesc = serde_json::from_str(
             r#"{ "name": "left", "interface": "display", "width": 255, "height": 64,
-                 "pixel_format": "st7529_gray5", "protocol": { "type": "ni_st7529", "display": 0 } }"#,
+                 "pixel_format": "st7529_gray5", "full_blit": { "header": "", "footer": "" },
+                 "protocol": { "type": "ni_st7529", "display": 0 } }"#,
         )
         .unwrap();
         let mut sm = ScreenManager::new(&desc, None);
@@ -590,10 +592,10 @@ mod tests {
             width: 10,
             height: 10,
             pixel_format: PixelFormat::Bgr565Be,
-            full_blit: Some(crate::core::descriptor::ScreenBlitDesc {
+            full_blit: crate::core::descriptor::ScreenBlitDesc {
                 header: "0x01".to_string(),
                 footer: "0x02".to_string(),
-            }),
+            },
             partial_blit: Some(crate::core::descriptor::PartialBlitDesc {
                 supported: true,
                 x_align: 2,

@@ -203,6 +203,7 @@
       "width": 255,
       "height": 64,
       "pixel_format": "st7529_gray5",
+      "full_blit": { "header": "", "footer": "" },
       "protocol": { "type": "ni_st7529", "display": 0 }
     },
     {
@@ -211,6 +212,7 @@
       "width": 255,
       "height": 64,
       "pixel_format": "st7529_gray5",
+      "full_blit": { "header": "", "footer": "" },
       "protocol": { "type": "ni_st7529", "display": 1 }
     }
   ],

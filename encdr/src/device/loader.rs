@@ -768,12 +768,11 @@ mod tests {
 
         // Valid baselines.
         assert!(load(&screen(r#", "full_blit": { "header": "0xe0", "footer": "" }"#), "", "").is_ok());
-        assert!(load(&screen(r#", "protocol": { "type": "ni_st7529", "display": 0 }"#), "", "").is_ok());
         assert!(load("", &leds(r#""prefix_byte": "0x80","#), "").is_ok());
         assert!(load("", &leds(r#""prefix": ["0x0c", "0x1e"],"#), "").is_ok());
         assert!(load("", "", r#""init_writes": [ { "interface": "control", "data": ["0x0b"] } ]"#).is_ok());
 
-        // Screen with neither framing nor protocol.
+        // Screen without full_blit framing.
         assert!(load(&screen(""), "", "").is_err());
         // LED group with no prefix, or with both kinds.
         assert!(load("", &leds(""), "").is_err());
