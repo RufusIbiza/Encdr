@@ -1,0 +1,225 @@
+{
+  "name": "NI Maschine Mk1",
+  "manufacturer": "Native Instruments",
+  "vendor_id": "0x17cc",
+  "product_id": "0x0808",
+
+  "interfaces": [
+    {
+      "_comment": "Vendor-specific interface 0. Alt setting 1 exposes the pad (0x84) and display (0x08) endpoints. All endpoints are bulk.",
+      "id": "control",
+      "number": 0,
+      "alt_setting": 1,
+      "endpoints": {
+        "in":  { "address": "0x81", "type": "bulk" },
+        "out": { "address": "0x01", "type": "bulk" }
+      }
+    },
+    {
+      "id": "pads",
+      "number": 0,
+      "endpoints": {
+        "in": { "address": "0x84", "type": "bulk" }
+      }
+    },
+    {
+      "id": "display",
+      "number": 0,
+      "endpoints": {
+        "out": { "address": "0x08", "type": "bulk" }
+      }
+    }
+  ],
+
+  "input_packets": [
+    {
+      "_comment": "EP1_CMD_READ_IO (0x04). Byte 6 bits 0x40/0x80 toggle on every report and byte 7 is constant; both are ignored.",
+      "id": "buttons",
+      "interface": "control",
+      "report_id": "0x04",
+      "size": 8,
+      "items": [
+        { "type": "button", "name": "mute",        "byte": 1, "mask": "0x01" },
+        { "type": "button", "name": "solo",        "byte": 1, "mask": "0x02" },
+        { "type": "button", "name": "select",      "byte": 1, "mask": "0x04" },
+        { "type": "button", "name": "duplicate",   "byte": 1, "mask": "0x08" },
+        { "type": "button", "name": "navigate",    "byte": 1, "mask": "0x10" },
+        { "type": "button", "name": "pad_mode",    "byte": 1, "mask": "0x20" },
+        { "type": "button", "name": "pattern",     "byte": 1, "mask": "0x40" },
+        { "type": "button", "name": "scene",       "byte": 1, "mask": "0x80" },
+
+        { "type": "button", "name": "rec",         "byte": 2, "mask": "0x02" },
+        { "type": "button", "name": "erase",       "byte": 2, "mask": "0x04" },
+        { "type": "button", "name": "shift",       "byte": 2, "mask": "0x08" },
+        { "type": "button", "name": "grid",        "byte": 2, "mask": "0x10" },
+        { "type": "button", "name": "step_right",  "byte": 2, "mask": "0x20" },
+        { "type": "button", "name": "step_left",   "byte": 2, "mask": "0x40" },
+        { "type": "button", "name": "restart",     "byte": 2, "mask": "0x80" },
+
+        { "type": "button", "name": "group_e",     "byte": 3, "mask": "0x01" },
+        { "type": "button", "name": "group_f",     "byte": 3, "mask": "0x02" },
+        { "type": "button", "name": "group_g",     "byte": 3, "mask": "0x04" },
+        { "type": "button", "name": "group_h",     "byte": 3, "mask": "0x08" },
+        { "type": "button", "name": "group_d",     "byte": 3, "mask": "0x10" },
+        { "type": "button", "name": "group_c",     "byte": 3, "mask": "0x20" },
+        { "type": "button", "name": "group_b",     "byte": 3, "mask": "0x40" },
+        { "type": "button", "name": "group_a",     "byte": 3, "mask": "0x80" },
+
+        { "type": "button", "name": "control",     "byte": 4, "mask": "0x01" },
+        { "type": "button", "name": "browser",     "byte": 4, "mask": "0x02" },
+        { "type": "button", "name": "arrow_left",  "byte": 4, "mask": "0x04" },
+        { "type": "button", "name": "snap",        "byte": 4, "mask": "0x08" },
+        { "type": "button", "name": "auto_write",  "byte": 4, "mask": "0x10" },
+        { "type": "button", "name": "arrow_right", "byte": 4, "mask": "0x20" },
+        { "type": "button", "name": "sampling",    "byte": 4, "mask": "0x40" },
+        { "type": "button", "name": "step",        "byte": 4, "mask": "0x80" },
+
+        { "type": "button", "name": "top_8",       "byte": 5, "mask": "0x01" },
+        { "type": "button", "name": "top_7",       "byte": 5, "mask": "0x02" },
+        { "type": "button", "name": "top_6",       "byte": 5, "mask": "0x04" },
+        { "type": "button", "name": "top_5",       "byte": 5, "mask": "0x08" },
+        { "type": "button", "name": "top_4",       "byte": 5, "mask": "0x10" },
+        { "type": "button", "name": "top_3",       "byte": 5, "mask": "0x20" },
+        { "type": "button", "name": "top_2",       "byte": 5, "mask": "0x40" },
+        { "type": "button", "name": "top_1",       "byte": 5, "mask": "0x80" },
+
+        { "type": "button", "name": "note_repeat", "byte": 6, "mask": "0x01" },
+        { "type": "button", "name": "play",        "byte": 6, "mask": "0x02" }
+      ]
+    },
+    {
+      "_comment": "EP1_CMD_READ_ERP (0x02). 11 endless rotary potentiometers, each two analog taps [b, a]. Delta is in fractions of a full turn; the deadband (1% of a turn) absorbs idle analog jitter.",
+      "id": "knobs",
+      "interface": "control",
+      "report_id": "0x02",
+      "size": 33,
+      "items": [
+        { "type": "encoder_fine", "name": "screen_encoder_8", "bytes": [1,  2],  "encoding": "erp", "scale": 1000.0, "deadband": 10 },
+        { "type": "encoder_fine", "name": "screen_encoder_4", "bytes": [3,  4],  "encoding": "erp", "scale": 1000.0, "deadband": 10 },
+        { "type": "encoder_fine", "name": "swing",            "bytes": [5,  6],  "encoding": "erp", "scale": 1000.0, "deadband": 10 },
+        { "type": "encoder_fine", "name": "screen_encoder_7", "bytes": [7,  8],  "encoding": "erp", "scale": 1000.0, "deadband": 10 },
+        { "type": "encoder_fine", "name": "screen_encoder_3", "bytes": [9,  10], "encoding": "erp", "scale": 1000.0, "deadband": 10 },
+        { "type": "encoder_fine", "name": "tempo",            "bytes": [11, 12], "encoding": "erp", "scale": 1000.0, "deadband": 10 },
+        { "type": "encoder_fine", "name": "screen_encoder_6", "bytes": [13, 14], "encoding": "erp", "scale": 1000.0, "deadband": 10 },
+        { "type": "encoder_fine", "name": "screen_encoder_2", "bytes": [15, 16], "encoding": "erp", "scale": 1000.0, "deadband": 10 },
+        { "type": "encoder_fine", "name": "volume",           "bytes": [17, 18], "encoding": "erp", "scale": 1000.0, "deadband": 10 },
+        { "type": "encoder_fine", "name": "screen_encoder_5", "bytes": [19, 20], "encoding": "erp", "scale": 1000.0, "deadband": 10 },
+        { "type": "encoder_fine", "name": "screen_encoder_1", "bytes": [21, 22], "encoding": "erp", "scale": 1000.0, "deadband": 10 }
+      ]
+    },
+    {
+      "_comment": "Continuous stream of LE u16 words: pad index in bits 15..12, 12-bit pressure below. Frames are not aligned to transfers.",
+      "id": "pads",
+      "interface": "pads",
+      "pad_format": "id_pressure_words",
+      "size": 64,
+      "items": []
+    }
+  ],
+
+  "leds": [
+    {
+      "_comment": "EP1_CMD_DIMM_LEDS (0x0c), bank at offset 0x00. One brightness byte per LED.",
+      "id": "bank_a",
+      "interface": "control",
+      "buffer_size": 31,
+      "prefix": ["0x0c", "0x00"],
+      "items": [
+        { "type": "single", "name": "pad_4",       "offset": 0 },
+        { "type": "single", "name": "pad_3",       "offset": 1 },
+        { "type": "single", "name": "pad_2",       "offset": 2 },
+        { "type": "single", "name": "pad_1",       "offset": 3 },
+        { "type": "single", "name": "pad_8",       "offset": 4 },
+        { "type": "single", "name": "pad_7",       "offset": 5 },
+        { "type": "single", "name": "pad_6",       "offset": 6 },
+        { "type": "single", "name": "pad_5",       "offset": 7 },
+        { "type": "single", "name": "pad_12",      "offset": 8 },
+        { "type": "single", "name": "pad_11",      "offset": 9 },
+        { "type": "single", "name": "pad_10",      "offset": 10 },
+        { "type": "single", "name": "pad_9",       "offset": 11 },
+        { "type": "single", "name": "pad_16",      "offset": 12 },
+        { "type": "single", "name": "pad_15",      "offset": 13 },
+        { "type": "single", "name": "pad_14",      "offset": 14 },
+        { "type": "single", "name": "pad_13",      "offset": 15 },
+        { "type": "single", "name": "mute",        "offset": 16 },
+        { "type": "single", "name": "solo",        "offset": 17 },
+        { "type": "single", "name": "select",      "offset": 18 },
+        { "type": "single", "name": "duplicate",   "offset": 19 },
+        { "type": "single", "name": "navigate",    "offset": 20 },
+        { "type": "single", "name": "pad_mode",    "offset": 21 },
+        { "type": "single", "name": "pattern",     "offset": 22 },
+        { "type": "single", "name": "scene",       "offset": 23 },
+        { "type": "single", "name": "shift",       "offset": 24 },
+        { "type": "single", "name": "erase",       "offset": 25 },
+        { "type": "single", "name": "grid",        "offset": 26 },
+        { "type": "single", "name": "step_right",  "offset": 27 },
+        { "type": "single", "name": "rec",         "offset": 28 },
+        { "type": "single", "name": "play",        "offset": 29 }
+      ]
+    },
+    {
+      "_comment": "EP1_CMD_DIMM_LEDS (0x0c), bank at offset 0x1e.",
+      "id": "bank_b",
+      "interface": "control",
+      "buffer_size": 31,
+      "prefix": ["0x0c", "0x1e"],
+      "items": [
+        { "type": "single", "name": "step_left",   "offset": 0 },
+        { "type": "single", "name": "restart",     "offset": 1 },
+        { "type": "single", "name": "group_h",     "offset": 2 },
+        { "type": "single", "name": "group_g",     "offset": 3 },
+        { "type": "single", "name": "group_d",     "offset": 4 },
+        { "type": "single", "name": "group_c",     "offset": 5 },
+        { "type": "single", "name": "group_f",     "offset": 6 },
+        { "type": "single", "name": "group_e",     "offset": 7 },
+        { "type": "single", "name": "group_b",     "offset": 8 },
+        { "type": "single", "name": "group_a",     "offset": 9 },
+        { "type": "single", "name": "auto_write",  "offset": 10 },
+        { "type": "single", "name": "snap",        "offset": 11 },
+        { "type": "single", "name": "arrow_right", "offset": 12 },
+        { "type": "single", "name": "arrow_left",  "offset": 13 },
+        { "type": "single", "name": "sampling",    "offset": 14 },
+        { "type": "single", "name": "browser",     "offset": 15 },
+        { "type": "single", "name": "step",        "offset": 16 },
+        { "type": "single", "name": "control",     "offset": 17 },
+        { "type": "single", "name": "top_8",       "offset": 18 },
+        { "type": "single", "name": "top_7",       "offset": 19 },
+        { "type": "single", "name": "top_6",       "offset": 20 },
+        { "type": "single", "name": "top_5",       "offset": 21 },
+        { "type": "single", "name": "top_4",       "offset": 22 },
+        { "type": "single", "name": "top_3",       "offset": 23 },
+        { "type": "single", "name": "top_2",       "offset": 24 },
+        { "type": "single", "name": "top_1",       "offset": 25 },
+        { "type": "single", "name": "note_repeat", "offset": 26 },
+        { "type": "single", "name": "display_backlight", "offset": 27, "default": 92 }
+      ]
+    }
+  ],
+
+  "screens": [
+    {
+      "name": "left",
+      "interface": "display",
+      "width": 255,
+      "height": 64,
+      "pixel_format": "st7529_gray5",
+      "protocol": { "type": "ni_st7529", "display": 0 }
+    },
+    {
+      "name": "right",
+      "interface": "display",
+      "width": 255,
+      "height": 64,
+      "pixel_format": "st7529_gray5",
+      "protocol": { "type": "ni_st7529", "display": 1 }
+    }
+  ],
+
+  "quirks": {
+    "detach_kernel_driver": true,
+    "_comment": "AUTO_MSG (0x0b): enable spontaneous button/knob reports. The device stalls EP1 commands until earlier replies on 0x81 are read.",
+    "init_writes": [
+      { "interface": "control", "data": "0x0b,0x01,0x0a,0x05" }
+    ]
+  }
+}

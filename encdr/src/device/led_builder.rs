@@ -7,13 +7,16 @@ use crate::core::led::LedValue;
 pub struct LedBuilder {
     group_id: String,
     buffer_size: usize,
-    prefix_byte: u8,
+    prefix: Vec<u8>,
     endpoint_address: u8,
+    transfer_type: TransferType,
     /// Map from LED name → how to write it into the buffer
     led_map: HashMap<String, LedMapping>,
     /// The current LED buffer (dirty-tracked)
     buffer: Vec<u8>,
     dirty: bool,
+    /// Buffer contents of the last flush, to skip redundant writes
+    last_sent: Option<Vec<u8>>,
 }
 
 enum LedMapping {
@@ -26,10 +29,16 @@ enum LedMapping {
 impl LedBuilder {
     pub fn new(desc: &LedLayoutDesc, interface: &InterfaceDesc) -> Self {
         let mut led_map = HashMap::new();
+        let mut buffer = vec![0u8; desc.buffer_size];
 
         for item in &desc.items {
             match item {
                 LedItemDesc::Single(s) => {
+                    if let Some(value) = s.default {
+                        if let Some(slot) = buffer.get_mut(s.offset) {
+                            *slot = value;
+                        }
+                    }
                     led_map.insert(
                         s.name.clone(),
                         LedMapping::Single { offset: s.offset },
@@ -64,21 +73,22 @@ impl LedBuilder {
         }
 
 
-        let endpoint_address = interface
-            .endpoints
-            .out
-            .as_ref()
-            .map(|ep| ep.address.0 as u8)
-            .unwrap_or(0x01);
+        let out_ep = interface.endpoints.out.as_ref();
+        let endpoint_address = out_ep.map(|ep| ep.address.0 as u8).unwrap_or(0x01);
+        let transfer_type = out_ep.map(|ep| ep.transfer_type).unwrap_or(TransferType::Interrupt);
+        // Push any non-zero defaults (e.g. a display backlight) on the first flush.
+        let dirty = buffer.iter().any(|&b| b != 0);
 
         Self {
             group_id: desc.id.clone(),
             buffer_size: desc.buffer_size,
-            prefix_byte: desc.prefix_byte.0 as u8,
+            prefix: desc.prefix_bytes(),
             endpoint_address,
+            transfer_type,
             led_map,
-            buffer: vec![0u8; desc.buffer_size],
-            dirty: false,
+            buffer,
+            dirty,
+            last_sent: None,
         }
     }
 
@@ -196,14 +206,21 @@ impl LedBuilder {
         self.dirty
     }
 
-    /// Build the wire-format buffer (prefix byte + LED data) and clear dirty flag.
+    /// Build the wire-format buffer (prefix bytes + LED data) and clear dirty flag.
+    /// Returns `None` when the buffer matches what was last sent, so setting an
+    /// LED to its current value costs no USB transfer (on the Maschine Mk1 each
+    /// LED write stalls the display stream for ~5 ms).
     pub fn flush(&mut self) -> Option<Vec<u8>> {
         if !self.dirty {
             return None;
         }
         self.dirty = false;
-        let mut wire = Vec::with_capacity(1 + self.buffer_size);
-        wire.push(self.prefix_byte);
+        if self.last_sent.as_deref() == Some(self.buffer.as_slice()) {
+            return None;
+        }
+        self.last_sent = Some(self.buffer.clone());
+        let mut wire = Vec::with_capacity(self.prefix.len() + self.buffer_size);
+        wire.extend_from_slice(&self.prefix);
         wire.extend_from_slice(&self.buffer);
         Some(wire)
     }
@@ -222,5 +239,55 @@ impl LedBuilder {
     /// The USB endpoint address for LED writes.
     pub fn endpoint(&self) -> u8 {
         self.endpoint_address
+    }
+
+    /// The transfer type of the LED OUT endpoint.
+    pub fn transfer_type(&self) -> TransferType {
+        self.transfer_type
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn builder() -> LedBuilder {
+        let desc: LedLayoutDesc = serde_json::from_str(
+            r#"{ "id": "bank", "interface": "control", "buffer_size": 2, "prefix": ["0x0c", "0x00"],
+                 "items": [ { "type": "single", "name": "play", "offset": 0 },
+                            { "type": "single", "name": "rec", "offset": 1, "default": 9 } ] }"#,
+        )
+        .unwrap();
+        let iface: InterfaceDesc = serde_json::from_str(
+            r#"{ "id": "control", "number": 0,
+                 "endpoints": { "out": { "address": "0x01", "type": "bulk" } } }"#,
+        )
+        .unwrap();
+        LedBuilder::new(&desc, &iface)
+    }
+
+    #[test]
+    fn defaults_flush_once_with_prefix() {
+        let mut lb = builder();
+        assert_eq!(lb.flush(), Some(vec![0x0c, 0x00, 0, 9]));
+        assert_eq!(lb.flush(), None);
+        assert_eq!(lb.transfer_type(), TransferType::Bulk);
+    }
+
+    #[test]
+    fn unchanged_values_skip_the_write() {
+        let mut lb = builder();
+        lb.flush();
+        lb.set("play", LedValue::Single(40));
+        assert_eq!(lb.flush(), Some(vec![0x0c, 0x00, 40, 9]));
+        // Same value again: dirty, but identical to what was sent.
+        lb.set("play", LedValue::Single(40));
+        assert_eq!(lb.flush(), None);
+        // A change and its reversal within one batch also nets to no write.
+        lb.set("play", LedValue::Single(10));
+        lb.set("play", LedValue::Single(40));
+        assert_eq!(lb.flush(), None);
+        lb.set("play", LedValue::Off);
+        assert_eq!(lb.flush(), Some(vec![0x0c, 0x00, 0, 9]));
     }
 }

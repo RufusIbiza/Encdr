@@ -124,6 +124,12 @@ path = "maschine_mikro/mikro_mk2_vegas.rs"
 name = "mikro_mk3_vegas"
 path = "maschine_mikro/mikro_mk3_vegas.rs"
 
+# ── Maschine Mk1 ──
+
+[[bin]]
+name = "mk1_vegas"
+path = "maschine_mk1/mk1_vegas.rs"
+
 # ── Maschine Mk2 ──
 
 [[bin]]

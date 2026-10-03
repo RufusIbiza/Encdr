@@ -58,7 +58,7 @@ where
 
 // ── Hex u16 helper for JSON "0x17cc" style values ──────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct HexU16(pub u16);
 
 impl<'de> Deserialize<'de> for HexU16 {
@@ -82,6 +82,10 @@ impl<'de> Deserialize<'de> for HexU16 {
 pub struct InterfaceDesc {
     pub id: String,
     pub number: u8,
+    /// Alternate setting to select after claiming the interface (e.g. the
+    /// Maschine Mk1 only exposes its pad and display endpoints in alt 1).
+    #[serde(default)]
+    pub alt_setting: Option<u8>,
     pub endpoints: EndpointMap,
 }
 
@@ -115,7 +119,31 @@ pub struct InputPacketDesc {
     pub id: String,
     pub interface: String,
     pub size: usize,
+    /// Leading byte that identifies this packet. When any packet on an
+    /// interface declares a `report_id` or `pad_format`, packets on that
+    /// interface are routed by these fields instead of by size.
+    #[serde(default)]
+    pub report_id: Option<HexU16>,
+    /// Pad stream encoding for packets that carry pad pressure data.
+    #[serde(default)]
+    pub pad_format: Option<PadFormat>,
     pub items: Vec<InputItemDesc>,
+}
+
+impl InputPacketDesc {
+    /// Whether this packet is routed by report id / pad format rather than size.
+    pub fn is_routed(&self) -> bool {
+        self.report_id.is_some() || self.pad_format.is_some()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PadFormat {
+    /// Stream of little-endian u16 words: bits 15..12 are the hardware pad
+    /// index, bits 11..0 the pressure (0..4095). Words are self-identifying,
+    /// so frames need not align with USB packet boundaries (Maschine Mk1).
+    IdPressureWords,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -191,6 +219,9 @@ pub struct EncoderFineItemDesc {
     pub encoding: EncoderEncoding,
     #[serde(default = "default_scale")]
     pub scale: f32,
+    /// Minimum raw movement before a delta is emitted (`erp` encoding only).
+    #[serde(default)]
+    pub deadband: u16,
 }
 
 fn default_scale() -> f32 {
@@ -225,6 +256,11 @@ pub enum EncoderEncoding {
     /// Reports delta via shortest-path around the 65536-step ring, scaled by the
     /// encoder's `scale` factor.
     Wrap16Wide,
+    /// Endless rotary potentiometer: two 8-bit analog taps 90° apart
+    /// (`bytes: [b, a]`), decoded to an absolute 0..999 position per turn.
+    /// Reports delta via shortest path around the 1000-step ring, scaled by
+    /// the encoder's `scale` factor (NI Maschine Mk1, Kore).
+    Erp,
 }
 
 // ── LED layout ─────────────────────────────────────────────────────────────
@@ -235,8 +271,25 @@ pub struct LedLayoutDesc {
     pub id: String,
     pub interface: String,
     pub buffer_size: usize,
+    /// Single byte written before the LED data. Ignored when `prefix` is set.
+    #[serde(default)]
     pub prefix_byte: HexU16,
+    /// Multi-byte header written before the LED data (e.g. `["0x0c", "0x1e"]`
+    /// for a command byte plus bank offset).
+    #[serde(default)]
+    pub prefix: Vec<HexU16>,
     pub items: Vec<LedItemDesc>,
+}
+
+impl LedLayoutDesc {
+    /// Bytes written before the LED data on every flush.
+    pub fn prefix_bytes(&self) -> Vec<u8> {
+        if self.prefix.is_empty() {
+            vec![self.prefix_byte.0 as u8]
+        } else {
+            self.prefix.iter().map(|b| b.0 as u8).collect()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -277,6 +330,10 @@ pub struct RgbOffsets {
 pub struct SingleLedDesc {
     pub name: String,
     pub offset: usize,
+    /// Value written on connect, before any application LED updates
+    /// (e.g. a display backlight that should start on).
+    #[serde(default)]
+    pub default: Option<u8>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -295,9 +352,14 @@ pub struct ScreenDesc {
     pub width: u16,
     pub height: u16,
     pub pixel_format: PixelFormat,
+    #[serde(default)]
     pub full_blit: ScreenBlitDesc,
     #[serde(default)]
     pub partial_blit: Option<PartialBlitDesc>,
+    /// Controller-specific framing and init. When absent, a frame is sent as
+    /// a single `full_blit` transfer.
+    #[serde(default)]
+    pub protocol: Option<ScreenProtocol>,
 }
 
 impl ScreenDesc {
@@ -308,9 +370,22 @@ impl ScreenDesc {
     pub fn byte_size(&self) -> usize {
         match self.pixel_format {
             PixelFormat::Mono => (self.pixel_count() + 7) / 8,
+            PixelFormat::St7529Gray5 => {
+                self.width.div_ceil(3) as usize * 2 * self.height as usize
+            }
             _ => self.pixel_count() * self.pixel_format.bytes_per_pixel(),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ScreenProtocol {
+    /// Sitronix ST7529 behind NI's EP8 display bridge (Maschine Mk1). Each
+    /// transfer is `[display << 1 | data_flag, len_hi, len_lo, payload…]`.
+    /// The controller is initialised on connect and frames are sent as a
+    /// RAMWR command followed by ≤502-byte data chunks.
+    NiSt7529 { display: u8 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -321,6 +396,9 @@ pub enum PixelFormat {
     Rgb888,
     Rgba8888,
     Mono,
+    /// ST7529 32-level grayscale, 3 pixels packed into 2 bytes
+    /// (`[p0:5 p1_hi:3] [p1_lo:2 _:1 p2:5]`), stored inverted (0 = lit).
+    St7529Gray5,
 }
 
 impl PixelFormat {
@@ -330,11 +408,20 @@ impl PixelFormat {
             PixelFormat::Rgb888 => 3,
             PixelFormat::Rgba8888 => 4,
             PixelFormat::Mono => 1, // 1 byte per 8 pixels, but we treat per-pixel
+            PixelFormat::St7529Gray5 => 1, // 2 bytes per 3 pixels, but we treat per-pixel
+        }
+    }
+
+    /// Native byte value that fills a frame with black.
+    pub fn black_fill(&self) -> u8 {
+        match self {
+            PixelFormat::St7529Gray5 => 0xFF,
+            _ => 0x00,
         }
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct ScreenBlitDesc {
     pub header: String,
     pub footer: String,
@@ -361,6 +448,18 @@ pub struct QuirksDesc {
     pub touchstrip: Option<TouchstripQuirksDesc>,
     #[serde(default)]
     pub feature_report_leds: Option<FeatureReportLedsQuirkDesc>,
+    /// Raw writes sent once on connect, after input reads are queued (so a
+    /// device that stalls commands until replies are read cannot deadlock).
+    #[serde(default)]
+    pub init_writes: Vec<InitWriteDesc>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct InitWriteDesc {
+    /// Interface id whose OUT endpoint receives the write.
+    pub interface: String,
+    /// Comma-separated byte list, e.g. `"0x0b,0x01,0x0a,0x05"`.
+    pub data: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

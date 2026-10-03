@@ -24,6 +24,8 @@ impl DescriptorRegistry {
         // Embedded at compile time
         let d2_json = include_str!("../../descriptors/ni_kontrol_d2.json");
         self.load_json(d2_json)?;
+        let mk1_json = include_str!("../../descriptors/ni_maschine_mk1.json");
+        self.load_json(mk1_json)?;
         let mk2_json = include_str!("../../descriptors/ni_maschine_mk2.json");
         self.load_json(mk2_json)?;
         let mk3_json = include_str!("../../descriptors/ni_maschine_mk3.json");
@@ -675,6 +677,74 @@ mod tests {
         assert_eq!(mm3.screens.len(), 1);
         assert_eq!(mm3.input_packets.len(), 3);
         assert_eq!(mm3.leds.len(), 2);
+    }
+
+    #[test]
+    fn load_maschine_mk1_descriptor() {
+        use crate::core::event::Event;
+
+        let mut reg = DescriptorRegistry::new();
+        reg.load_builtins().unwrap();
+
+        let desc = reg.find(0x17cc, 0x0808).expect("Maschine Mk1 should be registered").clone();
+        assert_eq!(desc.name, "NI Maschine Mk1");
+        assert_eq!(desc.screens.len(), 2);
+        for screen in &desc.screens {
+            assert_eq!(screen.pixel_format, crate::core::descriptor::PixelFormat::St7529Gray5);
+            assert_eq!(screen.byte_size(), 10880);
+        }
+        assert_eq!(
+            desc.leds.iter().map(|l| l.prefix_bytes()).collect::<Vec<_>>(),
+            vec![vec![0x0c, 0x00], vec![0x0c, 0x1e]]
+        );
+
+        let names = reg.intern_descriptor_names(&desc);
+        let mut parser = crate::device::parser::PacketParser::new(crate::core::event::DeviceId(1), &desc, names);
+        let mut events = Vec::new();
+
+        // Button report captured from hardware: Mute pressed. The 0x40 in
+        // byte 6 is an undocumented toggle bit and must not produce events.
+        parser.parse_from("control", &[0x04, 0x01, 0, 0, 0, 0, 0x40, 0x85], &mut events);
+        assert!(
+            matches!(events.as_slice(), [Event::Button { name: "mute", pressed: true, .. }]),
+            "{events:?}"
+        );
+
+        // Knob report captured at rest sets the baseline; then the `a` tap of
+        // screen_encoder_1 (pair at bytes 21..22) rises: 197 -> 225.
+        let mut knobs = vec![
+            0x02, 0xa0, 0x15, 0xb7, 0xcc, 0x03, 0x71, 0x85, 0x03, 0x1f, 0xa2, 0x85,
+            0x00, 0x3b, 0x3d, 0x5d, 0x17, 0x19, 0x5f, 0x0c, 0x86, 0xf7, 0x65,
+        ];
+        knobs.resize(33, 0);
+        events.clear();
+        parser.parse_from("control", &knobs, &mut events);
+        assert!(events.is_empty());
+        knobs[22] = 0x75;
+        parser.parse_from("control", &knobs, &mut events);
+        match events.as_slice() {
+            [Event::EncoderFine { name: "screen_encoder_1", delta, .. }] => {
+                assert!((*delta - 0.028).abs() < 1e-6, "{delta}")
+            }
+            other => panic!("unexpected events {other:?}"),
+        }
+
+        // Pad stream: words are self-identifying, so a frame starting
+        // mid-cycle still maps id 12 to pad_1.
+        let mut pads = Vec::new();
+        for id in (8u16..16).chain(0..8) {
+            let pressure = if id == 12 { 3000 } else { 0 };
+            pads.extend_from_slice(&(id << 12 | pressure).to_le_bytes());
+        }
+        events.clear();
+        parser.parse_from("pads", &pads, &mut events);
+        assert!(matches!(events[0], Event::Button { name: "pad_1", pressed: true, .. }), "{events:?}");
+        assert!(matches!(events[1], Event::Grid { name: "pad_1", index: 12, .. }), "{events:?}");
+
+        // An LED ack (0x0c) on the control interface is ignored.
+        events.clear();
+        parser.parse_from("control", &[0x0c], &mut events);
+        assert!(events.is_empty());
     }
 }
 

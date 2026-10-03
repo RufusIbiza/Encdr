@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use async_io::Timer;
 use crossbeam_channel::Sender;
 use futures_lite::future::block_on;
-use nusb::transfer::{Bulk, Completion, ControlOut, ControlType, In, Interrupt, Out, Recipient};
+use nusb::transfer::{Buffer, Bulk, Completion, ControlOut, ControlType, In, Interrupt, Out, Recipient};
 use nusb::MaybeFuture;
 
 use crate::core::descriptor::*;
@@ -252,6 +253,24 @@ fn run_device(
                         iface_desc.number,
                         iface_desc.id
                     );
+                    // Several logical interfaces may share one USB interface
+                    // number; any of them may carry the alternate setting.
+                    let alt = descriptor
+                        .interfaces
+                        .iter()
+                        .filter(|i| i.number == iface_desc.number)
+                        .find_map(|i| i.alt_setting);
+                    if let Some(alt) = alt {
+                        if let Err(e) = iface.set_alt_setting(alt).wait() {
+                            tracing::error!(
+                                "Failed to select alt setting {} on interface {}: {}",
+                                alt,
+                                iface_desc.number,
+                                e
+                            );
+                            return;
+                        }
+                    }
                     claimed_by_num.insert(iface_desc.number, iface);
                 }
                 Err(e) => {
@@ -282,12 +301,94 @@ fn run_device(
         return;
     };
 
-    // Find the input endpoint address
-    let input_ep = descriptor
-        .interface_by_id(&control_iface_id)
-        .and_then(|i| i.endpoints.ep_in.as_ref())
-        .map(|ep| ep.address.0 as u8)
-        .unwrap_or(0x81);
+    // Open one IN endpoint per interface referenced by an input packet and
+    // queue reads on all of them before anything else touches the device.
+    // Pipeline reads: keep multiple reads pending with the kernel at all
+    // times, rather than submitting one and waiting for it to complete
+    // before submitting the next, so there's never a window with no read in
+    // flight.
+    const READ_QUEUE_DEPTH: usize = 8;
+    let mut input_sources: Vec<InputSource> = Vec::new();
+    for packet in &descriptor.input_packets {
+        if input_sources.iter().any(|s| s.interface == packet.interface) {
+            continue;
+        }
+        let Some(iface) = interfaces.get(&packet.interface) else {
+            tracing::error!("Input interface '{}' not found", packet.interface);
+            return;
+        };
+        let (address, transfer_type) = descriptor
+            .interface_by_id(&packet.interface)
+            .and_then(|i| i.endpoints.ep_in.as_ref())
+            .map(|ep| (ep.address.0 as u8, ep.transfer_type))
+            .unwrap_or((0x81, TransferType::Interrupt));
+        let mut ep = match InEndpoint::open(iface, address, transfer_type) {
+            Ok(ep) => ep,
+            Err(e) => {
+                tracing::error!("Failed to open input endpoint 0x{:02x}: {}", address, e);
+                return;
+            }
+        };
+
+        // A USB transfer only completes on a short packet or when its buffer is
+        // full. Sizing the buffer larger than the biggest report makes full-size
+        // reports (e.g. the Mk3's 64-byte pad report on a 64-byte endpoint)
+        // accumulate in the kernel until the buffer fills or an unrelated short
+        // report happens to flush them — seconds of latency, and reports glued
+        // together that the parser can't dispatch. Size the buffer to the
+        // largest report, rounded up to a whole number of packets, so every
+        // report completes its own transfer.
+        let mps = ep.max_packet_size().max(1);
+        let max_report = descriptor
+            .input_packets
+            .iter()
+            .filter(|p| p.interface == packet.interface)
+            .map(|p| p.size)
+            .max()
+            .unwrap_or(mps);
+        let read_buf_size = max_report.div_ceil(mps) * mps;
+        tracing::debug!(
+            "Input ep 0x{:02x} ('{}'): max packet {} bytes, read buffer {} bytes",
+            address, packet.interface, mps, read_buf_size
+        );
+
+        while ep.pending() < READ_QUEUE_DEPTH {
+            let buf = ep.allocate(read_buf_size);
+            ep.submit(buf);
+        }
+        input_sources.push(InputSource { interface: packet.interface.clone(), ep });
+    }
+
+    // One-shot init writes. Reads are already queued, so a device that holds
+    // commands until its replies are read (Maschine Mk1) cannot stall here.
+    // This runs before the LED and screen threads open their endpoints, since
+    // nusb grants each endpoint to one owner at a time.
+    for write in &descriptor.quirks.init_writes {
+        let target = interfaces.get(&write.interface).zip(
+            descriptor
+                .interface_by_id(&write.interface)
+                .and_then(|i| i.endpoints.out.as_ref()),
+        );
+        let Some((iface, ep_desc)) = target else {
+            tracing::error!("Init write interface '{}' has no OUT endpoint", write.interface);
+            continue;
+        };
+        let data = crate::screen::protocol::parse_byte_list(&write.data);
+        let address = ep_desc.address.0 as u8;
+        let result = match ep_desc.transfer_type {
+            TransferType::Bulk => iface
+                .endpoint::<Bulk, Out>(address)
+                .map(|mut ep| ep.transfer_blocking(data.into(), INIT_WRITE_TIMEOUT).status),
+            _ => iface
+                .endpoint::<Interrupt, Out>(address)
+                .map(|mut ep| ep.transfer_blocking(data.into(), INIT_WRITE_TIMEOUT).status),
+        };
+        match result {
+            Ok(Ok(())) => tracing::debug!("Init write to ep 0x{:02x}: {}", address, write.data),
+            Ok(Err(e)) => tracing::warn!("Init write to ep 0x{:02x} failed: {}", address, e),
+            Err(e) => tracing::warn!("Could not open ep 0x{:02x} for init write: {}", address, e),
+        }
+    }
 
     // Build LED controllers (one per LED group)
     let led_builders: Vec<LedBuilder> = descriptor
@@ -355,61 +456,27 @@ fn run_device(
     const PAD_TIMEOUT_POLL_INTERVAL: Duration = Duration::from_millis(40);
 
     enum Woken {
-        Read(Completion),
+        Read(usize, Completion),
         Cmd(DeviceCmd),
         CmdChannelClosed,
         TimeoutTick,
     }
 
     block_on(async {
-        // Pipeline interrupt IN reads: keep multiple reads pending with the kernel
-        // at all times, rather than submitting one and waiting for it to complete
-        // before submitting the next, so there's never a window with no read in
-        // flight.
-        const READ_QUEUE_DEPTH: usize = 8;
-
-        let mut ep_in = match control_iface.endpoint::<Interrupt, In>(input_ep) {
-            Ok(ep) => ep,
-            Err(e) => {
-                tracing::error!("Failed to open input endpoint 0x{:02x}: {}", input_ep, e);
-                return;
-            }
-        };
-
-        // A USB transfer only completes on a short packet or when its buffer is
-        // full. Sizing the buffer larger than the biggest report makes full-size
-        // reports (e.g. the Mk3's 64-byte pad report on a 64-byte endpoint)
-        // accumulate in the kernel until the buffer fills or an unrelated short
-        // report happens to flush them — seconds of latency, and reports glued
-        // together that the parser can't dispatch. Size the buffer to the
-        // largest report, rounded up to a whole number of packets, so every
-        // report completes its own transfer.
-        let mps = ep_in.max_packet_size().max(1);
-        let max_report = descriptor
-            .input_packets
-            .iter()
-            .filter(|p| p.interface == control_iface_id)
-            .map(|p| p.size)
-            .max()
-            .unwrap_or(mps);
-        let read_buf_size = max_report.div_ceil(mps) * mps;
-        tracing::debug!(
-            "Input ep 0x{:02x}: max packet {} bytes, read buffer {} bytes",
-            input_ep, mps, read_buf_size
-        );
-
-        while ep_in.pending() < READ_QUEUE_DEPTH {
-            let buf = ep_in.allocate(read_buf_size);
-            ep_in.submit(buf);
-        }
-
         let mut last_timeout_sweep = Instant::now();
 
         while running {
             let remaining = PAD_TIMEOUT_POLL_INTERVAL.saturating_sub(last_timeout_sweep.elapsed());
             let woken = futures_lite::future::or(
                 futures_lite::future::or(
-                    async { Woken::Read(ep_in.next_complete().await) },
+                    std::future::poll_fn(|cx| {
+                        for (idx, source) in input_sources.iter_mut().enumerate() {
+                            if let Poll::Ready(completion) = source.ep.poll_next_complete(cx) {
+                                return Poll::Ready(Woken::Read(idx, completion));
+                            }
+                        }
+                        Poll::Pending
+                    }),
                     async {
                         match cmd_rx.recv().await {
                             Ok(cmd) => Woken::Cmd(cmd),
@@ -439,7 +506,8 @@ fn run_device(
                         break;
                     }
                 }
-                Woken::Read(completion) => {
+                Woken::Read(idx, completion) => {
+                    let source = &mut input_sources[idx];
                     let buf = completion.buffer;
                     match completion.status {
                         Ok(()) => {
@@ -449,7 +517,7 @@ fn run_device(
                             // Parse the packet
                             event_buf.clear();
                             if !hook.on_packet(device_id, data, &mut event_buf) {
-                                parser.parse(data, &mut event_buf);
+                                parser.parse_from(&source.interface, data, &mut event_buf);
                             }
 
                             // Emit events
@@ -464,7 +532,7 @@ fn run_device(
                                 // Resubmit immediately, recycling the zero-copy buffer,
                                 // to keep the queue at constant depth so the kernel
                                 // always has a read pending.
-                                ep_in.submit(buf);
+                                source.ep.submit(buf);
                             }
                         }
                         Err(e) => {
@@ -496,9 +564,107 @@ fn run_device(
     tracing::info!("Device thread exiting for {:?}", device_id);
 }
 
-enum ScreenOutEndpoint {
+/// Upper bound on a single connect-time init write.
+const INIT_WRITE_TIMEOUT: Duration = Duration::from_millis(500);
+
+/// An input endpoint plus the descriptor interface id its packets belong to.
+struct InputSource {
+    interface: String,
+    ep: InEndpoint,
+}
+
+/// IN endpoint of either transfer type (nusb encodes the type statically).
+enum InEndpoint {
+    Interrupt(nusb::Endpoint<Interrupt, In>),
+    Bulk(nusb::Endpoint<Bulk, In>),
+}
+
+impl InEndpoint {
+    fn open(iface: &nusb::Interface, address: u8, transfer_type: TransferType) -> Result<Self, nusb::Error> {
+        Ok(match transfer_type {
+            TransferType::Bulk => Self::Bulk(iface.endpoint::<Bulk, In>(address)?),
+            _ => Self::Interrupt(iface.endpoint::<Interrupt, In>(address)?),
+        })
+    }
+
+    fn max_packet_size(&self) -> usize {
+        match self {
+            Self::Interrupt(ep) => ep.max_packet_size(),
+            Self::Bulk(ep) => ep.max_packet_size(),
+        }
+    }
+
+    fn pending(&self) -> usize {
+        match self {
+            Self::Interrupt(ep) => ep.pending(),
+            Self::Bulk(ep) => ep.pending(),
+        }
+    }
+
+    fn allocate(&self, len: usize) -> Buffer {
+        match self {
+            Self::Interrupt(ep) => ep.allocate(len),
+            Self::Bulk(ep) => ep.allocate(len),
+        }
+    }
+
+    fn submit(&mut self, buf: Buffer) {
+        match self {
+            Self::Interrupt(ep) => ep.submit(buf),
+            Self::Bulk(ep) => ep.submit(buf),
+        }
+    }
+
+    fn poll_next_complete(&mut self, cx: &mut Context<'_>) -> Poll<Completion> {
+        match self {
+            Self::Interrupt(ep) => ep.poll_next_complete(cx),
+            Self::Bulk(ep) => ep.poll_next_complete(cx),
+        }
+    }
+}
+
+/// OUT endpoint of either transfer type, used for screen and LED writes.
+enum OutEndpoint {
     Bulk(nusb::Endpoint<Bulk, Out>),
     Interrupt(nusb::Endpoint<Interrupt, Out>),
+}
+
+impl OutEndpoint {
+    fn open(iface: &nusb::Interface, address: u8, transfer_type: TransferType) -> Result<Self, nusb::Error> {
+        Ok(match transfer_type {
+            TransferType::Bulk => Self::Bulk(iface.endpoint::<Bulk, Out>(address)?),
+            _ => Self::Interrupt(iface.endpoint::<Interrupt, Out>(address)?),
+        })
+    }
+
+    /// Submit one transfer and wait for it to complete.
+    async fn write(&mut self, data: Vec<u8>) -> Result<(), nusb::transfer::TransferError> {
+        self.write_all(vec![data]).await
+    }
+
+    /// Queue every transfer with the kernel at once, then wait for all of
+    /// them, so multi-transfer frames don't pay a round trip per transfer.
+    /// Returns the first error, if any.
+    async fn write_all(&mut self, transfers: Vec<Vec<u8>>) -> Result<(), nusb::transfer::TransferError> {
+        let count = transfers.len();
+        for data in transfers {
+            match self {
+                Self::Bulk(ep) => ep.submit(data.into()),
+                Self::Interrupt(ep) => ep.submit(data.into()),
+            }
+        }
+        let mut result = Ok(());
+        for _ in 0..count {
+            let status = match self {
+                Self::Bulk(ep) => ep.next_complete().await.status,
+                Self::Interrupt(ep) => ep.next_complete().await.status,
+            };
+            if result.is_ok() {
+                result = status;
+            }
+        }
+        result
+    }
 }
 
 /// Dedicated screen worker thread. Runs completely decoupled from the interrupt IN input loop
@@ -509,105 +675,111 @@ fn run_screens(
     mut screen_managers: HashMap<String, ScreenManager>,
     screen_rx: async_channel::Receiver<DeviceCmd>,
 ) {
+    use crate::screen::protocol;
+
     block_on(async {
-        let mut endpoints: HashMap<(String, u8), ScreenOutEndpoint> = HashMap::new();
+        let mut endpoints: HashMap<(String, u8), OutEndpoint> = HashMap::new();
         let mut screen_to_ep: HashMap<String, (String, u8)> = HashMap::new();
 
         for s in &descriptor.screens {
             if let Some(iface) = screen_ifaces.get(&s.interface) {
-                let ep_addr = descriptor
+                let ep_desc = descriptor
                     .interface_by_id(&s.interface)
-                    .and_then(|i| i.endpoints.out.as_ref())
-                    .map(|ep| ep.address.0 as u8)
-                    .unwrap_or(0x02);
+                    .and_then(|i| i.endpoints.out.as_ref());
+                let ep_addr = ep_desc.map(|ep| ep.address.0 as u8).unwrap_or(0x02);
+                let transfer_type = ep_desc.map(|ep| ep.transfer_type).unwrap_or(TransferType::Bulk);
                 let key = (s.interface.clone(), ep_addr);
                 screen_to_ep.insert(s.name.clone(), key.clone());
 
                 if !endpoints.contains_key(&key) {
-                    let is_interrupt = descriptor
-                        .interface_by_id(&s.interface)
-                        .and_then(|i| i.endpoints.out.as_ref())
-                        .map(|ep| ep.transfer_type == crate::core::descriptor::TransferType::Interrupt)
-                        .unwrap_or(false);
-                    if is_interrupt {
-                        if let Ok(ep) = iface.endpoint::<Interrupt, Out>(ep_addr) {
-                            endpoints.insert(key, ScreenOutEndpoint::Interrupt(ep));
-                        } else {
-                            tracing::error!("Failed to open screen interrupt OUT ep 0x{:02x} for '{}'", ep_addr, s.name);
+                    match OutEndpoint::open(iface, ep_addr, transfer_type) {
+                        Ok(ep) => {
+                            endpoints.insert(key, ep);
                         }
-                    } else {
-                        if let Ok(ep) = iface.endpoint::<Bulk, Out>(ep_addr) {
-                            endpoints.insert(key, ScreenOutEndpoint::Bulk(ep));
-                        } else {
-                            tracing::error!("Failed to open screen bulk OUT ep 0x{:02x} for '{}'", ep_addr, s.name);
-                        }
+                        Err(e) => tracing::error!(
+                            "Failed to open screen OUT ep 0x{:02x} for '{}': {}",
+                            ep_addr, s.name, e
+                        ),
                     }
                 }
             }
         }
 
-        // Send initial splash screen (blank frame)
-        for (screen_name, _sm) in &screen_managers {
-            if let Some(screen_desc) = descriptor.screens.iter().find(|s| s.name == *screen_name) {
-                if let Some(key) = screen_to_ep.get(screen_name) {
-                    if let Some(ep) = endpoints.get_mut(key) {
-                        let blank = vec![0u8; screen_desc.byte_size()];
-                        let blit_buf = crate::screen::protocol::build_full_blit(screen_desc, &blank);
-                        tracing::info!(
-                            "Sending splash screen: {} bytes for '{}'",
-                            blit_buf.len(),
-                            screen_name
-                        );
-                        match ep {
-                            ScreenOutEndpoint::Bulk(ep) => {
-                                ep.submit(blit_buf.into());
-                                let _ = ep.next_complete().await;
-                            }
-                            ScreenOutEndpoint::Interrupt(ep) => {
-                                ep.submit(blit_buf.into());
-                                let _ = ep.next_complete().await;
-                            }
-                        }
-                        tracing::info!("Splash screen sent successfully for '{}'", screen_name);
-                    }
+        // Initialise screen controllers that need it, then send an initial
+        // splash screen (black frame).
+        for screen_desc in &descriptor.screens {
+            let Some(ep) = screen_to_ep.get(&screen_desc.name).and_then(|key| endpoints.get_mut(key)) else {
+                continue;
+            };
+            for step in protocol::init_sequence(screen_desc) {
+                if let Err(e) = ep.write(step.data).await {
+                    tracing::error!("Screen init for '{}' failed: {}", screen_desc.name, e);
+                    break;
+                }
+                if !step.delay.is_zero() {
+                    Timer::after(step.delay).await;
                 }
             }
+
+            let blank = vec![screen_desc.pixel_format.black_fill(); screen_desc.byte_size()];
+            let blit_buf = protocol::build_full_blit(screen_desc, &blank);
+            let transfers = protocol::frame_transfers(screen_desc, blit_buf, 0..screen_desc.height);
+            tracing::info!(
+                "Sending splash screen: {} bytes in {} transfer(s) for '{}'",
+                transfers.iter().map(Vec::len).sum::<usize>(),
+                transfers.len(),
+                screen_desc.name
+            );
+            let _ = ep.write_all(transfers).await;
+            tracing::info!("Splash screen sent successfully for '{}'", screen_desc.name);
         }
 
-        while let Ok(cmd) = screen_rx.recv().await {
-            match cmd {
-                DeviceCmd::Disconnect => break,
-                DeviceCmd::SubmitScreen { screen, pixels, format } => {
-                    if let Some(sm) = screen_managers.get_mut(&screen) {
-                        if let Some(screen_desc) = descriptor.screens.iter().find(|s| s.name == screen) {
-                            if let Some(blit_data) = sm.submit(&pixels, format, screen_desc) {
-                                if let Some(key) = screen_to_ep.get(&screen) {
-                                    if let Some(ep) = endpoints.get_mut(key) {
-                                        tracing::debug!("Sending {} bytes for screen '{}'...", blit_data.len(), screen);
-                                        match ep {
-                                            ScreenOutEndpoint::Bulk(ep) => {
-                                                ep.submit(blit_data.into());
-                                                let _ = ep.next_complete().await;
-                                            }
-                                            ScreenOutEndpoint::Interrupt(ep) => {
-                                                ep.submit(blit_data.into());
-                                                let _ = ep.next_complete().await;
-                                            }
-                                        }
-                                        tracing::debug!("Bulk out completed for screen '{}'", screen);
-                                    } else {
-                                        tracing::warn!("Screen endpoint for '{}' not found", screen);
-                                    }
-                                }
-                            }
-                        } else {
-                            tracing::warn!("screen_desc for '{}' not found in descriptor", screen);
+        let mut frames: Vec<(String, Vec<u8>, PixelFormat)> = Vec::new();
+        'frames: while let Ok(first_cmd) = screen_rx.recv().await {
+            // Coalesce: keep only the newest queued frame per screen, so one
+            // fast-updating screen can't starve another or build a backlog
+            // when the device accepts frames slower than they're produced.
+            let mut cmd = Some(first_cmd);
+            while let Some(c) = cmd.take() {
+                match c {
+                    DeviceCmd::Disconnect => break 'frames,
+                    DeviceCmd::SubmitScreen { screen, pixels, format } => {
+                        match frames.iter_mut().find(|(name, ..)| *name == screen) {
+                            Some(slot) => *slot = (screen, pixels, format),
+                            None => frames.push((screen, pixels, format)),
                         }
-                    } else {
-                        tracing::warn!("ScreenManager for '{}' not found", screen);
                     }
+                    _ => {}
                 }
-                _ => {}
+                cmd = screen_rx.try_recv().ok();
+            }
+
+            for (screen, pixels, format) in frames.drain(..) {
+                let Some(sm) = screen_managers.get_mut(&screen) else {
+                    tracing::warn!("ScreenManager for '{}' not found", screen);
+                    continue;
+                };
+                let Some(screen_desc) = descriptor.screens.iter().find(|s| s.name == screen) else {
+                    tracing::warn!("screen_desc for '{}' not found in descriptor", screen);
+                    continue;
+                };
+                let Some(transfers) = sm.submit(&pixels, format, screen_desc) else {
+                    continue;
+                };
+                let Some(ep) = screen_to_ep.get(&screen).and_then(|key| endpoints.get_mut(key)) else {
+                    tracing::warn!("Screen endpoint for '{}' not found", screen);
+                    continue;
+                };
+                tracing::debug!(
+                    "Sending {} bytes in {} transfer(s) for screen '{}'...",
+                    transfers.iter().map(Vec::len).sum::<usize>(),
+                    transfers.len(),
+                    screen
+                );
+                if let Err(e) = ep.write_all(transfers).await {
+                    tracing::warn!("Screen transfer for '{}' failed: {}", screen, e);
+                }
+                tracing::debug!("Bulk out completed for screen '{}'", screen);
             }
         }
     });
@@ -624,14 +796,24 @@ fn run_leds(
     led_rx: async_channel::Receiver<DeviceCmd>,
 ) {
     block_on(async {
-        let mut led_endpoints: HashMap<u8, nusb::Endpoint<Interrupt, Out>> = HashMap::new();
+        let mut led_endpoints: HashMap<u8, OutEndpoint> = HashMap::new();
         for lb in &led_builders {
             let ep = lb.endpoint();
             if !led_endpoints.contains_key(&ep) {
-                if let Ok(endpoint) = iface.endpoint::<Interrupt, Out>(ep) {
-                    led_endpoints.insert(ep, endpoint);
-                } else {
-                    tracing::error!("Failed to open LED interrupt OUT ep 0x{:02x}", ep);
+                match OutEndpoint::open(&iface, ep, lb.transfer_type()) {
+                    Ok(endpoint) => {
+                        led_endpoints.insert(ep, endpoint);
+                    }
+                    Err(e) => tracing::error!("Failed to open LED OUT ep 0x{:02x}: {}", ep, e),
+                }
+            }
+        }
+
+        // Push descriptor default LED values (e.g. a display backlight).
+        for lb in &mut led_builders {
+            if let Some(wire_buf) = lb.flush() {
+                if let Some(endpoint) = led_endpoints.get_mut(&lb.endpoint()) {
+                    let _ = endpoint.write(wire_buf).await;
                 }
             }
         }
@@ -742,9 +924,7 @@ fn run_leds(
                     let group = lb.group_id().to_string();
                     let len = wire_buf.len();
                     if let Some(endpoint) = led_endpoints.get_mut(&ep) {
-                        endpoint.submit(wire_buf.into());
-                        let comp = endpoint.next_complete().await;
-                        if let Err(e) = comp.status {
+                        if let Err(e) = endpoint.write(wire_buf).await {
                             eprintln!("[LED-USB-ERR] Failed to flush {} bytes to group '{}' ep 0x{:02x}: {}", len, group, ep, e);
                         }
                     }
@@ -792,8 +972,7 @@ fn run_leds(
             if let Some(wire_buf) = lb.flush() {
                 let ep = lb.endpoint();
                 if let Some(endpoint) = led_endpoints.get_mut(&ep) {
-                    endpoint.submit(wire_buf.into());
-                    let _ = endpoint.next_complete().await;
+                    let _ = endpoint.write(wire_buf).await;
                 }
             }
         }

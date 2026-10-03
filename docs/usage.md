@@ -295,6 +295,7 @@ encdr.submit_screen_with_format(device_id, "center_mode", &x1_oled_frame, PixelF
 | **NI Maschine Mk3 / Plus / Studio** | `"left"`, `"right"` | $480 \times 272$, BGR565-BE |
 | **NI Komplete Kontrol S-Mk2** | `"left"`, `"right"` | $480 \times 272$, BGR565-BE |
 | **NI Maschine Mk2** | `"left"`, `"right"` | $256 \times 64$, 1-bit Mono |
+| **NI Maschine Mk1** | `"left"`, `"right"` | $255 \times 64$, 5-bit grayscale (ST7529) |
 | **NI Traktor Kontrol X1 Mk3** | `"left_fx"`, `"left_loop"`, `"center_mode"`, `"right_loop"`, `"right_fx"` | $128 \times 64$, 1-bit Mono |
 
 The screen pipeline automatically:
@@ -401,7 +402,7 @@ Devices are defined by JSON files. See the device references in [`docs/hardware/
 | Touch sensor           | `touch`        | `Event::Touch`       | `byte` + `mask` (single-byte), or `bytes` (multi-byte, value > 0) |
 | Slider/fader           | `slider`       | `Event::Slider`      | `byte`/`bytes`, `bits`, `normalize`, `max_value`                  |
 | Notched encoder        | `encoder`      | `Event::Encoder`     | `byte`, `bits`, `bit_offset`, `encoding`                          |
-| Fine encoder / Jogdial | `encoder_fine` | `Event::EncoderFine` | `bytes`, `encoding`, `scale`                                      |
+| Fine encoder / Jogdial | `encoder_fine` | `Event::EncoderFine` | `bytes`, `encoding`, `scale`, `deadband` (`erp` only)             |
 
 Touch sensors support two modes:
 - **Single-byte**: `"byte": 9, "mask": "0x02"` — standard bitmask check
@@ -415,11 +416,31 @@ Touch sensors support two modes:
 | `signed16`    | 16-bit signed delta (used by D2 screen encoders)                |
 | `unsigned16`  | 16-bit unsigned (absolute position)                             |
 | `wrap16_wide` | 16-bit counter with full wraparound (jogwheels/jogdials)        |
+| `erp`         | Endless rotary potentiometer: two analog taps decoded to 0–999 per turn (Maschine Mk1) |
 
 The `wrap16_wide` encoding detects direction via shortest path around the 65536-step ring. Use `encoder_fine` with `wrap16_wide` for jogdials:
 ```json
 { "type": "encoder_fine", "name": "jogwheel", "bytes": [5, 6], "encoding": "wrap16_wide", "scale": 1000.0 }
 ```
+
+The `erp` encoding reads two analog wiper taps `bytes: [b, a]`, decodes them to an absolute position (0–999 per turn), and emits shortest-path deltas around that ring. With `scale: 1000.0`, deltas are fractions of a turn. `deadband` holds back movements smaller than that many units, absorbing analog jitter without losing motion:
+```json
+{ "type": "encoder_fine", "name": "volume", "bytes": [17, 18], "encoding": "erp", "scale": 1000.0, "deadband": 10 }
+```
+
+### Routing Packets by Report ID and Endpoint
+
+By default, packets are matched to `input_packets` entries by their length. Devices that need more can opt in to these fields:
+
+- **Multiple input endpoints.** Every interface named by an input packet gets its own IN endpoint read, interrupt or bulk. Several logical interfaces may share one USB interface `number`.
+- **`alt_setting`** (on an interface): selected right after the interface is claimed.
+- **`report_id`** (on a packet): routes by the packet's first byte instead of its length. Once any packet on an interface sets `report_id` or `pad_format`, that interface is routed this way, and unmatched packets are ignored.
+- **`pad_format: "id_pressure_words"`**: decodes a header-less stream of little-endian words, with the pad index in bits 15–12 and 12-bit pressure below.
+- **LED `prefix`**: a multi-byte header such as `["0x0c", "0x1e"]`. It replaces `prefix_byte`.
+- **Single LED `default`**: a value written on connect (for example, a display backlight).
+- **`quirks.init_writes`**: raw `{ "interface", "data" }` writes sent once on connect, after reads are queued.
+
+The [Maschine Mk1 descriptor](hardware/ni_maschine_mk1.md) uses all of these.
 
 ### PacketHook Escape Hatch
 
