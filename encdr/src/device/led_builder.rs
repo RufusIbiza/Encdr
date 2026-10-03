@@ -15,8 +15,6 @@ pub struct LedBuilder {
     /// The current LED buffer (dirty-tracked)
     buffer: Vec<u8>,
     dirty: bool,
-    /// Buffer contents of the last flush, to skip redundant writes
-    last_sent: Option<Vec<u8>>,
 }
 
 enum LedMapping {
@@ -88,7 +86,6 @@ impl LedBuilder {
             led_map,
             buffer,
             dirty,
-            last_sent: None,
         }
     }
 
@@ -207,18 +204,11 @@ impl LedBuilder {
     }
 
     /// Build the wire-format buffer (prefix bytes + LED data) and clear dirty flag.
-    /// Returns `None` when the buffer matches what was last sent, so setting an
-    /// LED to its current value costs no USB transfer (on the Maschine Mk1 each
-    /// LED write stalls the display stream for ~5 ms).
     pub fn flush(&mut self) -> Option<Vec<u8>> {
         if !self.dirty {
             return None;
         }
         self.dirty = false;
-        if self.last_sent.as_deref() == Some(self.buffer.as_slice()) {
-            return None;
-        }
-        self.last_sent = Some(self.buffer.clone());
         let mut wire = Vec::with_capacity(self.prefix.len() + self.buffer_size);
         wire.extend_from_slice(&self.prefix);
         wire.extend_from_slice(&self.buffer);
@@ -272,22 +262,5 @@ mod tests {
         assert_eq!(lb.flush(), Some(vec![0x0c, 0x00, 0, 9]));
         assert_eq!(lb.flush(), None);
         assert_eq!(lb.transfer_type(), TransferType::Bulk);
-    }
-
-    #[test]
-    fn unchanged_values_skip_the_write() {
-        let mut lb = builder();
-        lb.flush();
-        lb.set("play", LedValue::Single(40));
-        assert_eq!(lb.flush(), Some(vec![0x0c, 0x00, 40, 9]));
-        // Same value again: dirty, but identical to what was sent.
-        lb.set("play", LedValue::Single(40));
-        assert_eq!(lb.flush(), None);
-        // A change and its reversal within one batch also nets to no write.
-        lb.set("play", LedValue::Single(10));
-        lb.set("play", LedValue::Single(40));
-        assert_eq!(lb.flush(), None);
-        lb.set("play", LedValue::Off);
-        assert_eq!(lb.flush(), Some(vec![0x0c, 0x00, 0, 9]));
     }
 }

@@ -149,7 +149,7 @@ LEDs are written with the `DIMM_LEDS` command `0x0c` on EP `0x01`, in two banks 
 
 All LEDs are single-color. NI's own software drives them at up to `0x5c` (92), and Encdr's examples use 0–92.
 
-**LED writes are expensive.** Each bank write ties up the controller for about 5 ms, and the display stream pauses meanwhile. Rewriting both banks 33 times a second cuts full-frame screen throughput by about 30%; at 100 times a second, by half. Encdr skips any flush whose bank contents haven't changed, so setting an LED to its current value costs nothing. Animating every LED continuously still costs display time.
+**LED writes are expensive.** Each bank write ties up the controller for about 5 ms, and the display stream pauses meanwhile. Rewriting both banks 33 times a second cuts full-frame screen throughput by about 30%; at 100 times a second, by half. Update LEDs only when their values change; continuously animating every LED costs display time.
 
 | Offset | `bank_a` | `bank_b` |
 | ------ | -------- | -------- |
