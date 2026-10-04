@@ -437,13 +437,18 @@ pub enum PixelFormat {
     Rgb888,
     Rgba8888,
     Mono,
+    /// ST7529 5-bit grayscale, 3 pixels per 2 bytes, inverted (Maschine Mk1)
+    St7529Gray5,
 }
 ```
 
 ### Methods
 
 #### `pub fn bytes_per_pixel(&self) -> usize`
-Returns byte density per pixel (`2` for BGR565/RGB565, `3` for RGB888, `4` for RGBA8888, and `1` for Mono).
+Returns byte density per pixel (`2` for BGR565/RGB565, `3` for RGB888, `4` for RGBA8888, and `1` for Mono and St7529Gray5, which are packed below a byte per pixel).
+
+#### `pub fn black_fill(&self) -> u8`
+Returns the native byte value that fills a frame with black (`0xFF` for the inverted St7529Gray5, `0x00` otherwise).
 
 ---
 

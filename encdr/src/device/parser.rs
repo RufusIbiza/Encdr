@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use crate::core::descriptor::*;
 use crate::core::event::{DeviceId, Event};
-use crate::device::encoder::EncoderState;
+use crate::device::encoder::{decode_erp, EncoderState};
 
 /// Hardware pad index (0..15, as reported in Report 0x02 tuples) to control name.
 const PAD_MAP: [&str; 16] = [
@@ -21,9 +21,24 @@ pub struct PacketParser {
     names: HashMap<String, &'static str>,
     /// Per-packet parser state, keyed by packet size
     packet_parsers: HashMap<usize, PacketState>,
+    /// Packets routed by interface + report id / pad format instead of size
+    routed_packets: Vec<RoutedPacket>,
     pad_stream_state: Option<PadStreamState>,
     created_at: Instant,
 }
+
+/// A packet dispatched by source interface and leading report byte.
+struct RoutedPacket {
+    interface: String,
+    report_id: Option<u8>,
+    pad_format: Option<PadFormat>,
+    state: PacketState,
+}
+
+/// Press/release thresholds (raw 12-bit) for `PadFormat::IdPressureWords`.
+/// The Maschine Mk1 idles at exactly 0 and light hits peak above 2000.
+const ID_WORD_PRESS_THRESHOLD: u16 = 256;
+const ID_WORD_RELEASE_THRESHOLD: u16 = 128;
 
 
 /// State for a single input packet type
@@ -97,6 +112,7 @@ impl PacketParser {
         names: HashMap<String, &'static str>,
     ) -> Self {
         let mut packet_parsers = HashMap::new();
+        let mut routed_packets = Vec::new();
         let mut has_pad_stream = false;
 
         for packet_desc in &descriptor.input_packets {
@@ -149,21 +165,29 @@ impl PacketParser {
                 }
             }
 
-            if packet_desc.id == "pads" {
+            if packet_desc.id == "pads" || packet_desc.pad_format.is_some() {
                 has_pad_stream = true;
             }
 
-            packet_parsers.insert(
-                packet_desc.size,
-                PacketState {
-                    button_states,
-                    wide_touch_states,
-                    encoder_states,
-                    fine_encoder_states,
-                    slider_states,
-                    items: packet_desc.items.clone(),
-                },
-            );
+            let state = PacketState {
+                button_states,
+                wide_touch_states,
+                encoder_states,
+                fine_encoder_states,
+                slider_states,
+                items: packet_desc.items.clone(),
+            };
+
+            if packet_desc.is_routed() {
+                routed_packets.push(RoutedPacket {
+                    interface: packet_desc.interface.clone(),
+                    report_id: packet_desc.report_id.map(|id| id.0 as u8),
+                    pad_format: packet_desc.pad_format,
+                    state,
+                });
+            } else {
+                packet_parsers.insert(packet_desc.size, state);
+            }
         }
 
         let pad_stream_state = if has_pad_stream {
@@ -176,8 +200,113 @@ impl PacketParser {
             device_id,
             names,
             packet_parsers,
+            routed_packets,
             pad_stream_state,
             created_at: Instant::now(),
+        }
+    }
+
+    /// Parse a USB packet received on the given interface. Interfaces whose
+    /// packets declare a `report_id` or `pad_format` are routed by those
+    /// fields; all others fall through to size-based [`Self::parse`].
+    pub fn parse_from(&mut self, interface: &str, buf: &[u8], events: &mut Vec<Event>) {
+        if !self.routed_packets.iter().any(|r| r.interface == interface) {
+            self.parse(buf, events);
+            return;
+        }
+
+        // An exact report id match wins; a packet without a report id (e.g. a
+        // header-less pad stream) catches everything else on its interface.
+        let first = buf.first().copied();
+        let idx = self
+            .routed_packets
+            .iter()
+            .position(|r| r.interface == interface && r.report_id.is_some() && r.report_id == first)
+            .or_else(|| {
+                self.routed_packets
+                    .iter()
+                    .position(|r| r.interface == interface && r.report_id.is_none())
+            });
+        let Some(idx) = idx else {
+            return;
+        };
+
+        match self.routed_packets[idx].pad_format {
+            Some(PadFormat::IdPressureWords) => self.parse_id_pressure_words(buf, events),
+            None => Self::parse_items(
+                &mut self.routed_packets[idx].state,
+                buf,
+                &self.names,
+                self.device_id,
+                events,
+            ),
+        }
+    }
+
+    /// Decode a `PadFormat::IdPressureWords` stream. Each little-endian word
+    /// names its own pad, so word position within the packet is irrelevant.
+    fn parse_id_pressure_words(&mut self, buf: &[u8], events: &mut Vec<Event>) {
+        let Some(ref mut state) = self.pad_stream_state else {
+            return;
+        };
+        let now = Instant::now();
+
+        for word in buf.chunks_exact(2) {
+            let w = u16::from_le_bytes([word[0], word[1]]);
+            let p = (w >> 12) as usize;
+            let raw = w & 0x0FFF;
+            state.last_update[p] = now;
+
+            let pressure = raw as f32 / 4095.0;
+            let pad_name = *self.names.get(PAD_MAP[p]).unwrap_or(&PAD_MAP[p]);
+
+            if !state.pad_states[p] {
+                if raw >= ID_WORD_PRESS_THRESHOLD {
+                    state.pad_states[p] = true;
+                    state.pad_pressures[p] = pressure;
+                    state.aftertouch_count[p] = 0;
+                    events.push(Event::Button {
+                        device: self.device_id,
+                        name: pad_name,
+                        pressed: true,
+                    });
+                    events.push(Event::Grid {
+                        device: self.device_id,
+                        name: pad_name,
+                        index: p as u8,
+                        pressure,
+                    });
+                }
+            } else if raw < ID_WORD_RELEASE_THRESHOLD {
+                state.pad_states[p] = false;
+                state.pad_pressures[p] = 0.0;
+                state.aftertouch_count[p] = 0;
+                events.push(Event::Button {
+                    device: self.device_id,
+                    name: pad_name,
+                    pressed: false,
+                });
+                events.push(Event::Grid {
+                    device: self.device_id,
+                    name: pad_name,
+                    index: p as u8,
+                    pressure: 0.0,
+                });
+            } else {
+                // Count continuing reports so the timeout sweep treats this
+                // as a sustained hold rather than an isolated tap, and doesn't
+                // fake a release if the stream briefly pauses.
+                state.aftertouch_count[p] = state.aftertouch_count[p].saturating_add(1);
+                if (pressure - state.pad_pressures[p]).abs() > 0.02 {
+                    state.pad_pressures[p] = pressure;
+                    events.push(Event::Grid {
+                        device: self.device_id,
+                        name: pad_name,
+                        index: p as u8,
+                        pressure,
+                    });
+                }
+            }
         }
     }
 
@@ -633,7 +762,17 @@ impl PacketParser {
         let Some(state) = self.packet_parsers.get_mut(&buf.len()) else {
             return;
         };
+        Self::parse_items(state, buf, &self.names, self.device_id, events);
+    }
 
+    /// Parse the descriptor items (buttons, touches, encoders, sliders) of one packet.
+    fn parse_items(
+        state: &mut PacketState,
+        buf: &[u8],
+        names: &HashMap<String, &'static str>,
+        device_id: DeviceId,
+        events: &mut Vec<Event>,
+    ) {
         // Parse buttons and single-byte touch sensors
         for btn in &mut state.button_states {
 
@@ -643,16 +782,16 @@ impl PacketParser {
             let pressed = (buf[btn.byte] & btn.mask) != 0;
             if pressed != btn.prev {
                 btn.prev = pressed;
-                if let Some(&name) = self.names.get(&btn.name) {
+                if let Some(&name) = names.get(&btn.name) {
                     if btn.is_touch {
                         events.push(Event::Touch {
-                            device: self.device_id,
+                            device: device_id,
                             name,
                             touched: pressed,
                         });
                     } else {
                         events.push(Event::Button {
-                            device: self.device_id,
+                            device: device_id,
                             name,
                             pressed,
                         });
@@ -666,9 +805,9 @@ impl PacketParser {
             let touched = wt.bytes.iter().any(|&b| b < buf.len() && buf[b] != 0);
             if touched != wt.prev {
                 wt.prev = touched;
-                if let Some(&name) = self.names.get(&wt.name) {
+                if let Some(&name) = names.get(&wt.name) {
                     events.push(Event::Touch {
-                        device: self.device_id,
+                        device: device_id,
                         name,
                         touched,
                     });
@@ -689,9 +828,9 @@ impl PacketParser {
                         match desc.encoding {
                             EncoderEncoding::Wrap16 => {
                                 if let Some(delta) = enc_state.update_wrap16(raw) {
-                                    if let Some(&name) = self.names.get(&desc.name) {
+                                    if let Some(&name) = names.get(&desc.name) {
                                         events.push(Event::Encoder {
-                                            device: self.device_id,
+                                            device: device_id,
                                             name,
                                             delta,
                                         });
@@ -717,9 +856,9 @@ impl PacketParser {
                             EncoderEncoding::Signed16 => {
                                 if let Some(raw_delta) = enc_state.update_signed16(val) {
                                     let delta = raw_delta / desc.scale;
-                                    if let Some(&name) = self.names.get(&desc.name) {
+                                    if let Some(&name) = names.get(&desc.name) {
                                         events.push(Event::EncoderFine {
-                                            device: self.device_id,
+                                            device: device_id,
                                             name,
                                             delta,
                                         });
@@ -729,9 +868,23 @@ impl PacketParser {
                             EncoderEncoding::Wrap16Wide => {
                                 if let Some(raw_delta) = enc_state.update_wrap16_wide(val) {
                                     let delta = raw_delta as f32 / desc.scale;
-                                    if let Some(&name) = self.names.get(&desc.name) {
+                                    if let Some(&name) = names.get(&desc.name) {
                                         events.push(Event::EncoderFine {
-                                            device: self.device_id,
+                                            device: device_id,
+                                            name,
+                                            delta,
+                                        });
+                                    }
+                                }
+                            }
+                            EncoderEncoding::Erp => {
+                                // bytes: [b, a] — the two wiper taps
+                                let pos = decode_erp(buf[desc.bytes[1]], buf[desc.bytes[0]]);
+                                if let Some(raw_delta) = enc_state.update_erp(pos, desc.deadband) {
+                                    let delta = raw_delta as f32 / desc.scale;
+                                    if let Some(&name) = names.get(&desc.name) {
+                                        events.push(Event::EncoderFine {
+                                            device: device_id,
                                             name,
                                             delta,
                                         });
@@ -754,9 +907,9 @@ impl PacketParser {
                             } else {
                                 raw_val as f32
                             };
-                            if let Some(&name) = self.names.get(&desc.name) {
+                            if let Some(&name) = names.get(&desc.name) {
                                 events.push(Event::Slider {
-                                    device: self.device_id,
+                                    device: device_id,
                                     name,
                                     value: value.clamp(0.0, 1.0),
                                 });

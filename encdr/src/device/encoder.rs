@@ -67,6 +67,24 @@ impl EncoderState {
         Some(delta)
     }
 
+    /// Update with a new absolute ERP position (0..999) and return the delta
+    /// via shortest path around the 1000-step ring. Movements smaller than
+    /// `deadband` are held back (not lost) until they accumulate past it, to
+    /// suppress analog wobble.
+    pub fn update_erp(&mut self, pos: u16, deadband: u16) -> Option<i32> {
+        if !self.initialized {
+            self.value = pos;
+            self.initialized = true;
+            return None;
+        }
+        let delta = wrap_delta_erp(pos, self.value);
+        if delta == 0 || delta.unsigned_abs() < deadband as u32 {
+            return None;
+        }
+        self.value = pos;
+        Some(delta)
+    }
+
     /// Update with a new raw value for a slider, return value if changed.
     pub fn update_slider(&mut self, new_val: u16) -> Option<u16> {
         if !self.initialized {
@@ -110,9 +128,85 @@ fn wrap_delta_16bit(now: u16, prev: u16) -> i32 {
     }
 }
 
+/// ERP position wrap-around delta. Detects direction via shortest path
+/// around the 1000-step ring.
+#[inline]
+fn wrap_delta_erp(now: u16, prev: u16) -> i32 {
+    (now as i32 - prev as i32 + 1500).rem_euclid(1000) - 500
+}
+
+/// Decode an endless rotary potentiometer (ERP) to an absolute position
+/// 0..999. `a` and `b` are the two analog wiper taps, 90° apart; each is
+/// linear over half a turn, so the result blends both by how close `a` is
+/// to its extremes. Port of `decode_erp` from the Linux snd-usb-caiaq
+/// driver (sound/usb/caiaq/input.c), which uses the same calibration
+/// constants for every NI ERP device.
+pub fn decode_erp(a: u8, b: u8) -> u16 {
+    const HIGH_PEAK: i32 = 268;
+    const LOW_PEAK: i32 = -7;
+    const RANGE: i32 = HIGH_PEAK - LOW_PEAK;
+    const MID: i32 = (HIGH_PEAK + LOW_PEAK) / 2;
+    const DEG90: i32 = RANGE / 2;
+    const DEG180: i32 = RANGE;
+    const DEG270: i32 = DEG90 + DEG180;
+    const DEG360: i32 = DEG180 * 2;
+
+    let (a, b) = (a as i32, b as i32);
+    let weight_b = ((MID - a).abs() - (RANGE / 2 - 100) / 2).clamp(0, 100);
+    let weight_a = 100 - weight_b;
+
+    let pos_b = if a < MID {
+        // 0..90 and 270..360 degrees
+        let p = b - LOW_PEAK + DEG270;
+        if p >= DEG360 { p - DEG360 } else { p }
+    } else {
+        // 90..270 degrees
+        HIGH_PEAK - b + DEG90
+    };
+    let pos_a = if b > MID {
+        // 0..180 degrees
+        a - LOW_PEAK
+    } else {
+        // 180..360 degrees
+        HIGH_PEAK - a + DEG180
+    };
+
+    let ret = (pos_a * weight_a + pos_b * weight_b) * 10 / DEG360;
+    ret.rem_euclid(1000) as u16
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn decode_erp_matches_hardware_capture() {
+        // Maschine Mk1 0x02 report captured at rest; pair i is (b, a) at
+        // bytes [1 + 2i, 2 + 2i]. Expected values from the kernel decoder.
+        let pkt = [
+            0x02, 0xa0, 0x15, 0xb7, 0xcc, 0x03, 0x71, 0x85, 0x03, 0x1f, 0xa2, 0x85,
+            0x00, 0x3b, 0x3d, 0x5d, 0x17, 0x19, 0x5f, 0x0c, 0x86, 0xf7, 0x65,
+        ];
+        let decoded: Vec<u16> = (0..11).map(|i| decode_erp(pkt[2 + 2 * i], pkt[1 + 2 * i])).collect();
+        assert_eq!(decoded, vec![52, 394, 781, 3, 690, 3, 872, 932, 813, 743, 197]);
+    }
+
+    #[test]
+    fn erp_wraps_forward_and_backward() {
+        let mut enc = EncoderState::default();
+        assert_eq!(enc.update_erp(990, 0), None);
+        assert_eq!(enc.update_erp(7, 0), Some(17));
+        assert_eq!(enc.update_erp(995, 0), Some(-12));
+    }
+
+    #[test]
+    fn erp_deadband_accumulates() {
+        let mut enc = EncoderState::default();
+        enc.update_erp(100, 5);
+        assert_eq!(enc.update_erp(103, 5), None);
+        assert_eq!(enc.update_erp(101, 5), None);
+        assert_eq!(enc.update_erp(106, 5), Some(6));
+    }
 
     #[test]
     fn wrap16_forward() {
