@@ -295,7 +295,7 @@ encdr.submit_screen_with_format(device_id, "center_mode", &x1_oled_frame, PixelF
 | **NI Maschine Mk3 / Plus / Studio** | `"left"`, `"right"` | $480 \times 272$, BGR565-BE |
 | **NI Komplete Kontrol S-Mk2** | `"left"`, `"right"` | $480 \times 272$, BGR565-BE |
 | **NI Maschine Mk2** | `"left"`, `"right"` | $256 \times 64$, 1-bit Mono |
-| **NI Maschine Mk1** | `"left"`, `"right"` | $255 \times 64$, 5-bit grayscale (ST7529) |
+| **NI Maschine Mk1** | `"left"`, `"right"` | $255 \times 64$, 5-bit grayscale (ST7529) or 1-bit Mono |
 | **NI Traktor Kontrol X1 Mk3** | `"left_fx"`, `"left_loop"`, `"center_mode"`, `"right_loop"`, `"right_fx"` | $128 \times 64$, 1-bit Mono |
 
 The screen pipeline automatically:

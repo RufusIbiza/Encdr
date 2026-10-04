@@ -197,6 +197,16 @@ byte 1: [p1 1:0][unused][p2 4:0]
 
 Levels are 5-bit and **inverted**: 0 is fully lit and 31 is black. Submit RGBA8888 or RGB888 frames and Encdr converts luminance for you.
 
+### Monochrome & Maschine Mk2 Compatibility
+
+The Maschine Mk1 hardware controller supports 32 levels of grayscale (5-bit) via the ST7529 chip, while the later Maschine Mk2 uses high-contrast 1-bit monochrome LCDs (2,048 bytes per screen, $256 \times 64$, report `0xE0`/`0xE1`).
+
+To make it seamless to write UI and drawing code that works identically across both the Maschine Mk1 and Mk2:
+
+1. **`PixelFormat::Mono` Support:** You can submit standard 1bpp monochrome buffers (`PixelFormat::Mono`) directly to Maschine Mk1 screens via `submit_screen_with_format`. Encdr automatically expands 1-bit pixels to ST7529 inverted levels ($1 \rightarrow \text{lit/0}$, $0 \rightarrow \text{black/31}$) and packs them into the 3-pixel/2-byte hardware format.
+2. **Resolution & Stride Alignment ($256$ vs $255$ px):** The Mk2 display is $256 \times 64$ (32 bytes per row), while the Mk1 ST7529 is $255 \times 64$ ($85 \text{ groups} \times 3 \text{ pixels} = 255$). Encdr automatically detects the 32-byte scanline stride of Mk2 framebuffers, mapping pixels $0..254$ directly to the Mk1 screen while cleanly clipping column 256. This means any canvas or drawing routine designed for the Mk2 renders on the Mk1 without skew or distortion.
+3. **5-bit Grayscale for Projects That Want It:** Projects that want to take advantage of the Mk1's unique hardware grayscale capabilities can submit `PixelFormat::Rgba8888` or `PixelFormat::Rgb888` frames (e.g., using `encdr.submit_screen(device_id, "left", &rgba_pixels)`). Encdr will map luminance across all 32 hardware gray levels.
+
 **Throughput.** All measurements are on hardware.
 
 | | Data rate | Time | Notes |

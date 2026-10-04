@@ -152,6 +152,12 @@ fn convert_format(
         (PixelFormat::Rgb888, PixelFormat::St7529Gray5) => {
             to_st7529_gray5(pixels, 3, width as usize, height as usize)
         }
+        (PixelFormat::Mono, PixelFormat::St7529Gray5) => {
+            mono_to_st7529_gray5(pixels, width as usize, height as usize)
+        }
+        (PixelFormat::St7529Gray5, PixelFormat::Mono) => {
+            st7529_gray5_to_mono(pixels, width as usize, height as usize)
+        }
         _ => {
             tracing::warn!("Unsupported format conversion: {:?} -> {:?}", from, to);
             pixels.to_vec()
@@ -288,6 +294,83 @@ pub(crate) fn to_st7529_gray5(src: &[u8], channels: usize, width: usize, height:
             let i = (y * groups + g) * 2;
             out[i] = px[0] << 3 | px[1] >> 2;
             out[i + 1] = (px[1] & 0x03) << 6 | px[2];
+        }
+    }
+
+    out
+}
+
+/// Convert 1bpp monochrome bitmap (MSB-first row-major) to ST7529 5-bit grayscale
+/// (3 pixels packed into 2 bytes, 0 = lit, 31 = black).
+///
+/// Handles both native 255-wide and standard 256-wide monochrome framebuffers
+/// (such as those from Maschine Mk2 or X1 Mk3) by matching the scanline stride.
+pub(crate) fn mono_to_st7529_gray5(src: &[u8], width: usize, height: usize) -> Vec<u8> {
+    let groups = width.div_ceil(3);
+    let mut out = vec![0u8; groups * 2 * height];
+    let src_stride = if height > 0 && src.len() >= height {
+        src.len() / height
+    } else {
+        (width + 7) / 8
+    };
+
+    for y in 0..height {
+        let row_offset = y * src_stride;
+        for g in 0..groups {
+            let mut px = [0x1Fu8; 3];
+            for (i, level) in px.iter_mut().enumerate() {
+                let x = g * 3 + i;
+                if x < width {
+                    let byte_idx = row_offset + (x / 8);
+                    if byte_idx < src.len() {
+                        let bit_mask = 0x80 >> (x % 8);
+                        if (src[byte_idx] & bit_mask) != 0 {
+                            *level = 0x00; // Lit (white)
+                        } else {
+                            *level = 0x1F; // Unlit (black)
+                        }
+                    }
+                }
+            }
+            let idx = (y * groups + g) * 2;
+            out[idx] = px[0] << 3 | px[1] >> 2;
+            out[idx + 1] = (px[1] & 0x03) << 6 | px[2];
+        }
+    }
+
+    out
+}
+
+/// Convert ST7529 5-bit grayscale to 1bpp monochrome bitmap (MSB-first row-major).
+///
+/// Thresholds at mid-level (16): pixels with inverted level < 16 are treated as lit.
+pub(crate) fn st7529_gray5_to_mono(src: &[u8], width: usize, height: usize) -> Vec<u8> {
+    let stride = (width + 7) / 8;
+    let mut out = vec![0u8; stride * height];
+    let groups = width.div_ceil(3);
+
+    for y in 0..height {
+        let row_offset = y * stride;
+        for g in 0..groups {
+            let idx = (y * groups + g) * 2;
+            if idx + 1 >= src.len() {
+                break;
+            }
+            let b0 = src[idx];
+            let b1 = src[idx + 1];
+            let px = [
+                b0 >> 3,
+                ((b0 & 0x07) << 2) | (b1 >> 6),
+                b1 & 0x1F,
+            ];
+            for (i, &level) in px.iter().enumerate() {
+                let x = g * 3 + i;
+                if x < width && level < 16 {
+                    let byte_idx = row_offset + (x / 8);
+                    let bit_mask = 0x80 >> (x % 8);
+                    out[byte_idx] |= bit_mask;
+                }
+            }
         }
     }
 
@@ -469,6 +552,48 @@ mod tests {
         let out = to_st7529_gray5(&rgba, 4, 4, 1);
         // Inverted levels: white 0, black 31, gray 31 - 16 = 15.
         assert_eq!(out, vec![0 << 3 | 31 >> 2, (31 & 3) << 6 | 15, 0 << 3 | 31 >> 2, (31 & 3) << 6 | 31]);
+    }
+
+    #[test]
+    fn mono_to_st7529_gray5_packing_and_round_trip() {
+        // 4 pixels: lit, unlit, unlit, lit (MSB 0b1001_0000 = 0x90).
+        let mono = [0x90];
+        let gray5 = mono_to_st7529_gray5(&mono, 4, 1);
+        // Inverted: lit 0, unlit 31.
+        // Group 0: p0=0, p1=31, p2=31. Group 1: p0=0, p1=31(pad), p2=31(pad).
+        assert_eq!(
+            gray5,
+            vec![
+                0 << 3 | 31 >> 2,
+                (31 & 3) << 6 | 31,
+                0 << 3 | 31 >> 2,
+                (31 & 3) << 6 | 31,
+            ]
+        );
+        // Round trip back to mono
+        let back = st7529_gray5_to_mono(&gray5, 4, 1);
+        assert_eq!(back, vec![0x90]);
+    }
+
+    #[test]
+    fn mono_to_st7529_mk2_stride_compatibility() {
+        // Simulate a 256x64 Mk2 framebuffer (32 bytes per row * 64 rows = 2048 bytes).
+        let mut mk2_frame = vec![0u8; 32 * 64];
+        // Turn on pixel (0, 0) and pixel (0, 1) in row 0 and row 1.
+        mk2_frame[0] = 0x80;
+        mk2_frame[32] = 0x80;
+
+        let st7529_frame = mono_to_st7529_gray5(&mk2_frame, 255, 64);
+        // Total bytes should match 85 groups * 2 bytes * 64 rows = 10,880.
+        assert_eq!(st7529_frame.len(), 85 * 2 * 64);
+
+        // Row 0 first triad: p0 lit (0), p1 unlit (31), p2 unlit (31)
+        assert_eq!(st7529_frame[0], 0 << 3 | 31 >> 2);
+        assert_eq!(st7529_frame[1], (31 & 3) << 6 | 31);
+
+        // Row 1 first triad at offset 170: p0 lit (0), p1 unlit (31), p2 unlit (31)
+        assert_eq!(st7529_frame[170], 0 << 3 | 31 >> 2);
+        assert_eq!(st7529_frame[171], (31 & 3) << 6 | 31);
     }
 
     #[test]
