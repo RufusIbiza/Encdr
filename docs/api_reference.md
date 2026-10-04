@@ -576,6 +576,7 @@ pub struct ScreenDesc {
     pub pixel_format: PixelFormat,
     pub full_blit: ScreenBlitDesc,
     pub partial_blit: Option<PartialBlitDesc>,
+    pub protocol: Option<ScreenProtocol>,
 }
 ```
 - `pixel_count(&self) -> usize`: Width $\times$ Height.
