@@ -117,7 +117,7 @@ fn main() {
 | NI Maschine Mikro Mk1     | `17cc:1110`       | Implemented | 28 buttons, 1 rotary encoder, 16 velocity/pressure pads | 28 single-color LEDs, 16 single-color pad LEDs | 128x64 1-bit mono |
 | NI Maschine Mikro Mk2     | `17cc:1200`       | Implemented | 28 buttons, 1 rotary encoder, 16 velocity/pressure pads | 28 single-color LEDs, 16 RGB pads           | 128x64 1-bit mono |
 | NI Maschine Mikro Mk3     | `17cc:1700`       | Implemented | 29 buttons, 1 rotary encoder, 1 Smart Strip, 16 velocity/pressure pads | 29 singles, 16 RGB pads, 25-seg dual LED Smart Strip | 128x32 1-bit OLED |
-| NI Maschine Mk1           | `17cc:0808`       | Implemented | 41 buttons, 11 endless knobs, 16 pressure pads | 16 pad LEDs, 41 singles, display backlight  | 2x 255x64 5-bit gray |
+| NI Maschine Mk1           | `17cc:0808`       | Implemented | 41 buttons, 11 endless knobs, 16 pressure pads | 16 pad LEDs, 41 singles, display backlight  | 2x 255x64 5-bit gray / 1-bit mono |
 | NI Maschine Mk2           | `17cc:1140`       | Implemented | 47 buttons, 11 encoders, 16 velocity pads     | 16 RGB pads, 31 singles                     | 2x 256x64 1-bit   |
 | NI Maschine Mk3           | `17cc:1600`       | Implemented | 63 buttons, 10 touches, 9 encoders, 1 slider, 16 pads | 16 RGB pads, 62 singles, 1 strip     | 2x 480x272 BGR565 |
 | NI Maschine Plus          | `17cc:1820`       | Implemented | 63 buttons, 10 touches, 9 encoders, 1 slider, 16 pads | 16 RGB pads, 62 singles, 1 strip     | 2x 480x272 BGR565 |
@@ -268,6 +268,16 @@ encdr/
 
 
 ## Changelog
+### v0.7.0
+- **NI Maschine Mk1 Hardware Support**:
+  - Added full hardware support for the original **NI Maschine (Mk1)** (`17cc:0808`), contributed by [@nullobject](https://github.com/nullobject) in [PR #2](https://github.com/RufusIbiza/Encdr/pull/2).
+  - **Inputs**: Mapped all 41 buttons, 16 pressure-sensitive velocity pads (`pad_format: "id_pressure_words"`), and 11 endless rotary potentiometers (`encoding: "erp"`, with analog calibration and deadband filtering).
+  - **LEDs**: Mapped all 58 LEDs across two dimming banks (`0x0c, 0x00` and `0x0c, 0x1e`), including startup initialisation for the LCD backlight.
+  - **ST7529 Dual Displays & Protocol**: Added controller initialization and chunked packet framing for the dual $255 \times 64$ Sitronix ST7529 displays.
+  - **Engine Features**: Added support for multi-endpoint round-robin input polling, `report_id` and `pad_format` packet routing, multi-byte LED prefixes, typed one-shot connect `init_writes`, and load-time descriptor validation.
+  - **Monochrome & Mk2 Cross-Compatibility**: Added bidirectional `PixelFormat::Mono` $\leftrightarrow$ `PixelFormat::St7529Gray5` conversion in the screen pipeline, enabling standard 1-bit monochrome framebuffers (such as those from Maschine Mk2 and X1 Mk3) to render directly on Mk1 with automatic 32-byte scanline stride alignment and clipping. Native 5-bit grayscale (`PixelFormat::Rgba8888` / `Rgb888`) remains fully supported.
+  - **Documentation & Example**: Added complete hardware documentation in [`docs/hardware/ni_maschine_mk1.md`](docs/hardware/ni_maschine_mk1.md) and interactive Vegas / telemetry demo in [`examples/maschine_mk1/mk1_vegas.rs`](examples/maschine_mk1/mk1_vegas.rs).
+
 ### v0.6.1
 - **Maschine Studio Pad Stream Fix**:
   - Added missing `pads` input packet descriptor (Report `0x20` continuous 16-channel 12-bit ADC stream) to [`encdr/descriptors/ni_maschine_studio.json`](encdr/descriptors/ni_maschine_studio.json).
