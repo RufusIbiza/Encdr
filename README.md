@@ -2,11 +2,61 @@
 
 Native Instruments USB HID hardware and screen communication layer.
 
-Provides data-driven device definitions, real-time input parsing, LED/screen output, GPU-accelerated frame management, and an optional WebView-based screen renderer.
+### What is it?
+
+This Rust library allows you to easily add NI controller support to your application. It handles all the low-level USB HID communication and screen rendering for you. It also offers additional helper functions for specific hardware features, such as push encoder detection, light rings and 7 segment LED displays. Although most HID-based NI controllers are supported at this point, adding support for additional controllers just requires creating a new JSON descriptor file and adding the new device to the scan function. 
+
+Screen output is achieved in one of two ways:
+- **Raw pixel data** (the default) - send raw rgba pixel data, and Encdr will handle the colour space conversion, GPU accelerated diffing, encoding and USB transfer.
+- **Webview** - use the wgpu-based webview implementation, in the `encdr-view` crate. This allows you to create your screen UI using HTML/CSS/Canvas and let Encdr handle the GPU accelerated rendering to the device screens.
+
+Inspired by the [openAV-Ctlra](https://github.com/openAVproductions/openAV-Ctlra) C library, reimagined in Rust with data-driven device descriptors, zero-copy I/O, and a GPU-accelerated screen pipeline.
 
 `#NativeInstruments` `#NI`
 
-Born from the [openAV-Ctlra](https://github.com/openAVproductions/openAV-Ctlra) C library, reimagined in Rust with data-driven device descriptors, zero-copy I/O, and a GPU-accelerated screen pipeline.
+#### Design Philosophy
+
+1. **Exposes hardware truthfully** — every button, slider, encoder, LED, and screen is enumerated and accessible by name. The consuming app decides what each control does.
+2. **Data-driven device definitions** — new devices are added via JSON descriptor files, not Rust code. The descriptor defines USB endpoints, byte-level packet layouts, LED mappings, and screen protocols.
+3. **Two-tier screen pipeline** — an optional WebView renderer (`encdr-view`) lets apps build screen UIs with HTML/CSS/Canvas, while the core module accepts raw pixel buffers. Both share the same GPU conversion/diff/transfer backend.
+4. **Optimizes for latency** — async USB I/O, lock-free event delivery, GPU-side format conversion, dirty-region-only transfers.
+
+### What can it do?
+
+On it's own, nothing. Add a sprinkling of imagination, though, and it allows you to use your NI controller for whatever you can dream up. Here's some ideas: 
+- A VJ software controller with cue/master outputs on the dual screens
+- A fully integrated DAW controller
+- A stream deck with camera angle and screen overlay controls
+- A control surface for your smart lights
+- Color correction controller for photo/video editing
+
+### What can't it do?
+
+- Add iPhone/iPad support. Apple does not allow non-standard protocols over USB with non-MFi certified devices, and a custom driver would be required. This is outside the scope of this library.
+
+### How do I install it?
+If you're asking this question, Encdr is probably not for you. It's a developer tool, and needs to be compiled into a larger application to be useful. It also requires you to be comfortable with Rust and C/C++ programming (although I've tried to make it as easy to use with AI/LLM coding tools as possible - just point your LLM at this url, and it should be able to guide you through the process of building and running an app).
+
+If you're a developer, you can add it to your project using Cargo:
+
+```bash
+cargo add encdr
+```
+
+and additionally, if you want to use the WebView-based screen implementation:
+```bash
+cargo add encdr-view
+```
+
+### How can I support this project? 
+- **By contributing code** - Feel free to open an issue or submit a pull request.
+- **By contributing time** - If you have a Native Instruments device that isn't supported (or properly tested), providing feedback helps us get to the point where all devices are properly supported and tested. 
+- **By contributing money** - Figuring out the screen and communication protocols for all the NI controllers has taken over 2 years by this point. If you'd like to support this project's continued development, you can do so through [Ko-fi](https://ko-fi.com/rufuswhite) or [GitHub Sponsors](https://github.com/sponsors/RufusIbiza/).
+- **By contributing stars** - If you like Encdr, please consider giving it a star on GitHub!
+
+### I made something with Encdr, what now?
+
+Awesome! Please share it with the community by posting in the ['Show and Tell'](https://github.com/RufusIbiza/Encdr/discussions/categories/show-and-tell) category in the discussions tab here on GitHub!
 
 ## Quick Start
 
@@ -50,13 +100,6 @@ fn main() {
 }
 ```
 
-## Design Philosophy
-
-1. **Exposes hardware truthfully** — every button, slider, encoder, LED, and screen is enumerated and accessible by name. The consuming app decides what each control does.
-2. **Data-driven device definitions** — new devices are added via JSON descriptor files, not Rust code. The descriptor defines USB endpoints, byte-level packet layouts, LED mappings, and screen protocols.
-3. **Two-tier screen pipeline** — an optional WebView renderer (`encdr-view`) lets apps build screen UIs with HTML/CSS/Canvas, while the core module accepts raw pixel buffers. Both share the same GPU conversion/diff/transfer backend.
-4. **Optimizes for latency** — async USB I/O, lock-free event delivery, GPU-side format conversion, dirty-region-only transfers.
-
 ## Architecture
 
 ```
@@ -95,6 +138,39 @@ fn main() {
                      │     (nusb)      │
                      └─────────────────┘
 ```
+## Documentation
+
+### Getting Started with Encdr
+- [Quick Start Tutorial](docs/quickstart.md) — step-by-step tutorial with Maschine Mk3 dual-screen walkthrough
+- [API Reference](docs/api_reference.md) — complete programmer reference for all types, functions, and methods
+- [Usage Guide](docs/usage.md) — comprehensive usage guide
+- [Examples Guide](examples/README.md) — complete directory of hardware examples, screen tests, and diagnostic utilities
+
+### Hardware Reference
+- [NI Kontrol D2](docs/hardware/ni_kontrol_d2.md)
+- [NI Kontrol F1](docs/hardware/ni_kontrol_f1.md)
+- [NI Kontrol S2 Mk1](docs/hardware/ni_kontrol_s2_mk1.md)
+- [NI Kontrol S2 Mk2](docs/hardware/ni_kontrol_s2_mk2.md)
+- [NI Kontrol S4 Mk2](docs/hardware/ni_kontrol_s4_mk2.md)
+- [NI Kontrol S4 Mk3](docs/hardware/ni_kontrol_s4_mk3.md)
+- [NI Kontrol S5](docs/hardware/ni_kontrol_s5.md)
+- [NI Kontrol S8](docs/hardware/ni_kontrol_s8.md)
+- [NI Kontrol X1 Mk1](docs/hardware/ni_kontrol_x1_mk1.md)
+- [NI Kontrol X1 Mk2](docs/hardware/ni_kontrol_x1_mk2.md)
+- [NI Kontrol X1 Mk3](docs/hardware/ni_kontrol_x1_mk3.md)
+- [NI Kontrol Z1](docs/hardware/ni_kontrol_z1.md)
+- [NI Kontrol Z2](docs/hardware/ni_kontrol_z2.md)
+- [NI Maschine Jam](docs/hardware/ni_maschine_jam.md)
+- [NI Maschine Mikro Mk1](docs/hardware/ni_maschine_mikro_mk1.md)
+- [NI Maschine Mikro Mk2](docs/hardware/ni_maschine_mikro_mk2.md)
+- [NI Maschine Mikro Mk3](docs/hardware/ni_maschine_mikro_mk3.md)
+- [NI Maschine Mk1](docs/hardware/ni_maschine_mk1.md)
+- [NI Maschine Mk2](docs/hardware/ni_maschine_mk2.md)
+- [NI Maschine Mk3](docs/hardware/ni_maschine_mk3.md)
+- [NI Maschine Plus](docs/hardware/ni_maschine_plus.md)
+- [NI Maschine Studio](docs/hardware/ni_maschine_studio.md)
+- [NI Komplete Kontrol Mk2](docs/hardware/ni_komplete_kontrol_mk2.md)
+- [NI Komplete Kontrol Mk3](docs/hardware/ni_komplete_kontrol_mk3.md)
 
 ## Supported Hardware
 
@@ -231,40 +307,6 @@ encdr/
 | Obj-C bridge (macOS)    | `objc2` + `block2`         | WKWebView `takeSnapshot` pixel capture   |
 | COM/WebView2 (Windows)  | `webview2-com` + `windows` | WebView2 `CapturePreview` pixel capture  |
 | PNG decode (Windows)    | `png`                      | Decode CapturePreview PNG output to RGBA |
-
-## Documentation
-
-### Getting Started with Encdr
-- [Quick Start Tutorial](docs/quickstart.md) — step-by-step tutorial with Maschine Mk3 dual-screen walkthrough
-- [API Reference](docs/api_reference.md) — complete programmer reference for all types, functions, and methods
-- [Usage Guide](docs/usage.md) — comprehensive usage guide
-- [Examples Guide](examples/README.md) — complete directory of hardware examples, screen tests, and diagnostic utilities
-
-### Hardware Reference
-- [NI Kontrol D2](docs/hardware/ni_kontrol_d2.md)
-- [NI Kontrol F1](docs/hardware/ni_kontrol_f1.md)
-- [NI Kontrol S2 Mk1](docs/hardware/ni_kontrol_s2_mk1.md)
-- [NI Kontrol S2 Mk2](docs/hardware/ni_kontrol_s2_mk2.md)
-- [NI Kontrol S4 Mk2](docs/hardware/ni_kontrol_s4_mk2.md)
-- [NI Kontrol S4 Mk3](docs/hardware/ni_kontrol_s4_mk3.md)
-- [NI Kontrol S5](docs/hardware/ni_kontrol_s5.md)
-- [NI Kontrol S8](docs/hardware/ni_kontrol_s8.md)
-- [NI Kontrol X1 Mk1](docs/hardware/ni_kontrol_x1_mk1.md)
-- [NI Kontrol X1 Mk2](docs/hardware/ni_kontrol_x1_mk2.md)
-- [NI Kontrol X1 Mk3](docs/hardware/ni_kontrol_x1_mk3.md)
-- [NI Kontrol Z1](docs/hardware/ni_kontrol_z1.md)
-- [NI Kontrol Z2](docs/hardware/ni_kontrol_z2.md)
-- [NI Maschine Jam](docs/hardware/ni_maschine_jam.md)
-- [NI Maschine Mikro Mk1](docs/hardware/ni_maschine_mikro_mk1.md)
-- [NI Maschine Mikro Mk2](docs/hardware/ni_maschine_mikro_mk2.md)
-- [NI Maschine Mikro Mk3](docs/hardware/ni_maschine_mikro_mk3.md)
-- [NI Maschine Mk1](docs/hardware/ni_maschine_mk1.md)
-- [NI Maschine Mk2](docs/hardware/ni_maschine_mk2.md)
-- [NI Maschine Mk3](docs/hardware/ni_maschine_mk3.md)
-- [NI Maschine Plus](docs/hardware/ni_maschine_plus.md)
-- [NI Maschine Studio](docs/hardware/ni_maschine_studio.md)
-- [NI Komplete Kontrol Mk2](docs/hardware/ni_komplete_kontrol_mk2.md)
-- [NI Komplete Kontrol Mk3](docs/hardware/ni_komplete_kontrol_mk3.md)
 
 
 ## Changelog
