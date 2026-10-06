@@ -45,7 +45,8 @@ And additionally, if you want to use the WebView-based screen implementation:
 cargo add encdr-view
 ```
 > [!NOTE]
-> **Platform Prerequisites**: On Linux, compiling requires `libudev-dev` (plus `libwebkit2gtk-4.1-dev` and `libgtk-3-dev` if using `encdr-view`), and non-root hardware access requires setting up a udev rule ([see here](docs/usage.md#platform-prerequisites)). On macOS and Windows, NI background services may need to be stopped if they hold the USB interfaces. 
+> **Platform Prerequisites**: On Linux, compiling requires `libudev-dev` (plus `libwebkit2gtk-4.1-dev` and `libgtk-3-dev` if using `encdr-view`), and non-root hardware access requires setting up a udev rule ([see here](docs/usage.md#platform-prerequisites)). 
+>On **macOS and Windows**, NI background services may need to be stopped if they hold the USB interfaces. 
 
 ### How can I support this project? 
 - **By contributing code** - Feel free to open an issue or submit a pull request.
