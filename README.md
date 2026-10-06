@@ -1,10 +1,8 @@
 # Encdr
 
-Native Instruments USB HID hardware and screen communication layer.
-
 ### What is it?
 
-This Rust library allows you to easily add NI controller support to your application. It handles all the low-level USB HID communication and screen rendering for you. It also offers additional helper functions for specific hardware features, such as push encoder detection, light rings and 7 segment LED displays. Although most HID-based NI controllers are supported at this point, adding support for additional controllers just requires creating a new JSON descriptor file and adding the new device to the scan function. 
+Encdr is a Rust library that allows you to easily add Native Instruments (NI) controller support to your application. It handles all the low-level USB HID communication and screen rendering for you. It also offers additional helper functions for specific hardware features, such as push encoder detection, light rings and 7 segment LED displays. Although most HID-based NI controllers are supported at this point, adding support for additional controllers just requires creating a new JSON descriptor file and adding the new device to the scan function. 
 
 Screen output is achieved in one of two ways:
 - **Raw pixel data** (the default) - send raw rgba pixel data, and Encdr will handle the colour space conversion, GPU accelerated diffing, encoding and USB transfer.
@@ -35,7 +33,7 @@ On it's own, nothing. Add a sprinkling of imagination, though, and it allows you
 - Add iPhone/iPad support. Apple does not allow non-standard protocols over USB with non-MFi certified devices, and a custom driver would be required. This is outside the scope of this library.
 
 ### How do I install it?
-If you're asking this question, Encdr is probably not for you. It's a developer tool, and needs to be compiled into a larger application to be useful. It also requires you to be comfortable with Rust and C/C++ programming (although I've tried to make it as easy to use with AI/LLM coding tools as possible - just point your LLM at this url, and it should be able to guide you through the process of building and running an app).
+If you're asking this question, Encdr is probably not for you. It's a developer tool, and needs to be compiled into a larger application to be useful. It also requires you to be comfortable with Rust programming (although I've tried to make it as easy to use with AI/LLM coding tools as possible - just point your LLM at this url, and it should be able to guide you through the process of building and running an app).
 
 If you're a developer, you can add it to your project using Cargo:
 
