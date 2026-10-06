@@ -2,11 +2,11 @@
 
 ### What is it?
 
-Encdr is a Rust library that allows you to easily add Native Instruments (NI) controller support to your application. It handles all the low-level USB HID communication and screen rendering for you. It also offers additional helper functions for specific hardware features, such as push encoder detection, light rings and 7 segment LED displays. Although most HID-based NI controllers are supported at this point, adding support for additional controllers just requires creating a new JSON descriptor file and adding the new device to the scan function. 
+Encdr is a Rust library that allows you to easily add Native Instruments (NI) controller support to your application. It handles all the low-level USB HID communication and screen rendering for you. It also offers additional helper functions for specific hardware features, such as push encoder detection, light rings, and 7-segment LED displays. Although most HID-based NI controllers are supported at this point, adding support for additional controllers just requires creating a new JSON descriptor file and registering it with the descriptor registry. 
 
 Screen output is achieved in one of two ways:
-- **Raw pixel data** (the default) - send raw rgba pixel data, and Encdr will handle the colour space conversion, GPU accelerated diffing, encoding and USB transfer.
-- **Webview** - use the wgpu-based webview implementation, in the `encdr-view` crate. This allows you to create your screen UI using HTML/CSS/Canvas and let Encdr handle the GPU accelerated rendering to the device screens.
+- **Raw pixel data** (the default) — send raw RGBA pixel data, and Encdr will handle the colour space conversion, GPU-accelerated diffing, encoding, and USB transfer.
+- **WebView** — use the wgpu-based WebView implementation in the `encdr-view` crate. This allows you to create your screen UI using HTML/CSS/Canvas and let Encdr handle GPU-accelerated rendering to the device screens.
 
 Inspired by the [openAV-Ctlra](https://github.com/openAVproductions/openAV-Ctlra) C library, reimagined in Rust with data-driven device descriptors, zero-copy I/O, and a GPU-accelerated screen pipeline.
 
@@ -21,7 +21,7 @@ Inspired by the [openAV-Ctlra](https://github.com/openAVproductions/openAV-Ctlra
 
 ### What can it do?
 
-On it's own, nothing. Add a sprinkling of imagination, though, and it allows you to use your NI controller for whatever you can dream up. Here's some ideas: 
+On its own, nothing. Add a sprinkling of imagination, though, and it allows you to use your NI controller for whatever you can dream up. Here are some ideas: 
 - A VJ software controller with cue/master outputs on the dual screens
 - A fully integrated DAW controller
 - A stream deck with camera angle and screen overlay controls
@@ -30,10 +30,9 @@ On it's own, nothing. Add a sprinkling of imagination, though, and it allows you
 
 ### What can't it do?
 
-- Add iPhone/iPad support. Apple does not allow non-standard protocols over USB with non-MFi certified devices, and a custom driver would be required. This is outside the scope of this library.
+## How do I install it?
 
-### How do I install it?
-If you're asking this question, Encdr is probably not for you. It's a developer tool, and needs to be compiled into a larger application to be useful. It also requires you to be comfortable with Rust programming (although I've tried to make it as easy to use with AI/LLM coding tools as possible - just point your LLM at this url, and it should be able to guide you through the process of building and running an app).
+If you're asking this question, Encdr is probably not for you. It's a developer tool, and needs to be compiled into a larger application to be useful. It also requires you to be comfortable with Rust programming (although I've tried to make it as easy to use with AI/LLM coding tools as possible — just point your LLM at [this repository](https://github.com/RufusIbiza/Encdr), and it should be able to guide you through the process of building and running an app).
 
 If you're a developer, you can add it to your project using Cargo:
 
@@ -41,10 +40,12 @@ If you're a developer, you can add it to your project using Cargo:
 cargo add encdr
 ```
 
-and additionally, if you want to use the WebView-based screen implementation:
+And additionally, if you want to use the WebView-based screen implementation:
 ```bash
 cargo add encdr-view
 ```
+> [!NOTE]
+> **Platform Prerequisites**: On Linux, compiling requires `libudev-dev` (plus `libwebkit2gtk-4.1-dev` and `libgtk-3-dev` if using `encdr-view`), and non-root hardware access requires setting up a udev rule ([see here](docs/usage.md#platform-prerequisites)). On macOS and Windows, NI background services may need to be stopped if they hold the USB interfaces. 
 
 ### How can I support this project? 
 - **By contributing code** - Feel free to open an issue or submit a pull request.
