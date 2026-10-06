@@ -30,7 +30,12 @@ On its own, nothing. Add a sprinkling of imagination, though, and it allows you 
 
 ### What can't it do?
 
-## How do I install it?
+- **iPhone/iPad (iOS/iPadOS) support** — Apple does not allow non-standard USB communication with non-MFi certified devices without custom hardware or driver entitlements, which is outside the scope of this library.
+- **Audio interface streaming** — Encdr is strictly a control surface, LED, and display driver library. Audio streaming (inputs, outputs, soundcards) is handled directly by standard OS audio subsystems (ALSA/PipeWire on Linux, CoreAudio on macOS, ASIO/WASAPI on Windows).
+- **Native Instruments software integration** — Encdr communicates directly with the controller hardware; it does not interface with Traktor Pro, Maschine, or Komplete Kontrol software libraries, nor proprietary NKS preset databases.
+- **Wireless or Bluetooth operation** — All supported controllers communicate strictly over wired USB.
+
+### How do I install it?
 
 If you're asking this question, Encdr is probably not for you. It's a developer tool, and needs to be compiled into a larger application to be useful. It also requires you to be comfortable with Rust programming (although I've tried to make it as easy to use with AI/LLM coding tools as possible — just point your LLM at [this repository](https://github.com/RufusIbiza/Encdr), and it should be able to guide you through the process of building and running an app).
 
