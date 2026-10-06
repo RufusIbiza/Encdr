@@ -51,10 +51,10 @@
 - **Bytes 70..77**: FX Unit 2 dry/wet and knobs 1–3
 
 ### Report 3: Jog Wheel Position & Velocity (48 bytes)
-- **Bytes 11..12**: Left wheel relative delta counter (16-bit)
-- **Bytes 15..16**: Left wheel absolute position (0..2879 steps per revolution)
-- **Bytes 39..40**: Right wheel relative delta counter (16-bit)
-- **Bytes 43..44**: Right wheel absolute position (0..2879 steps per revolution)
+- **Bytes 11..12**: Left wheel relative delta counter (16-bit, `wrap16_wide`) &rarr; control `left_jog_wheel` (`Event::EncoderFine`)
+- **Bytes 15..16**: Left wheel absolute position (0..2879 steps per revolution) &rarr; control `left_jog_pos` (`Event::Slider`, normalized `0.0..1.0`)
+- **Bytes 39..40**: Right wheel relative delta counter (16-bit, `wrap16_wide`) &rarr; control `right_jog_wheel` (`Event::EncoderFine`)
+- **Bytes 43..44**: Right wheel absolute position (0..2879 steps per revolution) &rarr; control `right_jog_pos` (`Event::Slider`, normalized `0.0..1.0`)
 
 ---
 
@@ -91,10 +91,43 @@ Direct motor torque and velocity feedback:
   - `2`: Needle position spot
   - `3`: Ring flash
   - `4`: Dim spot
-  - `5`: Individually addressable LEDs
-- **Bytes 2..3**: Needle position (0..2879, little-endian)
-- **Byte 4**: Base color + brightness
-- **Bytes 8..39**: (In mode 5) Individual RGB values for LEDs around the ring
+  - `5`: Individually addressable 32-segment ring
+- **Bytes 2..3**: Needle position (0..2879 ticks, little-endian)
+- **Byte 4**: Base color / brightness (NI packed palette byte)
+- **Bytes 8..39**: (In mode 5) 32 individual color/brightness values for LEDs around the ring
+
+#### Encdr High-Level API
+
+```rust
+use encdr::{Encdr, JogDeck, JogRing, JogRingMode, LedValue};
+
+// 1. Needle Position Mode (0..2879 steps per revolution)
+encdr.set_jog_ring_needle(device_id, JogDeck::Left, 720, LedValue::Rgb { r: 0, g: 255, b: 255 });
+
+// 2. Full Ring Flash / Dim Spot / Dim Flash Modes
+encdr.set_jog_ring_mode(device_id, JogDeck::Right, JogRingMode::RingFlash, 0, LedValue::Rgb { r: 255, g: 0, b: 0 });
+
+// 3. Addressable 32-segment Ring (chase / spinner / custom patterns)
+let spinner = JogRing::spinner(16, 8, 0x7F);
+encdr.set_jog_ring(device_id, JogDeck::Left, &spinner);
+
+// 4. Raw 32-byte LED array
+let raw_leds = [0x7Fu8; 32];
+encdr.set_jog_ring_leds(device_id, JogDeck::Right, &raw_leds);
+
+// 5. Real-time Hardware Synchronization (manual spin or motorized platter)
+// In your event loop:
+if let Some((deck, ticks)) = encdr.sync_jog_ring_from_event(&event, LedValue::Rgb { r: 0, g: 255, b: 255 }) {
+    // Spot automatically moved in 1:1 physical sync with the wheel!
+}
+
+// Or sync directly from a normalized angle or radians:
+encdr.sync_jog_ring_normalized(device_id, JogDeck::Left, 0.5, LedValue::Rgb { r: 0, g: 255, b: 0 }); // 6 o'clock
+encdr.sync_jog_ring_radians(device_id, JogDeck::Right, std::f32::consts::PI, LedValue::Rgb { r: 255, g: 0, b: 0 });
+
+// 6. Turn ring off
+encdr.set_jog_ring_off(device_id, JogDeck::Left);
+```
 
 ---
 

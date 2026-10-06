@@ -268,6 +268,15 @@ encdr/
 
 
 ## Changelog
+### v0.7.2
+- **Traktor Kontrol S4 MK3 Jog Wheel LED Ring Support & Real-Time Sync**:
+  - **Descriptor Enhancements**: Split the shared Report `0x32` mapping into independent `left_wheel_leds` and `right_wheel_leds` groups with dedicated 32-element `strip` arrays (`left_wheel_ring`, `right_wheel_ring`) and individually addressable segment controls (`left_ring_1..32`, `right_ring_1..32`).
+  - **Input Position Mapping**: Mapped `left_jog_pos` (bytes `[15, 16]`) and `right_jog_pos` (bytes `[43, 44]`) in Report 3 to deliver 16-bit absolute platter positions (`0..2879` ticks per revolution).
+  - **Core Types & Helpers**: Introduced `JogDeck`, `JogRingMode`, `JogRing` (32-segment buffer helper with spinner and arc meter generators), and `JogWheelTracker` (angular displacement tracker across manual spin and motorized turntable rotations).
+  - **High-Level API**: Added `set_jog_ring_needle()`, `set_jog_ring_mode()`, `set_jog_ring_leds()`, `set_jog_ring()`, and `set_jog_ring_off()` on `Encdr`.
+  - **Real-Time Hardware Synchronization**: Added `sync_jog_ring_from_event()`, `sync_jog_ring_normalized()`, `sync_jog_ring_radians()`, and `sync_jog_ring_position()` enabling ring spots to lock in 1:1 physical synchronization with the wheel under both manual manipulation and motorized turntable rotation.
+  - **Vegas Demo & Documentation**: Updated `s4_mk3_vegas` demo with live spinning needle tracking, capacitive touch response, and 32-segment animated rainbow spinner chase; updated hardware reference, API reference, and usage documentation.
+
 ### v0.7.0
 - **NI Maschine Mk1 Hardware Support**:
   - Added full hardware support for the original **NI Maschine (Mk1)** (`17cc:0808`), contributed by [@nullobject](https://github.com/nullobject) in [PR #2](https://github.com/RufusIbiza/Encdr/pull/2).

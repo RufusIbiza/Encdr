@@ -12,12 +12,13 @@ This document provides a comprehensive API reference for [`encdr`](file:///home/
 4. [Hardware Events: `Event`](#4-hardware-events-event)
 5. [LED Values & NI Palette: `LedValue`](#5-led-values--ni-palette-ledvalue)
 6. [Seven-Segment Displays: `SevenSegment`](#6-seven-segment-displays-sevensegment)
-7. [Pixel Formats: `PixelFormat`](#7-pixel-formats-pixelformat)
-8. [GPU Acceleration: `GpuContext`](#8-gpu-acceleration-gpucontext)
-9. [Custom Packet Decoders: `PacketHook`](#9-custom-packet-decoders-packethook)
-10. [Error Handling: `EncdrError`](#10-error-handling-encdrerror)
-11. [Device Descriptors & Runtime Introspection](#11-device-descriptors--runtime-introspection)
-12. [WebView Offscreen Renderer: `encdr-view`](#12-webview-offscreen-renderer-encdr-view)
+7. [Jog Wheel LED Rings: `JogRing`, `JogDeck`, `JogRingMode`](#7-jog-wheel-led-rings-jogring-jogdeck-jogringmode)
+8. [Pixel Formats: `PixelFormat`](#8-pixel-formats-pixelformat)
+9. [GPU Acceleration: `GpuContext`](#9-gpu-acceleration-gpucontext)
+10. [Custom Packet Decoders: `PacketHook`](#10-custom-packet-decoders-packethook)
+11. [Error Handling: `EncdrError`](#11-error-handling-encdrerror)
+12. [Device Descriptors & Runtime Introspection](#12-device-descriptors--runtime-introspection)
+13. [WebView Offscreen Renderer: `encdr-view`](#13-webview-offscreen-renderer-encdr-view)
 
 ---
 
@@ -139,19 +140,90 @@ Encodes standard DJ loop lengths (e.g., `32`, `16`, `8`, `4`, `2`, `1`, `0.5`, `
 encdr.set_loop_display(device_id, "left_loop_digit_1", "left_loop_digit_2", 0.5, true);
 ```
 
-#### `pub fn set_loop_display_with_dot(&self, device_id: DeviceId, digit_left: &str, digit_right: &str, dot_name: Option<&str>, beats: f32, active: bool)`
-Encodes DJ loop lengths across two digits and simultaneously controls a dedicated hardware status dot LED (such as `left_loop_dot` on the Traktor Kontrol S4 MK2).
+```
+
+#### `pub fn set_jog_ring_needle(&self, device_id: DeviceId, deck: JogDeck, position: u16, color: LedValue)`
+Sets the motorized / haptic jog wheel LED ring on a Traktor Kontrol S4 Mk3 to single needle indicator mode.
+- `deck`: [`JogDeck::Left`](#jogdeck) or [`JogDeck::Right`](#jogdeck)
+- `position`: Needle tick offset (`0..2879`, where 2880 is a full revolution)
+- `color`: [`LedValue::Rgb`](#ledvalue) (automatically converted to NI packed palette byte) or [`LedValue::Single`](#ledvalue)
 
 ```rust
-encdr.set_loop_display_with_dot(
-    device_id,
-    "left_loop_digit_1",
-    "left_loop_digit_2",
-    Some("left_loop_dot"),
-    8.0,
-    true,
-);
+use encdr::{JogDeck, LedValue};
+
+encdr.set_jog_ring_needle(device_id, JogDeck::Left, 720, LedValue::Rgb { r: 0, g: 255, b: 255 });
 ```
+
+#### `pub fn set_jog_ring_mode(&self, device_id: DeviceId, deck: JogDeck, mode: JogRingMode, position: u16, color: LedValue)`
+Sets an S4 Mk3 jog wheel LED ring to an explicit hardware mode:
+- `mode`: [`JogRingMode`](#jogringmode) (`Off`, `DimFlash`, `Needle`, `RingFlash`, `DimSpot`, or `Addressable`)
+
+```rust
+use encdr::{JogDeck, JogRingMode, LedValue};
+
+encdr.set_jog_ring_mode(device_id, JogDeck::Right, JogRingMode::RingFlash, 0, LedValue::Rgb { r: 255, g: 0, b: 0 });
+```
+
+#### `pub fn set_jog_ring_leds(&self, device_id: DeviceId, deck: JogDeck, leds: &[u8])`
+Sets the 32 individually addressable LEDs on an S4 Mk3 jog wheel ring (mode 5).
+
+```rust
+let ring = [0x7Fu8; 32];
+encdr.set_jog_ring_leds(device_id, JogDeck::Right, &ring);
+```
+
+#### `pub fn set_jog_ring(&self, device_id: DeviceId, deck: JogDeck, ring: &JogRing)`
+Convenience method setting an S4 Mk3 jog wheel ring from a [`JogRing`](#jogring) buffer helper.
+
+```rust
+use encdr::{JogDeck, JogRing};
+
+let spinner = JogRing::spinner(16, 8, 0x7F);
+encdr.set_jog_ring(device_id, JogDeck::Left, &spinner);
+```
+
+#### `pub fn set_jog_ring_off(&self, device_id: DeviceId, deck: JogDeck)`
+Turns off the jog wheel ring for the specified deck.
+
+```rust
+encdr.set_jog_ring_off(device_id, JogDeck::Left);
+```
+
+#### `pub fn sync_jog_ring_from_event(&self, event: &Event, color: LedValue) -> Option<(JogDeck, u16)>`
+Synchronizes the jog wheel ring needle spot directly with an incoming jog wheel event in real time.
+- Handles both manual spin and motorized turntable platter rotation.
+- Automatically matches `"left_jog_pos"` and `"right_jog_pos"` absolute position events.
+- Returns `Some((deck, ticks))` if the event was an S4 Mk3 jog wheel event and updated the ring, or `None` otherwise.
+
+```rust
+// Inside event processing loop:
+if let Some((deck, ticks)) = encdr.sync_jog_ring_from_event(&event, LedValue::Rgb { r: 0, g: 255, b: 255 }) {
+    // LED needle is updated in 1:1 hardware sync with the physical wheel!
+}
+```
+
+#### `pub fn sync_jog_ring_normalized(&self, device_id: DeviceId, deck: JogDeck, normalized: f32, color: LedValue)`
+Synchronizes the jog wheel needle position from a normalized angle (`0.0 .. 1.0`, where 0.0 is 12 o'clock and 1.0 is 360°).
+
+```rust
+encdr.sync_jog_ring_normalized(device_id, JogDeck::Left, 0.25, LedValue::Rgb { r: 0, g: 255, b: 0 }); // 3 o'clock (90°)
+```
+
+#### `pub fn sync_jog_ring_radians(&self, device_id: DeviceId, deck: JogDeck, radians: f32, color: LedValue)`
+Synchronizes the jog wheel needle position from an angle in radians (`0.0 .. 2*PI`).
+
+```rust
+encdr.sync_jog_ring_radians(device_id, JogDeck::Right, std::f32::consts::PI, LedValue::Rgb { r: 255, g: 0, b: 0 }); // 6 o'clock (180°)
+```
+
+#### `pub fn sync_jog_ring_position(&self, device_id: DeviceId, deck: JogDeck, ticks: u16, color: LedValue)`
+Synchronizes the jog wheel needle spot directly with an absolute tick position (`0..2879`).
+
+```rust
+encdr.sync_jog_ring_position(device_id, JogDeck::Left, 1440, LedValue::Rgb { r: 255, g: 255, b: 0 });
+```
+
+
 
 #### `pub fn submit_screen(&self, device_id: DeviceId, screen: &str, pixels: &[u8])`
 Submits a raw frame of `RGBA8888` pixel bytes to a specified display. The frame is fed through the GPU compute pipeline, converted to the display's native format (e.g., BGR565 or 1-bit Mono), dirty-rect diffed against the previous frame, and transferred via USB.
@@ -424,7 +496,53 @@ assert_eq!(right, SevenSegment::from_char('2').with_dot(true));
 
 ---
 
-## 7. Pixel Formats: `PixelFormat`
+## 7. Jog Wheel LED Rings: `JogRing`, `JogDeck`, `JogRingMode`
+
+Defined in [`encdr::core::jog_ring`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/core/jog_ring.rs).
+
+Models the dual motorized/haptic jog wheel LED rings on the Traktor Kontrol S4 MK3 (USB Output Report `0x32`).
+
+### `JogDeck`
+Identifies the deck for jog wheel operations:
+- `JogDeck::Left` (Deck A/C, index 0)
+- `JogDeck::Right` (Deck B/D, index 1)
+
+### `JogRingMode`
+Hardware operating modes supported by the S4 MK3 ring controller:
+| Mode | Value | Description |
+|---|---|---|
+| `JogRingMode::Off` | `0` | All ring LEDs off |
+| `JogRingMode::DimFlash` | `1` | Dim pulsing/flashing ring |
+| `JogRingMode::Needle` | `2` | Single illuminated needle indicator (0..2879 ticks) |
+| `JogRingMode::RingFlash` | `3` | Full ring flash with base color |
+| `JogRingMode::DimSpot` | `4` | Dim spot indicator (0..2879 ticks) |
+| `JogRingMode::Addressable` | `5` | 32 individually addressable LEDs |
+
+### `JogRing`
+Helper struct for constructing 32-segment ring buffers:
+- `JogRing::new() -> Self`: All 32 LEDs off.
+- `JogRing::solid(val: u8) -> Self`: All 32 LEDs set to brightness / palette byte.
+- `JogRing::spinner(head_idx: usize, tail_len: usize, head_val: u8) -> Self`: Rotating spinner with fading tail.
+- `JogRing::meter(fill_count: usize, val: u8) -> Self`: Arc meter fill (0..=32 segments).
+- `set(&mut self, index: usize, val: u8)`: Sets segment index with modulo 32 wrapping.
+- `set_led(&mut self, index: usize, val: LedValue)`: Sets segment converting `LedValue::Rgb` to NI palette byte.
+- `as_bytes(&self) -> &[u8; 32]`: Returns reference to underlying 32-byte array.
+
+### `JogWheelTracker`
+Helper struct for tracking angular rotation from manual or motorized movements:
+- `JogWheelTracker::new() -> Self`: Starts at tick 0.
+- `from_ticks(ticks: u16) -> Self`: Starts at specified tick (0..2879).
+- `set_position(&mut self, ticks: u16)`: Sets absolute tick position.
+- `set_normalized(&mut self, normalized: f32)`: Sets position from normalized 0.0..1.0 value.
+- `set_radians(&mut self, radians: f32)`: Sets position from angle in radians (0.0 .. 2*PI).
+- `advance(&mut self, delta: f32, ticks_per_unit: f32)`: Advances position by encoder delta or motor displacement.
+- `current_ticks(&self) -> u16`: Returns current tick position (0..2879).
+- `current_normalized(&self) -> f32`: Returns current position as normalized 0.0..1.0.
+- `current_segment(&self) -> usize`: Returns current 32-segment LED index (0..31).
+
+---
+
+## 8. Pixel Formats: `PixelFormat`
 
 Defined in [`encdr::core::descriptor::PixelFormat`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/core/descriptor.rs#L318-L335).
 
@@ -452,7 +570,7 @@ Returns the native byte value that fills a frame with black (`0xFF` for the inve
 
 ---
 
-## 8. GPU Acceleration: `GpuContext`
+## 9. GPU Acceleration: `GpuContext`
 
 Defined in [`encdr::screen::gpu::GpuContext`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/screen/gpu.rs#L5-L36).
 
@@ -477,7 +595,7 @@ Wraps existing `wgpu` device and queue instances from a host application to elim
 
 ---
 
-## 9. Custom Packet Decoders: `PacketHook`
+## 10. Custom Packet Decoders: `PacketHook`
 
 Defined in [`encdr::device::hooks::PacketHook`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/device/hooks.rs#L6-L16).
 
@@ -497,7 +615,7 @@ pub trait PacketHook: Send + Sync + 'static {
 
 ---
 
-## 10. Error Handling: `EncdrError`
+## 11. Error Handling: `EncdrError`
 
 Defined in [`encdr::core::error::EncdrError`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/core/error.rs#L4-L34).
 
@@ -540,7 +658,7 @@ pub type Result<T> = std::result::Result<T, EncdrError>;
 
 ---
 
-## 11. Device Descriptors & Runtime Introspection
+## 12. Device Descriptors & Runtime Introspection
 
 Defined in [`encdr::core::descriptor`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/core/descriptor.rs).
 
@@ -584,7 +702,7 @@ pub struct ScreenDesc {
 
 ---
 
-## 12. WebView Offscreen Renderer: `encdr-view`
+## 13. WebView Offscreen Renderer: `encdr-view`
 
 Defined in [`encdr-view::ScreenView`](file:///home/rufus/Documents/Projects/Encdr/encdr-view/src/lib.rs#L61-L70).
 

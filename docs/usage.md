@@ -259,7 +259,34 @@ ring[cursor_pos] = 255;
 encdr.set_led_strip(device_id, "jogwheel_ring", &ring);
 ```
 
+#### Traktor Kontrol S4 Mk3 Jog Wheel Rings (Report `0x32`)
+The S4 Mk3 features dual motorized/haptic jog wheels with multi-mode 32-segment circular LED rings. Encdr provides dedicated high-level methods:
+
+```rust
+use encdr::{JogDeck, JogRing, JogRingMode, LedValue};
+
+// 1. Position needle mode (0..2879 ticks per revolution)
+encdr.set_jog_ring_needle(device_id, JogDeck::Left, 720, LedValue::Rgb { r: 0, g: 255, b: 255 });
+
+// 2. Hardware flash / pulse / spot modes
+encdr.set_jog_ring_mode(device_id, JogDeck::Right, JogRingMode::RingFlash, 0, LedValue::Rgb { r: 255, g: 0, b: 0 });
+
+// 3. Addressable 32-segment ring animation / spinner
+let spinner = JogRing::spinner(16, 8, 0x7F);
+encdr.set_jog_ring(device_id, JogDeck::Left, &spinner);
+
+// 4. Raw strip array
+let leds = [0x7Fu8; 32];
+encdr.set_jog_ring_leds(device_id, JogDeck::Right, &leds);
+
+// 5. Automatic live sync with jog wheel motion (manual turning or motorized spin)
+while let Ok(event) = events.try_recv() {
+    encdr.sync_jog_ring_from_event(&event, LedValue::Rgb { r: 0, g: 220, b: 255 });
+}
+```
+
 ---
+
 
 ## Screen Output
 
@@ -292,6 +319,8 @@ encdr.submit_screen_with_format(device_id, "center_mode", &x1_oled_frame, PixelF
 | ------ | ------------ | ------------------- |
 | **NI Kontrol D2** | `"main"` | $480 \times 272$, BGR565-BE |
 | **NI Kontrol S8** | `"left"`, `"right"` | $480 \times 272$, BGR565-BE |
+| **NI Kontrol S5** | `"left"`, `"right"` | $480 \times 272$, BGR565-BE |
+| **NI Kontrol S4 Mk3** | `"left"`, `"right"` | $320 \times 240$, BGR565-BE |
 | **NI Maschine Mk3 / Plus / Studio** | `"left"`, `"right"` | $480 \times 272$, BGR565-BE |
 | **NI Komplete Kontrol S-Mk2** | `"left"`, `"right"` | $480 \times 272$, BGR565-BE |
 | **NI Maschine Mk2** | `"left"`, `"right"` | $256 \times 64$, 1-bit Mono |

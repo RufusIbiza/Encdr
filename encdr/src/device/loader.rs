@@ -545,9 +545,10 @@ mod tests {
             assert_eq!(screen.height, 240);
             assert_eq!(screen.pixel_format, crate::core::descriptor::PixelFormat::Bgr565Be);
         }
-        assert_eq!(desc.leds.len(), 4);
+        assert_eq!(desc.leds.len(), 5);
         assert!(desc.leds.iter().any(|l| l.id == "motor_command" && l.prefix_bytes() == [0x31]));
-        assert!(desc.leds.iter().any(|l| l.id == "wheel_leds" && l.prefix_bytes() == [0x32]));
+        assert!(desc.leds.iter().any(|l| l.id == "left_wheel_leds" && l.prefix_bytes() == [0x32]));
+        assert!(desc.leds.iter().any(|l| l.id == "right_wheel_leds" && l.prefix_bytes() == [0x32]));
 
         let names = reg.intern_descriptor_names(&desc);
         let mut parser = crate::device::parser::PacketParser::new(crate::core::event::DeviceId(1), &desc, names);
@@ -559,6 +560,16 @@ mod tests {
 
         let play_event = events.iter().find(|e| matches!(e, crate::core::event::Event::Button { name, pressed, .. } if *name == "left_play" && *pressed));
         assert!(play_event.is_some(), "Expected left_play pressed event on S4 MK3");
+
+        // Test jog wheel position report (Report 3: 48 bytes)
+        events.clear();
+        let mut jog_buf = vec![0u8; 48];
+        // Set left jog wheel position to 720 (0x02D0) at bytes [15, 16] (1/4 revolution = 0.25)
+        jog_buf[15] = 0xD0;
+        jog_buf[16] = 0x02;
+        parser.parse(&jog_buf, &mut events);
+        let pos_event = events.iter().find(|e| matches!(e, crate::core::event::Event::Slider { name, value, .. } if *name == "left_jog_pos" && (*value - 0.25).abs() < 0.01));
+        assert!(pos_event.is_some(), "Expected left_jog_pos slider event on S4 MK3");
     }
 
     #[test]

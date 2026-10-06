@@ -23,7 +23,7 @@ cargo run -p encdr-examples --bin <example_name>
 | [`s2_mk1_vegas`](#traktor-kontrol-s2-mk1-vegas-mode) | NI Kontrol S2 Mk1 | Interactive Vegas Mode | Deck A/B LED pulse chase, transport/cue animations, and 2-deck mixer/jogwheel telemetry. |
 | [`s2_mk2_vegas`](#traktor-kontrol-s2-mk2-vegas-mode) | NI Kontrol S2 Mk2 | Interactive Vegas Mode | Dual-color remix deck pads, deck indicator chase, transport LEDs, and mixer telemetry. |
 | [`s4_mk2_vegas`](#traktor-kontrol-s4-mk2-vegas-mode) | NI Kontrol S4 Mk2 | Interactive Vegas Mode | 4-channel VU meters, dual 7-segment loop displays, RGB remix pads, and 4-deck telemetry. |
-| [`s4_mk3_vegas`](#traktor-kontrol-s4-mk3-vegas-mode) | NI Kontrol S4 Mk3 | Interactive Vegas Mode | Dual Haptic Drive motorized jogwheel LED rings, RGB hotcue pads, and mixer telemetry. |
+| [`s4_mk3_vegas`](#traktor-kontrol-s4-mk3-vegas-mode) | NI Kontrol S4 Mk3 | Interactive Vegas Mode | Dual Haptic Drive motorized jogwheel LED rings (real-time 1:1 hardware needle tracking & 32-segment spinner), RGB pads, dual screens, and telemetry. |
 | [`s5_vegas`](#traktor-kontrol-s5-vegas-mode) | NI Kontrol S5 | Interactive Vegas Mode | 16 RGB remix deck pads, dual 25-LED touchstrips, screen buttons, and 4-channel telemetry. |
 | [`s8_vegas`](#traktor-kontrol-s8-vegas-mode) | NI Kontrol S8 | Interactive Vegas Mode | 16 RGB pads, dual 25-LED touchstrips, mixer channel buttons, and full 4-channel surface telemetry. |
 | [`d2_vegas`](#traktor-kontrol-d2-vegas-mode) | NI Kontrol D2 | Interactive Vegas Mode | 8 RGB performance pads, 25-LED blue/orange touchstrip meters, loop circle animation, and telemetry. |
@@ -212,7 +212,11 @@ cargo run -p encdr-examples --bin s4_mk2_vegas
 * **Path:** [`examples/kontrol_s4/s4_mk3_vegas.rs`](kontrol_s4/s4_mk3_vegas.rs)
 
 Interactive Vegas demo and hardware telemetry:
-- Dual Haptic Drive motorized jogwheel LED rings, RGB hotcue pads, and mixer telemetry.
+- Real-time 1:1 hardware needle position tracking on manual spin or motorized turntable rotation (`sync_jog_ring_from_event`).
+- Animated 32-segment circular rainbow spinner chase on the jog wheel LED ring.
+- Sweeping RGB hotcue pad rainbow animations with touch-reactive color shifts.
+- Dual 320x240 LCD display gradients via USB bulk transfer.
+- Full console telemetry for capacitive jog touches, faders, knobs, encoders, and buttons.
 
 ```bash
 cargo run -p encdr-examples --bin s4_mk3_vegas
