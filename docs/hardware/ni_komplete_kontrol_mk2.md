@@ -148,7 +148,16 @@ Before the hardware accepts Light Guide updates, it must receive an activation h
 
 ### 2. Button LEDs (Report `0x80`, 80 bytes)
 
-Button backlights are controlled via Report ID `0x80` (followed by up to 79 brightness bytes, where 0 is off and 255 is maximum intensity):
+Button backlights are controlled via Report ID `0x80` (followed by up to 79 brightness bytes). The controller's firmware decodes each LED byte using Native Instruments' standard NHL2 discrete brightness / 7-bit PWM duty cycle protocol:
+
+| State | Level / Duty Cycle | Raw Byte | API Constant / Variant | Visual Behavior |
+| :--- | :--- | :--- | :--- | :--- |
+| **Off** | 0% | `0x00` (0) | `LedValue::Off` / `LedValue::OFF` | Button LED off |
+| **Dim** | 30% duty cycle | `0x9E` (158) | `LedValue::Dim` / `LedValue::DIM` | Idle / half-brightness |
+| **Bright** | 100% duty cycle | `0xE4` (228) | `LedValue::Bright` / `LedValue::BRIGHT` | Active state |
+| **Max** | Max drive | `0xFF` (255) | `LedValue::Single(255)` / `LedValue::MAX` | Maximum drive current |
+
+Arbitrary duty cycle percentages ($0..100\%$) encode as `0x80 | pct` via `LedValue::single_percent(pct)`. Note that sending values $< 0\text{x}80$ falls back to 2-bit discrete intensity index (`b & 0x03`).
 
 | Name          | Offset | Description                   |
 | ------------- | ------ | ----------------------------- |

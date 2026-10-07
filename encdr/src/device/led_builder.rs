@@ -101,6 +101,18 @@ impl LedBuilder {
                     self.dirty = true;
                 }
             }
+            (LedMapping::Single { offset }, LedValue::Dim) => {
+                if *offset < self.buffer.len() {
+                    self.buffer[*offset] = LedValue::NI_DIM;
+                    self.dirty = true;
+                }
+            }
+            (LedMapping::Single { offset }, LedValue::Bright) => {
+                if *offset < self.buffer.len() {
+                    self.buffer[*offset] = LedValue::NI_BRIGHT;
+                    self.dirty = true;
+                }
+            }
             (LedMapping::Single { offset }, LedValue::Single(b)) => {
                 if *offset < self.buffer.len() {
                     self.buffer[*offset] = b;
@@ -123,6 +135,32 @@ impl LedBuilder {
                 }
                 if *b < self.buffer.len() {
                     self.buffer[*b] = 0;
+                }
+                self.dirty = true;
+            }
+            (LedMapping::Rgb { r: ro, g: go, b: bo }, LedValue::Dim) => {
+                let val = 64;
+                if *ro < self.buffer.len() {
+                    self.buffer[*ro] = val;
+                }
+                if *go < self.buffer.len() {
+                    self.buffer[*go] = val;
+                }
+                if *bo < self.buffer.len() {
+                    self.buffer[*bo] = val;
+                }
+                self.dirty = true;
+            }
+            (LedMapping::Rgb { r: ro, g: go, b: bo }, LedValue::Bright) => {
+                let val = 255;
+                if *ro < self.buffer.len() {
+                    self.buffer[*ro] = val;
+                }
+                if *go < self.buffer.len() {
+                    self.buffer[*go] = val;
+                }
+                if *bo < self.buffer.len() {
+                    self.buffer[*bo] = val;
                 }
                 self.dirty = true;
             }
@@ -153,6 +191,20 @@ impl LedBuilder {
             (LedMapping::Indexed { offset }, LedValue::Off) => {
                 if *offset < self.buffer.len() {
                     self.buffer[*offset] = 0;
+                    self.dirty = true;
+                }
+            }
+            (LedMapping::Indexed { offset }, LedValue::Dim) => {
+                if *offset < self.buffer.len() {
+                    // White (index 17 in 1-based palette), intensity 1 (dim)
+                    self.buffer[*offset] = (17 << 2) | 1;
+                    self.dirty = true;
+                }
+            }
+            (LedMapping::Indexed { offset }, LedValue::Bright) => {
+                if *offset < self.buffer.len() {
+                    // White (index 17 in 1-based palette), intensity 3 (bright)
+                    self.buffer[*offset] = (17 << 2) | 3;
                     self.dirty = true;
                 }
             }

@@ -315,6 +315,24 @@ encdr/
 
 
 ## Changelog
+### v0.7.3
+- **Native Instruments Discrete LED Brightness & Half-Brightness Support**:
+  - **NHL2 Protocol Support**: Added Native Instruments NHL2 button LED duty cycle protocol handling, supporting 4 discrete levels and 7-bit PWM duty cycle encoding on Report `0x80` (`0x80 | percentage`):
+    - `0x00`: **Off**
+    - `0x9E` (158): **Dim / Half-brightness** (30% duty cycle, illuminating 1 LED under the button for idle state)
+    - `0xE4` (228): **Bright / Active** (100% duty cycle, illuminating both LEDs under the button for active state)
+    - `0xFF` (255): **Max drive**
+  - **Core LED Engine Enhancements**:
+    - Added `LedValue::Dim` and `LedValue::Bright` enum variants with constants (`LedValue::OFF`, `LedValue::DIM`, `LedValue::BRIGHT`, `LedValue::MAX`, `LedValue::NI_OFF`, `LedValue::NI_DIM`, `LedValue::NI_BRIGHT`, `LedValue::NI_MAX`).
+    - Added helper methods `LedValue::to_ni_single_byte(pct)` and `LedValue::single_percent(pct)` for setting arbitrary duty cycle percentages ($0..100\%$).
+    - Updated `LedValue::brightness()` to return standard levels (`158` for `Dim`, `228` for `Bright`).
+  - **Universal Multi-Target Mapping**:
+    - Updated `LedBuilder` to automatically resolve `LedValue::Dim` and `LedValue::Bright` across all descriptor mappings: single monochrome button LEDs (`158` / `228`), RGB LEDs (`64` / `255`), and NI indexed palette LEDs (intensity `1` / intensity `3` white).
+    - Updated `JogRing::set_led()` and USB device thread feature report handlers to support `Dim` and `Bright` states.
+  - **Documentation & Hardware Reference Updates**:
+    - Updated hardware references for NI Maschine Mk3 ([`docs/hardware/ni_maschine_mk3.md`](docs/hardware/ni_maschine_mk3.md)), Maschine Plus ([`docs/hardware/ni_maschine_plus.md`](docs/hardware/ni_maschine_plus.md)), Maschine Mikro Mk3 ([`docs/hardware/ni_maschine_mikro_mk3.md`](docs/hardware/ni_maschine_mikro_mk3.md)), Komplete Kontrol Mk2 ([`docs/hardware/ni_komplete_kontrol_mk2.md`](docs/hardware/ni_komplete_kontrol_mk2.md)), and Komplete Kontrol Mk3 ([`docs/hardware/ni_komplete_kontrol_mk3.md`](docs/hardware/ni_komplete_kontrol_mk3.md)).
+    - Updated [`docs/api_reference.md`](docs/api_reference.md) with complete `LedValue` documentation, constants, helper methods, and multi-target mapping semantics.
+
 ### v0.7.2
 - **Traktor Kontrol S4 MK3 Jog Wheel LED Ring Support & Real-Time Sync**:
   - **Descriptor Enhancements**: Split the shared Report `0x32` mapping into independent `left_wheel_leds` and `right_wheel_leds` groups with dedicated 32-element `strip` arrays (`left_wheel_ring`, `right_wheel_ring`) and individually addressable segment controls (`left_ring_1..32`, `right_ring_1..32`).

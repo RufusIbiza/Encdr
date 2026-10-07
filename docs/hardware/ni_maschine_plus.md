@@ -34,8 +34,13 @@ Uses the verified double-pumped 128-byte tuple protocol reverse-engineered in En
 
 ## Output Reports & LEDs
 
-- **Report `0x80` (`buttons`)**: 62 bytes controlling button backlights (white single-color brightness $0..255$).
-- **Report `0x81` (`pad_leds`)**: 41 bytes controlling 16 RGB pad LEDs via Native Instruments indexed color palette.
+- **Report `0x80` (`buttons`)**: 62 bytes controlling button backlights. Each button has dual LEDs underneath and follows Native Instruments' 4-level discrete duty cycle protocol:
+  - `0x00`: **Off** (`LedValue::Off` / `LedValue::OFF`)
+  - `0x9E` (158): **Dim / Half-brightness** (`LedValue::Dim` / `LedValue::DIM`) — 30% duty cycle, lights 1 LED for idle state.
+  - `0xE4` (228): **Bright / Active** (`LedValue::Bright` / `LedValue::BRIGHT`) — 100% duty cycle, lights both LEDs for active state.
+  - `0xFF` (255): **Max drive** (`LedValue::Single(255)` / `LedValue::MAX`).
+  - Arbitrary duty cycle percentages ($0..100\%$) encode as `0x80 | pct` via `LedValue::single_percent(pct)`. Note that sending values $< 0\text{x}80$ falls back to 2-bit discrete intensity index (`b & 0x03`).
+- **Report `0x81` (`pad_leds`)**: 41 bytes controlling 16 RGB pad LEDs via Native Instruments indexed color palette (`(color_id << 2) | (intensity & 0x03)`).
 
 ## Dual Color Screens
 

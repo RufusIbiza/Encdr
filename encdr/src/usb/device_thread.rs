@@ -827,6 +827,8 @@ fn run_leds(
                                 let old_mask = entry.0;
                                 let is_on = match value {
                                     LedValue::Off => false,
+                                    LedValue::Dim => true,
+                                    LedValue::Bright => true,
                                     LedValue::Single(b) => b > 0,
                                     LedValue::Rgb { r, g, b } => (r | g | b) > 0,
                                 };
@@ -859,6 +861,8 @@ fn run_leds(
                                 let old_mask = entry.0;
                                 let is_on = match value {
                                     LedValue::Off => false,
+                                    LedValue::Dim => true,
+                                    LedValue::Bright => true,
                                     LedValue::Single(b) => b > 0,
                                     LedValue::Rgb { r, g, b } => (r | g | b) > 0,
                                 };

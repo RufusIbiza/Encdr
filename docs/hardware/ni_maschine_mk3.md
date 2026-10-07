@@ -294,7 +294,23 @@ The Mk3 uses two separate LED output buffers, each sent on the control interface
 
 ### Button LEDs (62 bytes, prefix `0x80`)
 
-Single-color LEDs set with `LedValue::Single(brightness)` where brightness is 0-255.
+Controls backlighting for function, transport, edit, and mode buttons. Each button features two LEDs underneath to provide distinct idle (half-brightness / dim) and active (full bright) visual feedback.
+
+The controller's firmware decodes each LED byte using Native Instruments' NHL2 discrete brightness / 7-bit PWM duty cycle protocol:
+
+| State | Level / Duty Cycle | Raw Byte | API Constant / Variant | Visual Behavior |
+| :--- | :--- | :--- | :--- | :--- |
+| **Off** | 0% | `0x00` (0) | `LedValue::Off` / `LedValue::OFF` | Both LEDs off |
+| **Dim** | 30% duty cycle | `0x9E` (158) | `LedValue::Dim` / `LedValue::DIM` | Idle / half-brightness (1 LED lit) |
+| **Bright** | 100% duty cycle | `0xE4` (228) | `LedValue::Bright` / `LedValue::BRIGHT` | Active state (both LEDs lit) |
+| **Max** | Max drive | `0xFF` (255) | `LedValue::Single(255)` / `LedValue::MAX` | Maximum drive current |
+
+#### Hardware Encoding Details
+- **Discrete Protocol:** In the NI firmware, values $\ge 0\text{x}80$ encode a 7-bit PWM duty cycle via `0x80 | percentage`. For instance:
+  - $30\%$ duty cycle $\rightarrow 0\text{x}80 \mid 30 = 0\text{x}9\text{E} = 158$ (`LedValue::Dim`)
+  - $100\%$ duty cycle $\rightarrow 0\text{x}80 \mid 100 = 0\text{xE}4 = 228$ (`LedValue::Bright`)
+  - Arbitrary percentages ($0..100\%$) can be constructed using `LedValue::single_percent(pct)` or `LedValue::to_ni_single_byte(pct)`.
+- **Low-Value Trap:** Raw byte values $< 0\text{x}80$ (such as $1..3$) are interpreted by the hardware as 2-bit discrete intensity indices (`byte & 0x03`). Consequently, sending small integers like 35 (`0b00100011`) evaluates to `3` (full 100% brightness). Always use `LedValue::Dim`, `LedValue::Bright`, or the `LedValue::NI_*` constants.
 
 | Name                 | Offset | Description                          |
 | -------------------- | ------ | ------------------------------------ |

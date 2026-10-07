@@ -68,7 +68,7 @@ Updates an LED state by control name. Matches against the first LED group contai
 
 - `device_id`: Target device.
 - `name`: Identifier as declared in the device descriptor JSON (e.g. `"play"`, `"pad_1"`).
-- `value`: State to assign ([`LedValue::Off`](#5-led-values--ni-palette-ledvalue), [`LedValue::Single`](#5-led-values--ni-palette-ledvalue), or [`LedValue::Rgb`](#5-led-values--ni-palette-ledvalue)).
+- `value`: State to assign ([`LedValue::Off`](#5-led-values--ni-palette-ledvalue), [`LedValue::Dim`](#5-led-values--ni-palette-ledvalue), [`LedValue::Bright`](#5-led-values--ni-palette-ledvalue), [`LedValue::Single`](#5-led-values--ni-palette-ledvalue), or [`LedValue::Rgb`](#5-led-values--ni-palette-ledvalue)).
 
 ```rust
 use encdr::LedValue;
@@ -397,15 +397,43 @@ Defined in [`encdr::core::led::LedValue`](file:///home/rufus/Documents/Projects/
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LedValue {
     Off,
+    Dim,
+    Bright,
     Single(u8),
     Rgb { r: u8, g: u8, b: u8 },
 }
 ```
 
+### Constants
+
+| Constant | Value | Description |
+| :--- | :--- | :--- |
+| `LedValue::OFF` | `LedValue::Off` | Off state |
+| `LedValue::DIM` | `LedValue::Dim` | Dim / half-brightness level (30% duty cycle / idle) |
+| `LedValue::BRIGHT` | `LedValue::Bright` | Bright / active level (100% duty cycle) |
+| `LedValue::MAX` | `LedValue::Single(255)` | Maximum drive level |
+| `LedValue::NI_OFF` | `0` (`0x00`) | Raw byte for NI single-color button off state |
+| `LedValue::NI_DIM` | `158` (`0x9E`) | Raw byte for NI single-color button dim / half-brightness (30% duty cycle) |
+| `LedValue::NI_BRIGHT` | `228` (`0xE4`) | Raw byte for NI single-color button bright / active (100% duty cycle) |
+| `LedValue::NI_MAX` | `255` (`0xFF`) | Raw byte for NI single-color button maximum drive |
+
 ### Methods
 
 #### `pub fn brightness(&self) -> u8`
-Returns the effective brightness (0–255) of the value. For RGB values, returns $\max(r, g, b)$.
+Returns the effective brightness (0–255) of the value.
+- `Off`: `0`
+- `Dim`: `158` (`LedValue::NI_DIM`)
+- `Bright`: `228` (`LedValue::NI_BRIGHT`)
+- `Single(b)`: `b`
+- `Rgb { r, g, b }`: $\max(r, g, b)$
+
+#### `pub fn to_ni_single_byte(pct: u8) -> u8`
+Converts a brightness percentage ($0..100$) to the Native Instruments 7-bit PWM duty cycle byte format used by single-color button LEDs:
+- `0`: Off (`0x00`)
+- `1..=100`: `0x80 | pct` (e.g., $30\% \rightarrow 0\text{x}9\text{E} = 158$, $100\% \rightarrow 0\text{xE}4 = 228$)
+
+#### `pub fn single_percent(pct: u8) -> Self`
+Convenience constructor returning `LedValue::Off` for $0$, or `LedValue::Single(to_ni_single_byte(pct))` for $1..=100$.
 
 #### `pub fn to_ni_palette_byte(r: u8, g: u8, b: u8) -> u8`
 Maps an 8-bit RGB color to the Native Instruments packed 1-byte hardware palette format used by Maschine Mk3, Maschine Mikro Mk3, and Komplete Kontrol Mk2:
@@ -416,6 +444,13 @@ Maps an 8-bit RGB color to the Native Instruments packed 1-byte hardware palette
 ```rust
 let ni_byte = LedValue::to_ni_palette_byte(255, 0, 0); // Red at full brightness -> 0x07
 ```
+
+### Multi-Target Mapping Semantics
+
+When `LedValue::Dim` or `LedValue::Bright` is dispatched via `set_led` or `set_led_in_group`, `LedBuilder` automatically tailors output to the hardware target type:
+- **Single (Monochrome Button LED):** `Dim` emits `158` (`0x9E` = 30% duty cycle / 1 LED illuminated), `Bright` emits `228` (`0xE4` = 100% duty cycle / both LEDs illuminated).
+- **RGB LEDs:** `Dim` emits `(64, 64, 64)`, `Bright` emits `(255, 255, 255)`.
+- **Indexed Palette LEDs:** `Dim` emits `(17 << 2) | 1` (dim white), `Bright` emits `(17 << 2) | 3` (bright white).
 
 ---
 
