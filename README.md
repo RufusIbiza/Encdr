@@ -311,11 +311,52 @@ encdr/
 | WebView (optional)      | `wry` + `tao`              | Offscreen HTML rendering                 |
 | WebKit snapshot (Linux) | `webkit2gtk` + `cairo-rs`  | Pixel capture via WebKit snapshot        |
 | Obj-C bridge (macOS)    | `objc2` + `block2`         | WKWebView `takeSnapshot` pixel capture   |
-| COM/WebView2 (Windows)  | `webview2-com` + `windows` | WebView2 `CapturePreview` pixel capture  |
-| PNG decode (Windows)    | `png`                      | Decode CapturePreview PNG output to RGBA |
+| COM/WebView2 (Windows)      | `webview2-com` + `windows` | WebView2 `CapturePreview` pixel capture  |
+| PNG Codec (Cross-Platform)  | `png`                      | In-memory PNG encoding for offscreen views & Windows `CapturePreview` decode |
+| ODR MsgPack-RPC             | `rmp-serde`                | MessagePack serialization for Komplete Kontrol Mk3 On-Device Rendering |
 
 
 ## Changelog
+### v0.8.0
+- **Native Instruments Komplete Kontrol S-Series Mk3 DAW Remote & ODR Integration**:
+  - **Direct DAW Remote Protocol**:
+    - Implemented [`KkMk3DawController`](encdr/src/device/komplete_kontrol/daw.rs) providing typed builders and incoming packet parsers for the dedicated `"KONTROL S-Series MK3 DAW"` MIDI port (MIDI Channel 16 / Status `0xBF`).
+    - Handshake and session management: `build_hello` (protocol v4 greeting), `build_enable_14bit` (enables 14-bit high-resolution rotary knob SysEx mode), `build_identity` (host identification), and `build_goodbye` (session termination).
+    - Track mixer control: track enabled, selected, mute, solo, arm, track names, RGB colors (`#AARRGGBB` hex and normalized floats), and formatted display text for volume (`"-6.0 dB"`) and pan (`"L 25"`, `"C"`).
+    - Stereo VU meters: 8-channel logarithmic 7-bit dB meters (`build_vu_meters`, `-70 dB` to `+6 dB`).
+    - High-resolution 14-bit rotary knob relative adjustments: SysEx `0x7F` packet parser decoding delta adjustments with 14-bit signed resolution.
+    - Incoming DAW Remote MIDI parser: `parse_incoming` converting Channel 16 CCs and SysEx into typed [`KkMk3DawEvent`](encdr/src/device/komplete_kontrol/daw.rs) variants (buttons, navigation, 4D encoder relative steps, bank mapping, tempo changes).
+  - **On-Device Rendering (ODR) & MessagePack-RPC Subsystem**:
+    - Added ODR MessagePack-RPC subsystem communicating over USB Bulk OUT `0x03` (`odr_cmd`).
+    - Added typed ODR state models in [`encdr::device::komplete_kontrol`](encdr/src/device/komplete_kontrol/odr/models.rs):
+      - `PluginData` (active instrument/effect page model with background banner, primary and accent colors, and parameter lists).
+      - `ParameterItem` supporting 8 widget styles (`Knob`, `Range`, `Toggle`, `Trigger`, `Increment`, `Relative`, `Text`, `Disabled`), normalized values, formatted readout strings, and section headings.
+      - `LayoutMode` (`Nks1Uniform`, `Nks2Grouped`, `Performance`) and `ViewAddress`.
+      - `FileAsset` and on-device graphics cache registration (`register_asset`).
+      - `PluginChainModel` & `PluginChainItem` (serial insert effect/instrument chain).
+      - `MixerModel` & `MixerTrack` (on-device multi-track mixer cards and live metering).
+      - `SmartPlayData`, `ScaleConfig`, `ArpConfig`, `ChordConfig` (on-device scale, chord, and arpeggiator engine state).
+      - `BrowserModel`, `BrowserFilter`, `BrowserSoundItem` (on-device preset sound browser with multi-column category filters).
+      - `DeviceSettings` (display backlight brightness, LED brightness, Light Guide enable, and velocity curves).
+      - `KkMk3Page` enum for instant screen page switching (`Parameters`, `Browser`, `Mixer`, `SmartPlay`, `PluginChain`, `Settings`).
+      - `RgbColor` palette constants (`RED`, `ORANGE`, `YELLOW`, `GREEN`, `CYAN`, `BLUE`, `PURPLE`, `MAGENTA`, `WHITE`, `OFF`).
+    - Implemented [`OdrRpcFramer`](encdr/src/device/komplete_kontrol/odr/rpc.rs) for building MessagePack-RPC notifications and requests.
+  - **Core `Encdr` Facade Helpers**:
+    - Added `write_interface()` for direct writes to named USB bulk/interrupt endpoints.
+    - Added high-level typed helper methods on `Encdr`: `kk_mk3_set_plugin_data()`, `kk_mk3_update_parameter_value()` (low-overhead scalar modulation), `kk_mk3_set_lightguide()` (24-bit per-key RGB control across 49/61/88 keys), `kk_mk3_register_asset()`, `kk_mk3_set_header_image()` (asset registration + plugin model attachment), `kk_mk3_set_plugin_chain()`, `kk_mk3_set_plugin_chain_index()`, `kk_mk3_set_mixer_model()`, `kk_mk3_set_mixer_meters()`, `kk_mk3_set_smartplay()`, `kk_mk3_set_browser_model()`, `kk_mk3_set_device_settings()`, and `kk_mk3_set_page()`.
+- **`encdr-view` Offscreen Rendering & In-Memory PNG Pipeline**:
+  - Added `ScreenView::new_offscreen(width, height, content, visible)` enabling headless WebViews with arbitrary dimensions without requiring a physical screen descriptor.
+  - Added `ScreenView::capture_pixels()` returning raw RGBA buffers.
+  - Added `ScreenView::capture_png()` encoding composited web frames into PNG bytes in memory via the `png` crate for direct upload to Mk3 header banners.
+  - Updated `device_id` on `ScreenView` to `Option<DeviceId>`.
+- **Hardware Status Update**:
+  - Updated implementation status of both **NI Komplete Kontrol S-Series Mk2** and **NI Komplete Kontrol S-Series Mk3** to **Complete (Untested)**.
+- **New Example & Documentation**:
+  - Added `kk_mk3_daw_odr` standalone example showcasing DAW remote handshake, track info, VU meters, 14-bit knob decoding, ODR parameter page, dynamic in-memory PNG header generation, 60 FPS Light Guide sweep, and all extended models.
+  - Authored comprehensive dedicated documentation: [`docs/usage_kk_mk3.md`](docs/usage_kk_mk3.md) covering hardware architecture, what the Mk3 can and cannot do, DAW Remote setup, ODR models, header banners, dynamic `encdr-view` workflow, and complete working code examples.
+  - Updated [`docs/api_reference.md`](docs/api_reference.md) with Section 14 and all new facade / `encdr-view` methods.
+  - Updated [`examples/README.md`](examples/README.md) and [`README.md`](README.md).
+
 ### v0.7.2
 - **Traktor Kontrol S4 MK3 Jog Wheel LED Ring Support & Real-Time Sync**:
   - **Descriptor Enhancements**: Split the shared Report `0x32` mapping into independent `left_wheel_leds` and `right_wheel_leds` groups with dedicated 32-element `strip` arrays (`left_wheel_ring`, `right_wheel_ring`) and individually addressable segment controls (`left_ring_1..32`, `right_ring_1..32`).

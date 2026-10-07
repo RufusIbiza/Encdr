@@ -11,7 +11,7 @@ keywords = ["native-instruments", "ni", "webview", "display", "controller"]
 categories = ["hardware-support", "gui"]
 
 [dependencies]
-encdr = { version = "0.7.2", path = "../encdr" }
+encdr = { version = "0.8.0", path = "../encdr" }
 wry = "0.57"
 tao = "0.37"
 raw-window-handle = "0.6"
