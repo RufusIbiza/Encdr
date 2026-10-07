@@ -315,6 +315,20 @@ encdr/
 
 
 ## Changelog
+### v0.7.4
+- **Descriptor-Driven Multi-Controller `LedProtocol` Architecture**:
+  - Introduced `LedProtocol` (`nhl2`, `linear_7bit`, `linear_8bit`) in hardware descriptors allowing each controller's LED layouts to declare their native brightness protocol:
+    - `nhl2` (Maschine Mk3, Plus, Mikro Mk3, KK Mk2/Mk3, X1 Mk3): Dual physical LEDs with active-low comparator — `Dim` = `228` (`0xE4`, single LED illuminated), `Bright` = `158` (`0x9E`, dual LEDs illuminated).
+    - `linear_7bit` (Maschine Jam, Traktor S2 Mk2, S4 Mk3, etc.): 7-bit linear PWM (`0..127`) — `Dim` = `38` (~30%), `Bright` = `127` (100%).
+    - `linear_8bit` (Maschine Studio, Maschine Mk2, Mikro Mk2, Mk1, Traktor S4 Mk2, S5, S8, D2, F1, Z1, Z2, S2 Mk1): 8-bit linear PWM (`0..255`) — `Dim` = `76` (~30%), `Bright` = `255` (100%).
+  - Added optional `dim_value` and `bright_value` override bytes in `LedLayoutDesc` for granular group-level hardware tuning.
+  - Updated `LedBuilder` to automatically resolve `LedValue::Dim` and `LedValue::Bright` per descriptor layout across all target types: monochrome button LEDs, RGB LEDs (`64` / `255`), and NI indexed palette LEDs (intensity `1` / intensity `3` white).
+  - Updated `JogRing::set_led()` and USB device thread feature report handlers to support `Dim` and `Bright` states.
+- **Hardware Button Brightness Calibration & Verification Example**:
+  - Calibrated active-low comparator thresholds (`NI_DIM = 228`, `NI_BRIGHT = 158`) ensuring buttons idle at dim half-brightness and illuminate at full brightness when pressed.
+  - Added interactive verification example `mk3_button_brightness` for Maschine Mk3 / Maschine Plus testing all 47 control buttons with real-time dim-to-bright press elevation.
+  - Added comprehensive unit tests in `encdr/src/device/led_builder.rs` validating protocol resolution across all protocol variants and overrides.
+
 ### v0.7.3
 - **Native Instruments Discrete LED Brightness & Half-Brightness Support**:
   - **Button LED Protocol Handling**: Added Native Instruments button LED brightness protocol handling, supporting discrete levels and PWM duty cycle encoding on Report `0x80`:
@@ -325,17 +339,7 @@ encdr/
   - **Core LED Engine Enhancements**:
     - Added `LedValue::Dim` and `LedValue::Bright` enum variants with constants (`LedValue::OFF`, `LedValue::DIM`, `LedValue::BRIGHT`, `LedValue::MAX`, `LedValue::NI_OFF`, `LedValue::NI_DIM`, `LedValue::NI_BRIGHT`, `LedValue::NI_MAX`).
     - Added helper methods `LedValue::to_ni_single_byte(pct)` and `LedValue::single_percent(pct)` for setting arbitrary duty cycle percentages ($0..100\%$).
-    - Updated `LedValue::brightness()` to return standard levels (`228` for `Dim`, `158` for `Bright`).
-  - **Universal Multi-Target & Descriptor-Driven Protocol Mapping**:
-    - Introduced `LedProtocol` (`nhl2`, `linear_7bit`, `linear_8bit`) in descriptors allowing each controller's LED layouts to declare their native brightness protocol:
-      - `nhl2` (Maschine Mk3, Plus, Mikro Mk3, KK Mk2/Mk3, X1 Mk3): `Dim` = `228` (`0xE4`), `Bright` = `158` (`0x9E`).
-      - `linear_7bit` (Maschine Jam, Traktor S2/S4 Mk3, etc.): `Dim` = `38` (~30%), `Bright` = `127` (100%).
-      - `linear_8bit` (Maschine Studio, Maschine Mk2, Traktor S4/S5/S8, etc.): `Dim` = `76` (~30%), `Bright` = `255` (100%).
-    - Added optional `dim_value` and `bright_value` override bytes in `LedLayoutDesc` for granular group-level hardware tuning.
-    - Updated `LedBuilder` to automatically resolve `LedValue::Dim` and `LedValue::Bright` per descriptor layout across all target types: monochrome button LEDs, RGB LEDs (`64` / `255`), and NI indexed palette LEDs (intensity `1` / intensity `3` white).
-    - Updated `JogRing::set_led()` and USB device thread feature report handlers to support `Dim` and `Bright` states.
-  - **Example & Telemetry**:
-    - Added `mk3_button_brightness` test example demonstrating full 47-button dimming and active elevation on press/release for Maschine Mk3 / Maschine Plus.
+    - Updated `LedValue::brightness()` to return standard levels.
   - **Documentation & Hardware Reference Updates**:
     - Updated hardware references for NI Maschine Mk3 ([`docs/hardware/ni_maschine_mk3.md`](docs/hardware/ni_maschine_mk3.md)), Maschine Plus ([`docs/hardware/ni_maschine_plus.md`](docs/hardware/ni_maschine_plus.md)), Maschine Mikro Mk3 ([`docs/hardware/ni_maschine_mikro_mk3.md`](docs/hardware/ni_maschine_mikro_mk3.md)), Komplete Kontrol Mk2 ([`docs/hardware/ni_komplete_kontrol_mk2.md`](docs/hardware/ni_komplete_kontrol_mk2.md)), and Komplete Kontrol Mk3 ([`docs/hardware/ni_komplete_kontrol_mk3.md`](docs/hardware/ni_komplete_kontrol_mk3.md)).
     - Updated [`docs/api_reference.md`](docs/api_reference.md) with complete `LedValue` documentation, constants, helper methods, and multi-target mapping semantics.
@@ -500,7 +504,7 @@ encdr/
   - Added hardware reference documentation (`docs/hardware/ni_komplete_kontrol_mk2.md`).
 - **Maschine Mk3 Velocity & Pressure Pads**:
   - Implemented Report `0x02` pad packet decoding with double-pumped 128-byte packet handling (Set A & Set B 64-byte chunks).
-  - Reverse-engineered 3-byte tuple decoding (`pad_index`, `d1`, `d2`) with 12-bit pressure extraction (`((d1 & 0xf) << 8) | d2`).
+  - Implemented 3-byte tuple decoding (`pad_index`, `d1`, `d2`) with 12-bit pressure extraction (`((d1 & 0xf) << 8) | d2`).
   - Implemented state-machine event dispatch matching NI's hardware service: `0x00` (Switch ON), `0x10` (Hit attack velocity ON), `0x20`/`0x30` (Switch/Hit OFF release), and `0x40` (continuous Aftertouch).
   - Added 16 RGB Pad LED control via indexed palette and brightness levels in Report `0x81`.
   - Added `examples/maschine_mk3/pad_rainbow.rs` demonstration and HTML screen visualizers (`screens/mk3_pad_matrix.html`, `screens/mk3_group_status.html`).
