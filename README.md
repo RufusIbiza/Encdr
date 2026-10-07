@@ -107,41 +107,67 @@ fn main() {
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     Consumer App (e.g. Bitwig)                  │
-│                                                                 │
-│  ← Receives: named events (button, slider, encoder, touch)      │
-│  → Sends:    LED state, screen content (HTML or raw pixels)     │
-└──────────────┬──────────────────────────────┬───────────────────┘
-               │                              │
-       ┌───────▼───────┐            ┌─────────▼──────────────────┐
-       │  Input Path   │            │   Output Path              │
-       │               │            │                            │
-       │  USB read     │            │  ┌───────────────────────┐ │
-       │  → parse      │            │  │ encdr-view (optional) │ │
-       │  → normalize  │            │  │ Offscreen WebView     │ │
-       │  → emit event │            │  │ HTML/CSS/Canvas → px  │ │
-       │  (lock-free)  │            │  └──────────┬────────────┘ │
-       │               │            │             │ OR raw pixels│
-       └───────────────┘            │  ┌──────────▼────────────┐ │
-               │                    │  │ encdr::screen (core)  │ │
-               │                    │  │ GPU format convert    │ │
-               │                    │  │ GPU frame diff        │ │
-               │                    │  │ Partial blit extract  │ │
-               │                    │  └──────────┬────────────┘ │
-               │                    │        USB bulk write      │
-               │                    └─────────────┬──────────────┘
-               │                                  │
-       ┌───────▼──────────────────────────────────▼───────────┐
-       │            Device Instance (data-driven)             │
-       │         Loaded from JSON device descriptor           │
-       └──────────────────────┬───────────────────────────────┘
-                              │
-                     ┌────────▼────────┐
-                     │   USB Transport │
-                     │     (nusb)      │
-                     └─────────────────┘
+```mermaid
+flowchart TD
+    subgraph Consumer["Consumer Application (e.g. DAW / VJ / Synth)"]
+        App["Application Logic"]
+    end
+
+    subgraph Encdr["Encdr Runtime"]
+        subgraph InputPipeline["Input Pipeline (Lock-Free)"]
+            UsbRead["USB Read Engine\n(nusb async queue)"]
+            PacketParser["Data-Driven Packet Parser\n(Bit unpacking & field normalization)"]
+            StateTrackers["Hardware State Engines\n(Encoder ERP/Wrap16, Pad Hysteresis, Jog Platter)"]
+            EventChan[("Lock-Free Event Channel\n(crossbeam-channel)")]
+            
+            UsbRead --> PacketParser --> StateTrackers --> EventChan
+        end
+
+        subgraph OutputPipeline["Output & Display Pipeline"]
+            LedEngine["LED & Matrix Subsystem\n(NI RGB palette, 7-segment, Jog rings)"]
+            
+            subgraph ScreenPipeline["Screen Pipeline"]
+                EncdrView["encdr-view (Optional)\nOffscreen WebView (HTML/Canvas/SVG)"]
+                RawPixels["Raw Pixel Buffers\n(RGBA8888)"]
+                GpuCompute["wgpu GPU Compute Pipeline\nFormat Conversion (BGR565 / Mono / Gray5)\nGPU Frame Diffing & Dirty Rect Extraction"]
+                
+                EncdrView -->|Render / Capture| GpuCompute
+                RawPixels --> GpuCompute
+            end
+
+            subgraph OdrSubsystem["ODR & DAW Remote Subsystem"]
+                OdrFramer["ODR RPC Framer\n(MsgPack-RPC Models & Assets)"]
+                DawCtrl["DAW Remote Controller\n(MIDI Ch 16 & SysEx Protocol)"]
+            end
+        end
+
+        subgraph Registry["Descriptor Registry"]
+            JsonDescriptors[("Data-Driven JSON Descriptors\n(Endpoints, Reports, Quirks, Layouts)")]
+        end
+    end
+
+    subgraph Hardware["Native Instruments Hardware"]
+        PhysicalInputs["Buttons, Encoders, Faders, Velocity Pads, Platter Sensors"]
+        PhysicalOutputs["LEDs, Light Guides, 7-Segments, Jog LED Rings"]
+        Displays["Screens (Dual BGR565, ST7529 Gray, OLED, Mk3 ODR Display)"]
+    end
+
+    %% Data Flow
+    EventChan -->|Named Events| App
+    App -->|LED / Ring / 7-Seg Values| LedEngine
+    App -->|HTML Content / Raw Pixels| ScreenPipeline
+    App -->|Parameter Models / Assets| OdrFramer
+    App -->|Mixer / Transport / SysEx| DawCtrl
+
+    JsonDescriptors -.->|Defines Layouts & Protocols| PacketParser
+    JsonDescriptors -.->|Defines Endpoints & Buffers| LedEngine
+    JsonDescriptors -.->|Defines Dimensions & Formats| GpuCompute
+
+    PhysicalInputs --> UsbRead
+    LedEngine -->|USB Interrupt / Feature Reports| PhysicalOutputs
+    GpuCompute -->|USB Bulk Blits| Displays
+    OdrFramer -->|USB Bulk OUT 0x03| Displays
+    DawCtrl -->|DAW MIDI / SysEx Port| Displays
 ```
 ## Documentation
 
