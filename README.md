@@ -149,6 +149,7 @@ fn main() {
 - [Quick Start Tutorial](docs/quickstart.md) — step-by-step tutorial with Maschine Mk3 dual-screen walkthrough
 - [API Reference](docs/api_reference.md) — complete programmer reference for all types, functions, and methods
 - [Usage Guide](docs/usage.md) — comprehensive usage guide
+- [Komplete Kontrol Mk3 Guide](docs/usage_kk_mk3.md) — deep-dive guide for Mk3 DAW Remote control, On-Device Rendering (ODR), parameter widgets, and banner caching
 - [Examples Guide](examples/README.md) — complete directory of hardware examples, screen tests, and diagnostic utilities
 
 ### Hardware Reference

@@ -182,7 +182,7 @@ fn main() {
 
             // Real-time parameter modulation
             let lfo_val = (elapsed * 2.0).sin() * 0.4 + 0.5;
-            let _ = encdr.kk_mk3_update_parameter_value(device_id, 0, lfo_val as f32);
+            let _ = encdr.kk_mk3_update_parameter_value(device_id, 0, lfo_val);
 
             // Light Guide RGB rainbow sweep
             let mut rgb_keys = Vec::with_capacity(key_count);

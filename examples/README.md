@@ -36,6 +36,7 @@ cargo run -p encdr-examples --bin <example_name>
 | [`studio_vegas`](#maschine-studio-vegas-mode) | NI Maschine Studio | Interactive Vegas Mode | 32-segment Jogwheel ring spinner, stereo master VU meters, 16 RGB pads, and telemetry. |
 | [`kk_mk2_vegas`](#komplete-kontrol-mk2-vegas-mode) | NI Komplete Kontrol Mk2 | Interactive Vegas Mode | Sweeping Light Guide rainbow wave across the keybed (49/61/88 keys) and button telemetry. |
 | [`kk_mk3_vegas`](#komplete-kontrol-mk3-vegas-mode) | NI Komplete Kontrol Mk3 | Interactive Vegas Mode | Sweeping Light Guide wave across the next-gen keybed (49/61/88 keys) and 4D encoder telemetry. |
+| [`kk_mk3_daw_odr`](#komplete-kontrol-mk3-daw--odr-controller) | NI Komplete Kontrol Mk3 | DAW Remote & On-Device UI | Direct DAW protocol (handshake, track strip, stereo VU meters, 14-bit knob decoding) & On-Device Rendering (parameter pages, dynamic image banners, serial FX chain, and Light Guide). |
 | [`mk3_reddit`](#maschine-mk3-reddit-browser) | NI Maschine Mk3 | Dual Screen & Media | Reddit browser with HTML/Canvas dual screens, 4D encoder navigation, and touchstrip scrolling. |
 | [`mk3_pad_rainbow`](#maschine-mk3-pad-rainbow--telemetry) | NI Maschine Mk3 | RGB Pads & Screens | Smooth rainbow pad/group animations, pad strike flashing, and WebKit telemetry screens. |
 | [`mk3_pad_response`](#maschine-mk3-pad-latency--aftertouch) | NI Maschine Mk3 / Plus | Pads & Sensors | Low-latency pad response and continuous polyphonic aftertouch pressure benchmark. |
@@ -388,6 +389,24 @@ Interactive Vegas demo and hardware telemetry:
 
 ```bash
 cargo run -p encdr-examples --bin kk_mk3_vegas
+```
+
+---
+
+### Komplete Kontrol Mk3 DAW & ODR Controller
+* **Binary:** `kk_mk3_daw_odr`
+* **Hardware:** Native Instruments Komplete Kontrol S49 / S61 / S88 Mk3 (`0x17cc:0x2100` / `0x2110` / `0x2120`)
+* **Path:** [`examples/komplete_kontrol/kk_mk3_daw_odr.rs`](komplete_kontrol/kk_mk3_daw_odr.rs)
+
+Comprehensive demonstration of the next-generation Komplete Kontrol S-Series Mk3 architecture:
+- **Direct DAW Remote Control**: Demonstrates handshake greeting, 14-bit high-resolution rotary knob SysEx mode enable, track labeling, RGB track color encoding (`#AARRGGBB`), 8-channel stereo logarithmic dB VU meters, and 14-bit rotary encoder delta parsing.
+- **On-Device Rendering (ODR)**: Constructs an 8-parameter synth model with rotary knobs, continuous ranges, and 2-state toggle switches via MessagePack-RPC over Bulk OUT `0x03`.
+- **Dynamic In-Memory Header Banner**: Generates custom PNG graphical banners dynamically on the host and registers them into the on-device flash cache.
+- **Extended Models**: Demonstrates serial plugin insert chains, multi-track mixer cards, Smart Play scales/arpeggiators, preset sound browser, and display brightness settings.
+- **Light Guide Animation**: Drives smooth 60 FPS RGB sweeps across the polyphonic aftertouch keybed.
+
+```bash
+cargo run -p encdr-examples --bin kk_mk3_daw_odr
 ```
 
 ---

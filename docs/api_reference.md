@@ -19,6 +19,7 @@ This document provides a comprehensive API reference for [`encdr`](file:///home/
 11. [Error Handling: `EncdrError`](#11-error-handling-encdrerror)
 12. [Device Descriptors & Runtime Introspection](#12-device-descriptors--runtime-introspection)
 13. [WebView Offscreen Renderer: `encdr-view`](#13-webview-offscreen-renderer-encdr-view)
+14. [Komplete Kontrol Mk3 DAW & On-Device Rendering (ODR)](#14-komplete-kontrol-mk3-daw--on-device-rendering-odr)
 
 ---
 
@@ -241,6 +242,132 @@ use encdr::PixelFormat;
 
 let bgr_pixels = vec![0u8; 480 * 272 * 2]; // Native BGR565-BE
 encdr.submit_screen_with_format(device_id, "left", &bgr_pixels, PixelFormat::Bgr565Be);
+```
+
+#### `pub fn write_interface(&self, device_id: DeviceId, interface: &str, data: &[u8])`
+Transmits raw payload bytes directly to a named USB interface's OUT endpoint. Used for vendor-specific bulk pipes (such as Komplete Kontrol Mk3's `odr_cmd`).
+
+```rust
+encdr.write_interface(device_id, "odr_cmd", &msgpack_bytes);
+```
+
+#### `pub fn kk_mk3_set_plugin_data(&self, device_id: DeviceId, plugin_data: &PluginData) -> Result<()>`
+Serializes and transmits an active instrument / effect parameter page model to a Komplete Kontrol S-Series Mk3 keyboard via ODR MsgPack-RPC over Bulk OUT `0x03`.
+
+```rust
+use encdr::{PluginData, RgbColor, ParameterItem};
+
+let mut plugin = PluginData::new("Analog Synth", RgbColor::CYAN);
+plugin.add_parameter(ParameterItem::knob("Cutoff", 0.75, "3.2 kHz", "Filter"));
+encdr.kk_mk3_set_plugin_data(device_id, &plugin)?;
+```
+
+#### `pub fn kk_mk3_update_parameter_value(&self, device_id: DeviceId, param_index: u32, value: f32) -> Result<()>`
+Updates a single parameter's continuous value (`0.0..1.0` or `-1.0..1.0`) on a Komplete Kontrol S-Series Mk3 keyboard. Eliminates overhead by bypassing full page serialization.
+
+```rust
+encdr.kk_mk3_update_parameter_value(device_id, 0, 0.82)?;
+```
+
+#### `pub fn kk_mk3_set_lightguide(&self, device_id: DeviceId, rgb_keys: &[(u8, u8, u8)]) -> Result<()>`
+Sets the per-key 24-bit RGB Light Guide LEDs across the keyboard keybed via ODR. Accepts a slice of `(r, g, b)` tuples for each key (49, 61, or 88 keys).
+
+```rust
+let keys = vec![(0u8, 210u8, 255u8); 61]; // All keys cyan
+encdr.kk_mk3_set_lightguide(device_id, &keys)?;
+```
+
+#### `pub fn kk_mk3_register_asset(&self, device_id: DeviceId, asset_id: &str, image_data: &[u8]) -> Result<()>`
+Uploads and registers a PNG or JPEG graphic asset into the Komplete Kontrol Mk3 on-device high-speed cache.
+
+```rust
+let png_bytes = std::fs::read("banner.png")?;
+encdr.kk_mk3_register_asset(device_id, "my_banner", &png_bytes)?;
+```
+
+#### `pub fn kk_mk3_set_header_image(&self, device_id: DeviceId, asset_id: &str, image_data: &[u8], plugin_data: &mut PluginData) -> Result<()>`
+Convenience method: registers the image asset in the keyboard cache, sets `plugin_data.background = Some(asset_id)`, and dispatches the updated plugin page to the hardware.
+
+```rust
+encdr.kk_mk3_set_header_image(device_id, "my_banner", &png_bytes, &mut plugin)?;
+```
+
+#### `pub fn kk_mk3_set_plugin_chain(&self, device_id: DeviceId, chain: &PluginChainModel) -> Result<()>`
+Uploads the serial insert plugin chain model to the Komplete Kontrol Mk3 keyboard display.
+
+```rust
+use encdr::{PluginChainModel, PluginChainItem, RgbColor};
+
+let mut chain = PluginChainModel::new();
+chain.add_plugin(PluginChainItem::new("Lead Synth", RgbColor::CYAN));
+encdr.kk_mk3_set_plugin_chain(device_id, &chain)?;
+```
+
+#### `pub fn kk_mk3_set_plugin_chain_index(&self, device_id: DeviceId, index: u32) -> Result<()>`
+Selects the focused plugin slot index within the active serial insert chain.
+
+```rust
+encdr.kk_mk3_set_plugin_chain_index(device_id, 1)?;
+```
+
+#### `pub fn kk_mk3_set_mixer_model(&self, device_id: DeviceId, mixer: &MixerModel) -> Result<()>`
+Uploads the multi-track mixer state model (track labels, colors, mute, solo, arm, volumes, pans) to the Komplete Kontrol Mk3 display.
+
+```rust
+use encdr::{MixerModel, MixerTrack, RgbColor};
+
+let mut mixer = MixerModel::new();
+mixer.add_track(MixerTrack::new("Drums", RgbColor::ORANGE));
+encdr.kk_mk3_set_mixer_model(device_id, &mixer)?;
+```
+
+#### `pub fn kk_mk3_set_mixer_meters(&self, device_id: DeviceId, left: &[f32], right: &[f32]) -> Result<()>`
+Updates stereo VU level meters in the ODR mixer view.
+
+```rust
+encdr.kk_mk3_set_mixer_meters(device_id, &[0.8, 0.4], &[0.75, 0.45])?;
+```
+
+#### `pub fn kk_mk3_set_smartplay(&self, device_id: DeviceId, smartplay: &SmartPlayData) -> Result<()>`
+Transmits Smart Play settings (scales, chords, arpeggiator engine) to the keyboard.
+
+```rust
+use encdr::SmartPlayData;
+
+let mut sp = SmartPlayData::default();
+sp.scale.enabled = true;
+encdr.kk_mk3_set_smartplay(device_id, &sp)?;
+```
+
+#### `pub fn kk_mk3_set_browser_model(&self, device_id: DeviceId, browser: &BrowserModel) -> Result<()>`
+Populates the on-device preset/sound browser columns, category tags, and sound list.
+
+```rust
+use encdr::{BrowserModel, BrowserFilter};
+
+let mut browser = BrowserModel::default();
+browser.filters.push(BrowserFilter::new("Type", vec!["Bass".into(), "Lead".into()]));
+encdr.kk_mk3_set_browser_model(device_id, &browser)?;
+```
+
+#### `pub fn kk_mk3_set_device_settings(&self, device_id: DeviceId, settings: &DeviceSettings) -> Result<()>`
+Updates hardware preferences: display backlight brightness (0..100), LED brightness (0..100), Light Guide enable, and velocity curve.
+
+```rust
+use encdr::DeviceSettings;
+
+let mut settings = DeviceSettings::default();
+settings.display_brightness = 90;
+encdr.kk_mk3_set_device_settings(device_id, &settings)?;
+```
+
+#### `pub fn kk_mk3_set_page(&self, device_id: DeviceId, page: KkMk3Page) -> Result<()>`
+Switches the active on-device screen template (`Parameters`, `Browser`, `Mixer`, `SmartPlay`, `PluginChain`, or `Settings`).
+
+```rust
+use encdr::KkMk3Page;
+
+encdr.kk_mk3_set_page(device_id, KkMk3Page::Mixer)?;
 ```
 
 #### `pub fn load_descriptor_dir(&mut self, path: impl AsRef<Path>) -> Result<()>`
@@ -788,3 +915,147 @@ Returns the `DeviceId` associated with this view.
 
 #### `pub fn screen_name(&self) -> &str`
 Returns the target screen identifier string.
+
+---
+
+## 14. Komplete Kontrol Mk3 DAW & On-Device Rendering (ODR)
+
+Defined in [`encdr::device::komplete_kontrol`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/device/komplete_kontrol/mod.rs) and re-exported at the crate root.
+
+Provides typed builders, parsers, and data models for Native Instruments Komplete Kontrol S-Series Mk3 (S49, S61, S88) controllers across both the dedicated DAW Remote MIDI port (`MIDI Channel 16` / SysEx) and the high-speed USB bulk ODR MessagePack-RPC command pipe (`odr_cmd`).
+
+### `KkMk3DawController`
+
+Stateless builder and parser for the dedicated `"KONTROL S-Series MK3 DAW"` MIDI port.
+
+#### Constructors & Handshake Methods
+- `pub fn new() -> Self`: Initializes the controller helper.
+- `pub fn build_hello(&self) -> [u8; 3]`: Handshake greeting (`[0xBF, 0x01, 0x04]`) activating DAW mode.
+- `pub fn build_enable_14bit(&self) -> [u8; 3]`: Command (`[0xBF, 0x06, 0x01]`) enabling 14-bit high-resolution rotary knob updates via SysEx `0x7F`.
+- `pub fn build_goodbye(&self) -> [u8; 3]`: Goodbye message (`[0xBF, 0x02, 0x00]`) releasing DAW mode back to standalone operation.
+- `pub fn build_identity(&self, app_name: &str, major_ver: u8, minor_ver: u8) -> Vec<u8>`: Builds DAW host identification SysEx message.
+- `pub fn build_surface_configuration_vertical(&self) -> Vec<u8>`: Configures vertical track orientation layout.
+
+#### Track Strips & Mixer SysEx Methods
+- `pub fn build_track_enabled(&self, track_idx: u8, enabled: bool) -> Vec<u8>`: Enables or disables a track slot (0..7).
+- `pub fn build_track_selected(&self, track_idx: u8, selected: bool) -> Vec<u8>`: Sets track focus selection state.
+- `pub fn build_track_mute(&self, track_idx: u8, muted: bool) -> Vec<u8>`: Sets track mute state.
+- `pub fn build_track_solo(&self, track_idx: u8, soloed: bool) -> Vec<u8>`: Sets track solo state.
+- `pub fn build_track_armed(&self, track_idx: u8, armed: bool) -> Vec<u8>`: Sets record arm status.
+- `pub fn build_track_name(&self, track_idx: u8, name: &str) -> Vec<u8>`: Sets track title label.
+- `pub fn build_track_color(&self, track_idx: u8, hex_color: &str) -> Vec<u8>`: Sets track color as `#AARRGGBB` hex string.
+- `pub fn build_track_color_rgba(&self, track_idx: u8, r: f32, g: f32, b: f32, a: f32) -> Vec<u8>`: Sets track color from normalized float components.
+- `pub fn build_volume_display(&self, track_idx: u8, display_str: &str) -> Vec<u8>`: Sets formatted volume display text (e.g. `"-6.0 dB"`).
+- `pub fn build_pan_display(&self, track_idx: u8, display_str: &str) -> Vec<u8>`: Sets formatted pan display text (e.g. `"L 25"` or `"C"`).
+- `pub fn build_vu_meters(&self, left_db: &[f32; 8], right_db: &[f32; 8]) -> Vec<u8>`: Builds 8-channel stereo logarithmic VU meter SysEx packet (`-70.0 dB` to `+6.0 dB`).
+
+#### Parameter & Chain SysEx Methods
+- `pub fn build_plugin_chain_info(&self, plugin_names: &[&str]) -> Vec<u8>`: Transmits null-separated plugin insert names for the current track.
+- `pub fn build_select_plugin(&self, chain_index: u8) -> Vec<u8>`: Focuses an insert plugin slot index on the display.
+- `pub fn build_parameter_name(&self, knob_idx: u8, name: &str) -> Vec<u8>`: Sets parameter label for knob 0..7.
+- `pub fn build_parameter_display_value(&self, knob_idx: u8, value_str: &str) -> Vec<u8>`: Sets formatted value text for knob 0..7.
+- `pub fn build_parameter_page_info(&self, total_pages: u8, current_page_idx: u8) -> Vec<u8>`: Sets page count and active page index.
+- `pub fn build_tempo_bpm(&self, bpm: f32) -> Vec<u8>`: Transmits project tempo encoded in 10-nanosecond beat intervals.
+
+#### Incoming Event Parsing
+- `pub fn parse_incoming(&self, bytes: &[u8]) -> Option<KkMk3DawEvent>`: Parses raw MIDI bytes received from Channel 16 or SysEx into typed events.
+
+```rust
+use encdr::{KkMk3DawController, KkMk3DawEvent};
+
+let daw = KkMk3DawController::new();
+if let Some(event) = daw.parse_incoming(&[0xBF, 0x10, 0x01]) {
+    match event {
+        KkMk3DawEvent::Button { name, pressed, .. } => println!("Button {} = {}", name, pressed),
+        KkMk3DawEvent::KnobAdjustment14Bit { group, index, delta } => println!("Knob #{}: {:+.4}", index, delta),
+        _ => {}
+    }
+}
+```
+
+### `KkMk3DawEvent`
+
+Parsed event variants dispatched from the DAW Remote port:
+- `Button { cc: u8, name: &'static str, value: u8, pressed: bool }`
+- `Navigation { cc: u8, name: &'static str, delta: i8 }`
+- `BankMapping(BankMappingMode)`
+- `SelectedTrackVolumeDelta(i8)`
+- `SelectedTrackPanDelta(i8)`
+- `KnobAdjustment14Bit { group: KnobGroup, index: u8, delta: f32 }`
+- `PluginSelected { chain_index: u8 }`
+- `TempoChangeBpm(f32)`
+- `OtherSysEx(Vec<u8>)`
+
+---
+
+### On-Device Rendering (ODR) Data Models
+
+#### `RgbColor`
+RGB color representation for UI themes, accents, and Light Guide LEDs:
+- `pub const fn new(r: u8, g: u8, b: u8) -> Self`
+- Predefined constants: `RgbColor::RED`, `ORANGE`, `YELLOW`, `GREEN`, `CYAN`, `BLUE`, `PURPLE`, `MAGENTA`, `WHITE`, `OFF`.
+
+#### `PluginData`
+Top-level parameter page model driving the 8 rotary encoders, header banner, and color theming:
+- `pub fn new(name: impl Into<String>, color: RgbColor) -> Self`
+- `pub fn with_background(mut self, asset_id: impl Into<String>) -> Self`
+- `pub fn add_parameter(&mut self, param: ParameterItem) -> &mut Self`
+
+#### `ParameterItem`
+Single parameter slot (0..7) mapped to a rotary encoder:
+- `pub fn new(name: impl Into<String>, value: f32, display_value: impl Into<String>, display_type: WidgetDisplayType, section_name: impl Into<String>) -> Self`
+- `pub fn knob(name: impl Into<String>, value: f32, display_value: impl Into<String>, section: impl Into<String>) -> Self`
+- `pub fn toggle(name: impl Into<String>, on: bool, section: impl Into<String>) -> Self`
+
+#### `WidgetDisplayType`
+Visual representation rendered for a parameter control:
+- `Knob`: Radial arc gauge.
+- `Range`: Linear slider bar.
+- `Toggle`: 2-state On/Off switch.
+- `Trigger`: Momentary button.
+- `Increment`: Stepped value selector.
+- `Relative`: Bipolar detented indicator (`-1.0..1.0`).
+- `Text`: Static text readout.
+- `Disabled`: Inactive slot.
+
+#### `PluginChainModel` & `PluginChainItem`
+Serial insert chain rendered on the keyboard:
+- `PluginChainItem::new(name, color)` with optional `.with_vendor(...)` and `.bypassed(bool)`.
+- `PluginChainModel::new()`, `.add_plugin(...)`, `.set_current_index(u32)`.
+
+#### `MixerModel` & `MixerTrack`
+Multi-channel mixer model rendered on the keyboard:
+- `MixerTrack::new(name, color)` with fields `volume`, `pan`, `volume_display`, `pan_display`, `muted`, `soloed`, `armed`, `selected`.
+- `MixerModel::new()`, `.add_track(...)`.
+
+#### `SmartPlayData`
+Onboard scale, chord, and arpeggiator engine state:
+- `scale: ScaleConfig`: `enabled`, `root_key` (0..11), `scale_type` (`"Major"`, `"Minor"`, `"Dorian"`, etc.), `scale_mode` (`"Guide"` or `"Mute"`).
+- `arp: ArpConfig`: `enabled`, `pattern` (`"Up"`, `"Down"`, `"UpDown"`), `rate` (`"1/16"`, `"1/8"`), `gate`, `octaves`, `swing`.
+- `chord: ChordConfig`: `enabled`, `chord_mode`, `chord_type`.
+
+#### `BrowserModel`, `BrowserFilter`, `BrowserSoundItem`
+Sound and preset browser model:
+- `BrowserFilter::new(name, options).with_selection(opt)`
+- `BrowserSoundItem::new(name, vendor, product)`
+- `BrowserModel`: contains `filters: Vec<BrowserFilter>`, `sounds: Vec<BrowserSoundItem>`, `selected_sound_index: Option<u32>`.
+
+#### `DeviceSettings`
+Hardware preferences:
+- `display_brightness: u8` (0..100)
+- `led_brightness: u8` (0..100)
+- `lightguide_enabled: bool`
+- `velocity_curve: String` (`"Linear"`, `"Soft"`, `"Hard"`)
+
+#### `KkMk3Page`
+Onboard view template selector:
+- `Parameters`: Parameter controls.
+- `Browser`: Sound & preset browser.
+- `Mixer`: Multi-track mixer view.
+- `SmartPlay`: Scales, chords, and arpeggiator view.
+- `PluginChain`: Insert chain view.
+- `Settings`: Hardware device settings.
+
+#### `OdrRpcFramer`
+MessagePack-RPC packet framer used internally to encode notifications (`[2, method, params]`) and requests (`[0, msg_id, method, params]`) over Bulk OUT `0x03`.
+

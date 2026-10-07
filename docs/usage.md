@@ -1,7 +1,8 @@
 # Encdr Usage Guide
 
 > Looking for a step-by-step tutorial? See the [Quick Start Tutorial](quickstart.md) for a full Maschine Mk3 walkthrough.  
-> Looking for method signatures and type definitions? See the [API Reference](api_reference.md).
+> Looking for method signatures and type definitions? See the [API Reference](api_reference.md).  
+> Looking for Komplete Kontrol Mk3 DAW & ODR integration? See the [Komplete Kontrol Mk3 Guide](usage_kk_mk3.md).
 
 ## Installation
 
