@@ -20,6 +20,7 @@ serde_json = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 crossbeam-channel = "0.5"
+png = "0.17"
 
 # Linux: GTK + WebKitGTK for snapshot capture
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -54,4 +55,3 @@ windows = { version = "0.61", features = [
 # macro used in capture_windows.rs expands to code referencing `windows_core` as
 # an absolute crate path, which only resolves if it's a direct dependency here.
 windows-core = "0.61"
-png = "0.17"

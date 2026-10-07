@@ -866,6 +866,13 @@ let view = ScreenView::new(
 )?;
 ```
 
+#### `pub fn new_offscreen(width: u32, height: u32, content: ScreenContent, visible: bool) -> Result<Self, String>`
+Creates a standalone headless WebView with explicit dimensions without requiring a physical device descriptor. Ideal for generating image assets, graphics caches, or Komplete Kontrol Mk3 header banners ($1200\times 240$).
+
+```rust
+let view = ScreenView::new_offscreen(1200, 240, ScreenContent::Html(banner_html), false)?;
+```
+
 #### `pub fn send(&self, channel: &str, data: serde_json::Value)`
 Dispatches a JSON message to JavaScript running inside the WebView. In the page, this triggers the `window.encdr.onMessage(channel, data)` callback.
 
@@ -890,8 +897,21 @@ ScreenView::pump_events();
 #### `pub fn is_frame_ready(&self) -> bool`
 Returns `true` if the WebView's DOM/CSS compositor has rendered new pixels since the last capture.
 
+#### `pub fn capture_pixels(&self) -> Result<(u32, u32, Vec<u8>), String>`
+Grabs the composited web surface and returns raw RGBA pixel data `(width, height, rgba_bytes)`.
+
+#### `pub fn capture_png(&self) -> Result<Vec<u8>, String>`
+Grabs the composited web surface and encodes it into compressed PNG bytes in memory. Ideal for pushing directly to Komplete Kontrol Mk3 via `kk_mk3_set_header_image`.
+
+```rust
+if view.is_frame_ready() {
+    let png_bytes = view.capture_png()?;
+    encdr.kk_mk3_set_header_image(device_id, "banner", &png_bytes, &mut plugin)?;
+}
+```
+
 #### `pub fn capture_and_submit(&self, encdr: &Encdr) -> Result<(), String>`
-Immediately grabs the composited surface using platform-native capture mechanisms (Cairo snapshot on Linux, `takeSnapshot` on macOS, `CapturePreview` on Windows) and submits the RGBA buffer to Encdr.
+Immediately grabs the composited surface using platform-native capture mechanisms (Cairo snapshot on Linux, `takeSnapshot` on macOS, `CapturePreview` on Windows) and submits the RGBA buffer to Encdr for USB transfer to a physical screen.
 
 ```rust
 view.capture_and_submit(&encdr)?;
@@ -910,8 +930,8 @@ Replaces the currently loaded HTML page with new HTML markup dynamically.
 #### `pub fn eval(&self, js: &str) -> Result<(), String>`
 Executes an arbitrary JavaScript string within the WebView runtime.
 
-#### `pub fn device_id(&self) -> DeviceId`
-Returns the `DeviceId` associated with this view.
+#### `pub fn device_id(&self) -> Option<DeviceId>`
+Returns the `DeviceId` associated with this view, or `None` if created via `new_offscreen`.
 
 #### `pub fn screen_name(&self) -> &str`
 Returns the target screen identifier string.

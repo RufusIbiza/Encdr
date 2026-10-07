@@ -331,6 +331,87 @@ let dynamic_png = create_dynamic_banner("Encdr Modular", [0, 210, 255]);
 encdr.kk_mk3_set_header_image(mk3_id, "live_modular_banner", &dynamic_png, &mut plugin)?;
 ```
 
+### 6.3 Dynamic HTML/CSS/Canvas Rendering via `encdr-view`
+
+You can use the [`encdr-view`](file:///home/rufus/Documents/Projects/Encdr/encdr-view/src/lib.rs) crate to design and render dynamic graphical banners using web standards (HTML, CSS, SVG, Canvas 2D, or WebGL). 
+
+`ScreenView::new_offscreen` creates a headless WebView sized precisely to the header banner area ($1200\times 240$). You can send runtime telemetry from Rust to JavaScript via `view.send()`, let HTML/Canvas composite the graphics, capture the frame as a PNG with `view.capture_png()`, and push it directly into the Mk3's on-device banner cache:
+
+```rust
+use encdr_view::{ScreenContent, ScreenView};
+
+// 1. Define an HTML banner template with a live Canvas visualizer
+let html_banner = r#"
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { margin: 0; background: #0a0e14; overflow: hidden; font-family: sans-serif; color: #fff; }
+  .header { display: flex; justify-content: space-between; align-items: center; padding: 20px 40px; }
+  .title { font-size: 38px; font-weight: bold; color: #00d2ff; }
+  .badge { background: #1f2b38; padding: 6px 14px; border-radius: 6px; font-size: 20px; }
+  canvas { position: absolute; bottom: 0; left: 0; width: 1200px; height: 100px; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="title">WAVETABLE MONOLITH</div>
+    <div class="badge" id="preset">Patch A-01: Cyber Lead</div>
+  </div>
+  <canvas id="scope" width="1200" height="100"></canvas>
+  <script>
+    const canvas = document.getElementById('scope');
+    const ctx = canvas.getContext('2d');
+    let phase = 0;
+
+    window.encdr = {
+      onMessage: function(channel, data) {
+        if (channel === 'preset_name') {
+          document.getElementById('preset').innerText = data.name;
+        }
+      }
+    };
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = '#00d2ff';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      for (let x = 0; x < canvas.width; x += 10) {
+        const y = 50 + Math.sin(x * 0.02 + phase) * 35;
+        if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      phase += 0.05;
+      window.ipc && window.ipc.postMessage('__encdr_frame_ready');
+    }
+    setInterval(draw, 100); // 10 FPS banner refresh
+  </script>
+</body>
+</html>
+"#;
+
+// 2. Instantiate an offscreen WebView sized to 1200x240
+let mut banner_view = ScreenView::new_offscreen(
+    1200,
+    240,
+    ScreenContent::Html(html_banner.to_string()),
+    false, // headless (set to true to debug in a preview window)
+)?;
+
+// 3. In your application tick loop:
+ScreenView::pump_events();
+
+// Push state updates into the web UI
+banner_view.send("preset_name", serde_json::json!({ "name": "Patch B-04: Neon Bass" }));
+
+// If the WebView has composited a new frame, capture PNG and upload to Mk3
+if banner_view.is_frame_ready() {
+    let png_bytes = banner_view.capture_png()?;
+    encdr.kk_mk3_set_header_image(mk3_id, "live_webview_banner", &png_bytes, &mut plugin)?;
+}
+```
+
 ---
 
 ## 7. Extended ODR Models

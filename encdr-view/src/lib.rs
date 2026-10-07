@@ -65,7 +65,7 @@ pub struct ScreenView {
     inner: webview_macos::ManagedWebView,
     #[cfg(target_os = "windows")]
     inner: webview_windows::ManagedWebView,
-    device_id: DeviceId,
+    device_id: Option<DeviceId>,
     screen_name: String,
 }
 
@@ -107,8 +107,36 @@ impl ScreenView {
 
         Ok(Self {
             inner,
-            device_id,
+            device_id: Some(device_id),
             screen_name: screen_name.to_string(),
+        })
+    }
+
+    /// Create an offscreen WebView with explicit pixel dimensions.
+    ///
+    /// Useful for headless image rendering (e.g. Komplete Kontrol Mk3 header banners)
+    /// or capturing HTML/CSS/Canvas layouts directly to memory.
+    pub fn new_offscreen(
+        width: u32,
+        height: u32,
+        content: ScreenContent,
+        visible: bool,
+    ) -> Result<Self, String> {
+        let html = content.to_html()?;
+
+        #[cfg(target_os = "linux")]
+        let inner = webview::ManagedWebView::new(width, height, &html, visible)?;
+
+        #[cfg(target_os = "macos")]
+        let inner = webview_macos::ManagedWebView::new(width, height, &html, visible)?;
+
+        #[cfg(target_os = "windows")]
+        let inner = webview_windows::ManagedWebView::new(width, height, &html, visible)?;
+
+        Ok(Self {
+            inner,
+            device_id: None,
+            screen_name: String::new(),
         })
     }
 
@@ -122,31 +150,57 @@ impl ScreenView {
         }
     }
 
-    /// Capture the current WebView contents and submit to encdr for USB transfer.
-    pub fn capture_and_submit(&self, encdr: &Encdr) -> Result<(), String> {
+    /// Capture rendered WebView contents as raw RGBA pixels `(width, height, rgba_bytes)`.
+    pub fn capture_pixels(&self) -> Result<(u32, u32, Vec<u8>), String> {
         #[cfg(target_os = "linux")]
-        let (_w, _h, rgba) = capture::capture_webview_pixels(
+        let res = capture::capture_webview_pixels(
             &self.inner.webkit_view,
             self.inner.width,
             self.inner.height,
-        )?;
+        );
 
         #[cfg(target_os = "macos")]
-        let (_w, _h, rgba) = capture_macos::capture_webview_pixels(
+        let res = capture_macos::capture_webview_pixels(
             &self.inner.webview,
             self.inner.width,
             self.inner.height,
-        )?;
+        );
 
         #[cfg(target_os = "windows")]
-        let (_w, _h, rgba) = capture_windows::capture_webview_pixels(
+        let res = capture_windows::capture_webview_pixels(
             &self.inner.webview,
             self.inner.width,
             self.inner.height,
-        )?;
+        );
+
+        res
+    }
+
+    /// Capture rendered WebView surface and encode it as PNG bytes in memory.
+    pub fn capture_png(&self) -> Result<Vec<u8>, String> {
+        let (width, height, rgba) = self.capture_pixels()?;
+        let mut png_bytes = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(&mut png_bytes, width, height);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            let mut writer = encoder.write_header().map_err(|e| format!("PNG header error: {}", e))?;
+            writer.write_image_data(&rgba).map_err(|e| format!("PNG write error: {}", e))?;
+        }
+        self.inner.clear_frame_ready();
+        Ok(png_bytes)
+    }
+
+    /// Capture the current WebView contents and submit to encdr for USB transfer.
+    pub fn capture_and_submit(&self, encdr: &Encdr) -> Result<(), String> {
+        let dev_id = self
+            .device_id
+            .ok_or_else(|| "No hardware device attached to this offscreen view".to_string())?;
+
+        let (_w, _h, rgba) = self.capture_pixels()?;
 
         encdr.submit_screen_with_format(
-            self.device_id,
+            dev_id,
             &self.screen_name,
             &rgba,
             PixelFormat::Rgba8888,
@@ -210,8 +264,8 @@ impl ScreenView {
         self.inner.eval(js)
     }
 
-    /// Get the device ID this view is attached to.
-    pub fn device_id(&self) -> DeviceId {
+    /// Get the device ID this view is attached to (if attached to a hardware screen).
+    pub fn device_id(&self) -> Option<DeviceId> {
         self.device_id
     }
 

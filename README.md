@@ -204,8 +204,8 @@ fn main() {
 | NI Maschine Mk3           | `17cc:1600`       | Implemented | 63 buttons, 10 touches, 9 encoders, 1 slider, 16 pads | 16 RGB pads, 62 singles, 1 strip     | 2x 480x272 BGR565 |
 | NI Maschine Plus          | `17cc:1820`       | Implemented | 63 buttons, 10 touches, 9 encoders, 1 slider, 16 pads | 16 RGB pads, 62 singles, 1 strip     | 2x 480x272 BGR565 |
 | NI Maschine Studio        | `17cc:1300`       | Implemented | 64 buttons, 5 touches, 10 encoders, 16 pads   | 16 RGB pads, 8 RGB groups, stereo meters, 32-seg ring | 2x 480x272 BGR565 |
-| NI Komplete Kontrol S-Mk2 | `17cc:1610/20/30` | Implemented | 28 buttons, 9 encoders, pitch/mod wheels, touchstrip | 20 singles, Light Guide (RGB per-key)       | 2x 480x272 BGR565 |
-| NI Komplete Kontrol S-Mk3 | `17cc:2100/10/20` | Preliminary | Keybed (49/61/88 keys), 4D encoder, touchstrip, high-res encoders | Light Guide RGB strips, RGB button backlights | Full-color wide LCD |
+| NI Komplete Kontrol S-Mk2 | `17cc:1610/20/30` | Complete (Untested) | 28 buttons, 9 encoders, pitch/mod wheels, touchstrip | 20 singles, Light Guide (RGB per-key)       | 2x 480x272 BGR565 |
+| NI Komplete Kontrol S-Mk3 | `17cc:2100/10/20` | Complete (Untested) | Keybed (49/61/88 keys), 4D encoder, touchstrip, high-res encoders | Light Guide RGB strips, RGB button backlights | Full-color wide LCD |
 
 ## Workspace Structure
 
