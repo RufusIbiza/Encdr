@@ -110,20 +110,19 @@ fn main() {
 ```mermaid
 flowchart TD
     subgraph Consumer["1. Consumer Application (e.g. Bitwig / Custom DAW / VJ App)"]
-        App["Application Logic\n(Receives Events, Updates UI & State)"]
+        App["Application Logic\n(Receives Events, Drives Controller State)"]
     end
 
     subgraph Encdr["2. Encdr Runtime Framework"]
-        direction TB
         subgraph InputPipeline["Input Path (Zero-Copy & Lock-Free)"]
             EventChan[("Lock-Free Event Channel\n(crossbeam-channel)")]
             StateEngines["Hardware State Engines\n(Encoder ERP/Wrap16, Pad Hysteresis, Jog Platter)"]
             PacketParser["Data-Driven Packet Parser\n(Bit unpacking & field normalization)"]
             UsbRead["USB Read Engine\n(nusb async queue)"]
 
-            EventChan <-- StateEngines
-            StateEngines <-- PacketParser
-            PacketParser <-- UsbRead
+            EventChan --- StateEngines
+            StateEngines --- PacketParser
+            PacketParser --- UsbRead
         end
 
         subgraph Registry["Descriptor Registry"]
@@ -138,7 +137,7 @@ flowchart TD
                 RawPixels["Raw Pixel Buffers (RGBA8888)"]
                 GpuCompute["wgpu GPU Compute Pipeline\nFormat Conversion (BGR565 / Mono / Gray5)\nGPU Frame Diffing & Dirty Rect Extraction"]
 
-                EncdrView -->|Render / Capture| GpuCompute
+                EncdrView -->|Render / Snapshot| GpuCompute
                 RawPixels --> GpuCompute
             end
 
@@ -150,35 +149,29 @@ flowchart TD
     end
 
     subgraph Hardware["3. Native Instruments Hardware"]
-        PhysicalInputs["Physical Inputs\n(Buttons, Encoders, Faders, Velocity Pads, Platter Sensors)"]
+        PhysicalInputs["Physical Controls & Sensors\n(Buttons, Encoders, Faders, Velocity Pads, Platter Sensors)"]
         PhysicalOutputs["LEDs & Indicators\n(Button LEDs, Light Guides, 7-Segments, Jog LED Rings)"]
         Displays["Displays\n(Dual BGR565, ST7529 Gray, 1-bit OLED, Mk3 ODR Glass Screen)"]
     end
 
-    %% Enforce 3-Tier Hierarchy: Consumer at Top, Encdr in Middle, Hardware at Bottom
-    Consumer ~~~ Encdr
-    Encdr ~~~ Hardware
-
-    %% Input Flow (Rising from Hardware to Consumer)
-    App <--|Receives Named Events (Button, Slider, Touch, CC)| EventChan
-    UsbRead <--|Interrupt IN Reports| PhysicalInputs
-
-    %% Output Flow (Flowing Down from Consumer to Hardware)
+    %% Consumer downward to Encdr
+    App -->|Polls Events (try_recv)| EventChan
     App -->|Sends LED / Ring / 7-Seg Values| LedEngine
-    App -->|Sends HTML Content / Raw Pixels| ScreenPipeline
+    App -->|Submits HTML Content / Raw Pixels| ScreenPipeline
     App -->|Sends ODR Parameter Models & Assets| OdrFramer
     App -->|Sends Mixer / Transport / SysEx| DawCtrl
 
-    %% Descriptor Definitions
+    %% Descriptors
     JsonDescriptors -.->|Defines Layouts & Encodings| PacketParser
     JsonDescriptors -.->|Defines Endpoints & Buffers| LedEngine
     JsonDescriptors -.->|Defines Dimensions & Formats| GpuCompute
 
-    %% Hardware Transports
-    LedEngine -->|USB Interrupt / Feature Reports| PhysicalOutputs
-    GpuCompute -->|USB Bulk Blits| Displays
-    OdrFramer -->|USB Bulk OUT 0x03| Displays
-    DawCtrl -->|DAW MIDI / SysEx Port| Displays
+    %% Encdr downward to Hardware
+    UsbRead -->|Polls Interrupt IN Endpoints| PhysicalInputs
+    LedEngine -->|Writes USB Interrupt / Feature Reports| PhysicalOutputs
+    GpuCompute -->|Transfers USB Bulk Blits| Displays
+    OdrFramer -->|Transfers USB Bulk OUT 0x03| Displays
+    DawCtrl -->|Transfers DAW MIDI / SysEx| Displays
 ```
 ## Documentation
 
