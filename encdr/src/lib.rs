@@ -17,8 +17,10 @@ pub use crate::core::led::LedValue;
 pub use crate::core::seven_segment::SevenSegment;
 pub use crate::device::hooks::PacketHook;
 pub use crate::device::komplete_kontrol::{
-    FileAsset, KkMk3DawController, KkMk3DawEvent, LayoutMode, OdrRpcFramer, ParameterItem,
-    PluginData, RgbColor, ViewAddress, WidgetDisplayType,
+    ArpConfig, BrowserFilter, BrowserModel, BrowserSoundItem, ChordConfig, DeviceSettings,
+    FileAsset, KkMk3DawController, KkMk3DawEvent, LayoutMode, MixerModel, MixerTrack,
+    OdrRpcFramer, ParameterItem, PluginChainItem, PluginChainModel, PluginData, RgbColor,
+    ScaleConfig, SmartPlayData, ViewAddress, WidgetDisplayType,
 };
 pub use crate::screen::GpuContext;
 
@@ -520,6 +522,91 @@ impl Encdr {
         self.kk_mk3_register_asset(device_id, asset_id, image_data)?;
         plugin_data.background = Some(asset_id.to_string());
         self.kk_mk3_set_plugin_data(device_id, plugin_data)
+    }
+
+    /// Send an active serial plugin chain to a Komplete Kontrol S-Series Mk3 keyboard via ODR.
+    pub fn kk_mk3_set_plugin_chain(
+        &self,
+        device_id: DeviceId,
+        chain: &crate::device::komplete_kontrol::PluginChainModel,
+    ) -> Result<()> {
+        let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
+        let bytes = framer.build_set_plugin_chain(chain)?;
+        self.write_interface(device_id, "odr_cmd", &bytes);
+        Ok(())
+    }
+
+    /// Set the selected plugin index within the active serial chain on a Komplete Kontrol Mk3 keyboard.
+    pub fn kk_mk3_set_plugin_chain_index(
+        &self,
+        device_id: DeviceId,
+        index: u32,
+    ) -> Result<()> {
+        let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
+        let bytes = framer.build_set_plugin_chain_index(index)?;
+        self.write_interface(device_id, "odr_cmd", &bytes);
+        Ok(())
+    }
+
+    /// Send full ODR mixer state model to a Komplete Kontrol S-Series Mk3 keyboard.
+    pub fn kk_mk3_set_mixer_model(
+        &self,
+        device_id: DeviceId,
+        mixer: &crate::device::komplete_kontrol::MixerModel,
+    ) -> Result<()> {
+        let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
+        let bytes = framer.build_set_mixer_track_data(mixer)?;
+        self.write_interface(device_id, "odr_cmd", &bytes);
+        Ok(())
+    }
+
+    /// Update stereo VU meters in the ODR mixer view on a Komplete Kontrol Mk3 keyboard.
+    pub fn kk_mk3_set_mixer_meters(
+        &self,
+        device_id: DeviceId,
+        left: &[f32],
+        right: &[f32],
+    ) -> Result<()> {
+        let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
+        let bytes = framer.build_set_mixer_meters(left, right)?;
+        self.write_interface(device_id, "odr_cmd", &bytes);
+        Ok(())
+    }
+
+    /// Send Smart Play configuration (scales, chords, arpeggiator) to a Komplete Kontrol Mk3 keyboard.
+    pub fn kk_mk3_set_smartplay(
+        &self,
+        device_id: DeviceId,
+        smartplay: &crate::device::komplete_kontrol::SmartPlayData,
+    ) -> Result<()> {
+        let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
+        let bytes = framer.build_set_smartplay_data(smartplay)?;
+        self.write_interface(device_id, "odr_cmd", &bytes);
+        Ok(())
+    }
+
+    /// Populate the on-device Sound / Preset Browser on a Komplete Kontrol Mk3 keyboard.
+    pub fn kk_mk3_set_browser_model(
+        &self,
+        device_id: DeviceId,
+        browser: &crate::device::komplete_kontrol::BrowserModel,
+    ) -> Result<()> {
+        let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
+        let bytes = framer.build_set_browser_model(browser)?;
+        self.write_interface(device_id, "odr_cmd", &bytes);
+        Ok(())
+    }
+
+    /// Update hardware device settings (backlight brightness, LED brightness, velocity curve).
+    pub fn kk_mk3_set_device_settings(
+        &self,
+        device_id: DeviceId,
+        settings: &crate::device::komplete_kontrol::DeviceSettings,
+    ) -> Result<()> {
+        let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
+        let bytes = framer.build_set_device_settings(settings)?;
+        self.write_interface(device_id, "odr_cmd", &bytes);
+        Ok(())
     }
 
     /// Disconnect a specific device.

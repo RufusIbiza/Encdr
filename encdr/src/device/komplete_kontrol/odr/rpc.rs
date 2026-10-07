@@ -2,7 +2,10 @@
 
 use serde::Serialize;
 use crate::core::error::{EncdrError, Result};
-use super::models::{FileAsset, PluginData, ViewAddress};
+use super::models::{
+    BrowserModel, DeviceSettings, FileAsset, MixerModel, PluginChainModel, PluginData, SmartPlayData,
+    ViewAddress,
+};
 
 /// RPC message type constants in the MessagePack-RPC standard specification.
 pub mod msg_type {
@@ -20,6 +23,11 @@ pub mod rpc_methods {
     pub const SET_LIGHTGUIDE_LEDS: &str = "client_lightguide_set_leds";
     pub const SET_MIXER_METERS: &str = "client_instance_mixer_set_meters";
     pub const SET_MIXER_TRACK_DATA: &str = "client_instance_mixer_set_track_data";
+    pub const SET_PLUGIN_CHAIN: &str = "client_plugin_chain_set_data";
+    pub const SET_PLUGIN_CHAIN_INDEX: &str = "client_plugin_chain_set_index";
+    pub const SET_SMARTPLAY_DATA: &str = "client_smartplay_set_data";
+    pub const SET_BROWSER_DATA: &str = "client_browser_set_data_model";
+    pub const SET_DEVICE_SETTINGS: &str = "device_setting";
     pub const SET_PROJECT_TREE: &str = "client_host_set_project_tree";
     pub const SET_SELECTED_TRACK: &str = "client_host_set_selected_track";
     pub const REGISTER_ASSET: &str = "asset_device_model_register_asset";
@@ -77,6 +85,42 @@ impl OdrRpcFramer {
         self.build_notification(rpc_methods::SET_LIGHTGUIDE_LEDS, (leds_flat,))
     }
 
+    /// Build notification to update the active serial plugin chain.
+    pub fn build_set_plugin_chain(&self, chain: &PluginChainModel) -> Result<Vec<u8>> {
+        self.build_notification(rpc_methods::SET_PLUGIN_CHAIN, (chain,))
+    }
+
+    /// Build notification to change the selected plugin index within the active chain.
+    pub fn build_set_plugin_chain_index(&self, index: u32) -> Result<Vec<u8>> {
+        self.build_notification(rpc_methods::SET_PLUGIN_CHAIN_INDEX, (index,))
+    }
+
+    /// Build notification to update the full ODR mixer state model.
+    pub fn build_set_mixer_track_data(&self, mixer: &MixerModel) -> Result<Vec<u8>> {
+        self.build_notification(rpc_methods::SET_MIXER_TRACK_DATA, (mixer,))
+    }
+
+    /// Build notification to update stereo VU meters in the ODR mixer view.
+    pub fn build_set_mixer_meters(&self, left_meters: &[f32], right_meters: &[f32]) -> Result<Vec<u8>> {
+        let pairs: Vec<(f32, f32)> = left_meters.iter().copied().zip(right_meters.iter().copied()).collect();
+        self.build_notification(rpc_methods::SET_MIXER_METERS, (pairs,))
+    }
+
+    /// Build notification to update the on-device Smart Play engine (scales, chords, arpeggiator).
+    pub fn build_set_smartplay_data(&self, smartplay: &SmartPlayData) -> Result<Vec<u8>> {
+        self.build_notification(rpc_methods::SET_SMARTPLAY_DATA, (smartplay,))
+    }
+
+    /// Build notification to populate the on-device Sound / Preset Browser.
+    pub fn build_set_browser_model(&self, browser: &BrowserModel) -> Result<Vec<u8>> {
+        self.build_notification(rpc_methods::SET_BROWSER_DATA, (browser,))
+    }
+
+    /// Build notification to update hardware device preferences (brightness, velocity, standby).
+    pub fn build_set_device_settings(&self, settings: &DeviceSettings) -> Result<Vec<u8>> {
+        self.build_notification(rpc_methods::SET_DEVICE_SETTINGS, (settings,))
+    }
+
     /// Build notification to navigate the hardware viewstate to a target section or group.
     pub fn build_navigate_view(&self, address: &ViewAddress) -> Result<Vec<u8>> {
         self.build_notification(rpc_methods::SET_HOST_VIEWSTATE, (address,))
@@ -92,7 +136,7 @@ impl OdrRpcFramer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::models::{ParameterItem, RgbColor};
+    use super::super::models::{ParameterItem, PluginChainItem, RgbColor};
 
     #[test]
     fn test_rpc_notification_framing() {
@@ -142,5 +186,50 @@ mod tests {
         assert_eq!(decoded.2, rpc_methods::REGISTER_ASSET);
         assert_eq!((decoded.3).0, "header_logo");
         assert_eq!((decoded.3).1, fake_png);
+    }
+
+    #[test]
+    fn test_plugin_chain_serialization() {
+        let framer = OdrRpcFramer::new();
+        let mut chain = PluginChainModel::new();
+        chain.add_plugin(PluginChainItem::new("Massive X", RgbColor::new(255, 100, 0)));
+        chain.add_plugin(PluginChainItem::new("Raum", RgbColor::new(0, 180, 255)).bypassed(true));
+        chain.set_current_index(1);
+
+        let bytes = framer.build_set_plugin_chain(&chain).unwrap();
+        assert!(!bytes.is_empty());
+
+        let decoded: (u32, String, (PluginChainModel,)) = rmp_serde::from_slice(&bytes).unwrap();
+        assert_eq!(decoded.0, msg_type::NOTIFICATION);
+        assert_eq!(decoded.1, rpc_methods::SET_PLUGIN_CHAIN);
+        assert_eq!((decoded.2).0.plugins.len(), 2);
+        assert_eq!((decoded.2).0.current_index, 1);
+    }
+
+    #[test]
+    fn test_mixer_and_smartplay_serialization() {
+        let framer = OdrRpcFramer::new();
+
+        // Mixer
+        let mut mixer = MixerModel::new();
+        mixer.add_track(super::super::models::MixerTrack::new("Kick", RgbColor::new(255, 0, 0)));
+        let bytes = framer.build_set_mixer_track_data(&mixer).unwrap();
+        assert!(!bytes.is_empty());
+
+        // SmartPlay
+        let smartplay = SmartPlayData::default();
+        let bytes_sp = framer.build_set_smartplay_data(&smartplay).unwrap();
+        assert!(!bytes_sp.is_empty());
+
+        // Browser
+        let mut browser = BrowserModel::default();
+        browser.filters.push(super::super::models::BrowserFilter::new("Instrument", vec!["Synth".into(), "Bass".into()]));
+        let bytes_br = framer.build_set_browser_model(&browser).unwrap();
+        assert!(!bytes_br.is_empty());
+
+        // Device settings
+        let settings = DeviceSettings::default();
+        let bytes_set = framer.build_set_device_settings(&settings).unwrap();
+        assert!(!bytes_set.is_empty());
     }
 }

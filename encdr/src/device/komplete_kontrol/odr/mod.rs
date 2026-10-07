@@ -7,5 +7,9 @@
 pub mod models;
 pub mod rpc;
 
-pub use models::{FileAsset, LayoutMode, ParameterItem, PluginData, RgbColor, ViewAddress, WidgetDisplayType};
+pub use models::{
+    ArpConfig, BrowserFilter, BrowserModel, BrowserSoundItem, ChordConfig, DeviceSettings,
+    FileAsset, LayoutMode, MixerModel, MixerTrack, ParameterItem, PluginChainItem, PluginChainModel,
+    PluginData, RgbColor, ScaleConfig, SmartPlayData, ViewAddress, WidgetDisplayType,
+};
 pub use rpc::OdrRpcFramer;

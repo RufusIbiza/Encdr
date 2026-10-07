@@ -18,9 +18,9 @@
 
 use std::time::{Duration, Instant};
 use encdr::{
-    Encdr, EncdrConfig, Event,
-    KkMk3DawController,
-    PluginData, ParameterItem, RgbColor,
+    BrowserFilter, BrowserModel, BrowserSoundItem, DeviceSettings, Encdr, EncdrConfig, Event,
+    KkMk3DawController, MixerModel, MixerTrack, ParameterItem, PluginChainItem, PluginChainModel,
+    PluginData, RgbColor, SmartPlayData,
 };
 
 fn main() {
@@ -59,8 +59,8 @@ fn main() {
         println!("Parsed DAW Event: {:?}", event);
     }
 
-    // ── 2. Build NKS Plugin Page & Asset for ODR ──────────────────────────
-    println!("\n─── [2/3] ODR Parameter Page & Graphic Header Preparation ───");
+    // ── 2. Build NKS Models for ODR ───────────────────────────────────────
+    println!("\n─── [2/3] ODR Extended Models (Plugin Chain, Browser, SmartPlay, Mixer) ───");
     let cyan = RgbColor::new(0, 210, 255);
     let mut plugin = PluginData::new("Analog Monolith", cyan)
         .with_background("demo_synth_banner");
@@ -74,7 +74,36 @@ fn main() {
     plugin.add_parameter(ParameterItem::knob("Sustain", 0.80, "-2.0 dB", "Envelope"));
     plugin.add_parameter(ParameterItem::knob("Release", 0.35, "180 ms", "Envelope"));
 
+    // Plugin chain model
+    let mut chain = PluginChainModel::new();
+    chain.add_plugin(PluginChainItem::new("Analog Monolith", cyan).with_vendor("Encdr Synth"));
+    chain.add_plugin(PluginChainItem::new("Raum Reverb", RgbColor::new(100, 150, 255)).with_vendor("Native Instruments"));
+    chain.set_current_index(0);
+
+    // Smart play model
+    let mut smartplay = SmartPlayData::default();
+    smartplay.scale.enabled = true;
+    smartplay.scale.root_key = 2; // D
+    smartplay.scale.scale_type = "Dorian".into();
+    smartplay.arp.enabled = true;
+    smartplay.arp.pattern = "UpDown".into();
+
+    // Browser model
+    let mut browser = BrowserModel::default();
+    browser.filters.push(BrowserFilter::new("Instrument", vec!["Lead".into(), "Bass".into(), "Pad".into()]).with_selection("Lead"));
+    browser.sounds.push(BrowserSoundItem::new("Blade Runner Lead", "Encdr", "Analog Monolith"));
+    browser.sounds.push(BrowserSoundItem::new("Sub 808", "Encdr", "Analog Monolith"));
+
+    // Mixer model
+    let mut mixer = MixerModel::new();
+    mixer.add_track(MixerTrack::new("Lead Synth", cyan));
+    mixer.add_track(MixerTrack::new("Drums", RgbColor::new(255, 100, 50)));
+
     println!("Plugin Model: '{}' with {} parameters", plugin.name, plugin.parameters.len());
+    println!("Plugin Chain: {} inserts, active index {}", chain.plugins.len(), chain.current_index);
+    println!("SmartPlay: Scale root {} ({}), Arp {}", smartplay.scale.root_key, smartplay.scale.scale_type, smartplay.arp.pattern);
+    println!("Browser: {} filters, {} sound items", browser.filters.len(), browser.sounds.len());
+    println!("Mixer: {} tracks configured", mixer.tracks.len());
 
     // Generate a 400x60 header banner PNG dynamically
     let banner_png = generate_gradient_png(400, 60);
@@ -101,8 +130,13 @@ fn main() {
     let desc = encdr.device_descriptor(device_id).unwrap().clone();
     println!("✅ Connected to: {} (0x{:04x}:0x{:04x})", desc.name, desc.vendor_id.0, desc.product_id.0);
 
-    // Upload header banner image and activate plugin page
-    println!("Registering banner and activating ODR parameter page...");
+    // Upload header banner image and activate models on hardware
+    println!("Uploading models and activating ODR parameter page...");
+    let _ = encdr.kk_mk3_set_plugin_chain(device_id, &chain);
+    let _ = encdr.kk_mk3_set_smartplay(device_id, &smartplay);
+    let _ = encdr.kk_mk3_set_browser_model(device_id, &browser);
+    let _ = encdr.kk_mk3_set_mixer_model(device_id, &mixer);
+    let _ = encdr.kk_mk3_set_device_settings(device_id, &DeviceSettings::default());
     if let Err(e) = encdr.kk_mk3_set_header_image(device_id, "demo_synth_banner", &banner_png, &mut plugin) {
         eprintln!("Failed to upload header/plugin data: {}", e);
     }
