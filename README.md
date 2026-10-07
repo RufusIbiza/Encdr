@@ -115,7 +115,7 @@ flowchart TD
 
     subgraph Encdr["2. Encdr Runtime Framework"]
         subgraph InputPipeline["Input Path (Zero-Copy & Lock-Free)"]
-            EventChan[("Lock-Free Event Channel\n(crossbeam-channel)")]
+            EventChan["Lock-Free Event Channel\n(crossbeam-channel)"]
             StateEngines["Hardware State Engines\n(Encoder ERP/Wrap16, Pad Hysteresis, Jog Platter)"]
             PacketParser["Data-Driven Packet Parser\n(Bit unpacking & field normalization)"]
             UsbRead["USB Read Engine\n(nusb async queue)"]
@@ -126,7 +126,7 @@ flowchart TD
         end
 
         subgraph Registry["Descriptor Registry"]
-            JsonDescriptors[("Data-Driven JSON Descriptors\n(Endpoints, Reports, Quirks, Layouts)")]
+            JsonDescriptors["Data-Driven JSON Descriptors\n(Endpoints, Reports, Quirks, Layouts)"]
         end
 
         subgraph OutputPipeline["Output & Display Pipeline"]
@@ -137,7 +137,7 @@ flowchart TD
                 RawPixels["Raw Pixel Buffers (RGBA8888)"]
                 GpuCompute["wgpu GPU Compute Pipeline\nFormat Conversion (BGR565 / Mono / Gray5)\nGPU Frame Diffing & Dirty Rect Extraction"]
 
-                EncdrView -->|Render / Snapshot| GpuCompute
+                EncdrView -->|"Render / Snapshot"| GpuCompute
                 RawPixels --> GpuCompute
             end
 
@@ -155,23 +155,24 @@ flowchart TD
     end
 
     %% Consumer downward to Encdr
-    App -->|Polls Events (try_recv)| EventChan
-    App -->|Sends LED / Ring / 7-Seg Values| LedEngine
-    App -->|Submits HTML Content / Raw Pixels| ScreenPipeline
-    App -->|Sends ODR Parameter Models & Assets| OdrFramer
-    App -->|Sends Mixer / Transport / SysEx| DawCtrl
+    App -->|"Polls Events via try_recv"| EventChan
+    App -->|"Sends LED / Ring / 7-Seg Values"| LedEngine
+    App -->|"Submits HTML Content"| EncdrView
+    App -->|"Submits Pixel Buffers"| RawPixels
+    App -->|"Sends ODR Parameter Models & Assets"| OdrFramer
+    App -->|"Sends Mixer / Transport / SysEx"| DawCtrl
 
     %% Descriptors
-    JsonDescriptors -.->|Defines Layouts & Encodings| PacketParser
-    JsonDescriptors -.->|Defines Endpoints & Buffers| LedEngine
-    JsonDescriptors -.->|Defines Dimensions & Formats| GpuCompute
+    JsonDescriptors -.->|"Defines Layouts & Encodings"| PacketParser
+    JsonDescriptors -.->|"Defines Endpoints & Buffers"| LedEngine
+    JsonDescriptors -.->|"Defines Dimensions & Formats"| GpuCompute
 
     %% Encdr downward to Hardware
-    UsbRead -->|Polls Interrupt IN Endpoints| PhysicalInputs
-    LedEngine -->|Writes USB Interrupt / Feature Reports| PhysicalOutputs
-    GpuCompute -->|Transfers USB Bulk Blits| Displays
-    OdrFramer -->|Transfers USB Bulk OUT 0x03| Displays
-    DawCtrl -->|Transfers DAW MIDI / SysEx| Displays
+    UsbRead -->|"Polls Interrupt IN Endpoints"| PhysicalInputs
+    LedEngine -->|"Writes USB Interrupt / Feature Reports"| PhysicalOutputs
+    GpuCompute -->|"Transfers USB Bulk Blits"| Displays
+    OdrFramer -->|"Transfers USB Bulk OUT 0x03"| Displays
+    DawCtrl -->|"Transfers DAW MIDI / SysEx"| Displays
 ```
 ## Documentation
 
