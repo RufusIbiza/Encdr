@@ -35,7 +35,7 @@ On its own, nothing. Add a sprinkling of imagination, though, and it allows you 
 - **Native Instruments software integration** — Encdr communicates directly with the controller hardware; it does not interface with Traktor Pro, Maschine, or Komplete Kontrol software libraries, or proprietary NKS preset databases. It can't add additional functionality to these apps, nor can it make these apps support non-NI or previously unsupported hardware.
 - **Wireless or Bluetooth operation** — All supported controllers communicate strictly over wired USB.
 
-## How do I install it?
+### How do I install it?
 
 If you're asking this question, Encdr is probably not for you. It's a developer tool, and needs to be compiled into a larger application to be useful. It also requires you to be comfortable with Rust programming (although I've tried to make it as easy to use with AI/LLM coding tools as possible — just point your LLM at [this repository](https://github.com/RufusIbiza/Encdr), and it should be able to guide you through the process of building and running an app).
 
@@ -317,18 +317,20 @@ encdr/
 ## Changelog
 ### v0.7.3
 - **Native Instruments Discrete LED Brightness & Half-Brightness Support**:
-  - **NHL2 Protocol Support**: Added Native Instruments NHL2 button LED duty cycle protocol handling, supporting 4 discrete levels and 7-bit PWM duty cycle encoding on Report `0x80` (`0x80 | percentage`):
+  - **Button LED Protocol Handling**: Added Native Instruments button LED brightness protocol handling, supporting discrete levels and PWM duty cycle encoding on Report `0x80`:
     - `0x00`: **Off**
-    - `0x9E` (158): **Dim / Half-brightness** (30% duty cycle, illuminating 1 LED under the button for idle state)
-    - `0xE4` (228): **Bright / Active** (100% duty cycle, illuminating both LEDs under the button for active state)
+    - `0xE4` (228): **Dim / Half-brightness** (idle state, illuminating 1 LED under the button)
+    - `0x9E` (158): **Bright / Active** (active state, illuminating both LEDs under the button)
     - `0xFF` (255): **Max drive**
   - **Core LED Engine Enhancements**:
     - Added `LedValue::Dim` and `LedValue::Bright` enum variants with constants (`LedValue::OFF`, `LedValue::DIM`, `LedValue::BRIGHT`, `LedValue::MAX`, `LedValue::NI_OFF`, `LedValue::NI_DIM`, `LedValue::NI_BRIGHT`, `LedValue::NI_MAX`).
     - Added helper methods `LedValue::to_ni_single_byte(pct)` and `LedValue::single_percent(pct)` for setting arbitrary duty cycle percentages ($0..100\%$).
-    - Updated `LedValue::brightness()` to return standard levels (`158` for `Dim`, `228` for `Bright`).
+    - Updated `LedValue::brightness()` to return standard levels (`228` for `Dim`, `158` for `Bright`).
   - **Universal Multi-Target Mapping**:
-    - Updated `LedBuilder` to automatically resolve `LedValue::Dim` and `LedValue::Bright` across all descriptor mappings: single monochrome button LEDs (`158` / `228`), RGB LEDs (`64` / `255`), and NI indexed palette LEDs (intensity `1` / intensity `3` white).
+    - Updated `LedBuilder` to automatically resolve `LedValue::Dim` and `LedValue::Bright` across all descriptor mappings: single monochrome button LEDs (`228` / `158`), RGB LEDs (`64` / `255`), and NI indexed palette LEDs (intensity `1` / intensity `3` white).
     - Updated `JogRing::set_led()` and USB device thread feature report handlers to support `Dim` and `Bright` states.
+  - **Example & Telemetry**:
+    - Added `mk3_button_brightness` test example demonstrating full 47-button dimming and active elevation on press/release for Maschine Mk3 / Maschine Plus.
   - **Documentation & Hardware Reference Updates**:
     - Updated hardware references for NI Maschine Mk3 ([`docs/hardware/ni_maschine_mk3.md`](docs/hardware/ni_maschine_mk3.md)), Maschine Plus ([`docs/hardware/ni_maschine_plus.md`](docs/hardware/ni_maschine_plus.md)), Maschine Mikro Mk3 ([`docs/hardware/ni_maschine_mikro_mk3.md`](docs/hardware/ni_maschine_mikro_mk3.md)), Komplete Kontrol Mk2 ([`docs/hardware/ni_komplete_kontrol_mk2.md`](docs/hardware/ni_komplete_kontrol_mk2.md)), and Komplete Kontrol Mk3 ([`docs/hardware/ni_komplete_kontrol_mk3.md`](docs/hardware/ni_komplete_kontrol_mk3.md)).
     - Updated [`docs/api_reference.md`](docs/api_reference.md) with complete `LedValue` documentation, constants, helper methods, and multi-target mapping semantics.

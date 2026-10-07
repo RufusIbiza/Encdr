@@ -54,8 +54,8 @@ The Maschine Mikro Mk3 is a streamlined production controller featuring 16 large
 * **Output Packets:**
   - Report `0x80` (48 bytes): Single-color function buttons (offsets 1..27) and 25-segment Smart Strip LED bar (offsets 28..52). Function buttons use Native Instruments' 4-level discrete duty cycle protocol:
     - `0x00`: **Off** (`LedValue::Off` / `LedValue::OFF`)
-    - `0x9E` (158): **Dim / Half-brightness** (`LedValue::Dim` / `LedValue::DIM`) — 30% duty cycle idle state
-    - `0xE4` (228): **Bright / Active** (`LedValue::Bright` / `LedValue::BRIGHT`) — 100% duty cycle active state
+    - `0xE4` (228): **Dim / Half-brightness** (`LedValue::Dim` / `LedValue::DIM`) — idle / half-brightness
+    - `0x9E` (158): **Bright / Active** (`LedValue::Bright` / `LedValue::BRIGHT`) — active state
     - `0xFF` (255): **Max drive** (`LedValue::Single(255)` / `LedValue::MAX`)
     - Arbitrary duty cycle percentages ($0..100\%$) encode as `0x80 | pct` via `LedValue::single_percent(pct)`.
   - Report `0x81` (20 bytes): 16 RGB pads driven via Native Instruments packed palette byte format (`(color_id << 2) | (intensity & 0x03)`).

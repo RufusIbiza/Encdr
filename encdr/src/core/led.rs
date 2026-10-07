@@ -2,9 +2,9 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LedValue {
     Off,
-    /// Dim / half-brightness level (maps to NI 30% duty cycle / 0x9E on monochrome LEDs).
+    /// Dim / half-brightness level (maps to 0xE4 / 228 on NI monochrome LEDs).
     Dim,
-    /// Bright / active level (maps to NI 100% duty cycle / 0xE4 on monochrome LEDs).
+    /// Bright / active level (maps to 0x9E / 158 on NI monochrome LEDs).
     Bright,
     Single(u8),
     Rgb { r: u8, g: u8, b: u8 },
@@ -20,20 +20,20 @@ impl LedValue {
     /// Native Instruments standard OFF state (`0x00`).
     pub const OFF: LedValue = LedValue::Off;
 
-    /// Native Instruments standard DIM / half-brightness level (`0x9E` / 158: 30% duty cycle).
+    /// Native Instruments standard DIM / half-brightness level (`0xE4` / 228).
     pub const DIM: LedValue = LedValue::Dim;
 
-    /// Native Instruments standard BRIGHT / active level (`0xE4` / 228: 100% duty cycle).
+    /// Native Instruments standard BRIGHT / active level (`0x9E` / 158).
     pub const BRIGHT: LedValue = LedValue::Bright;
 
     /// Native Instruments maximum drive level (`0xFF` / 255: max drive / intensity 3).
     pub const MAX: LedValue = LedValue::Single(255);
 
-    /// Raw byte for NI single-color button DIM state (`0x9E` / 158).
-    pub const NI_DIM: u8 = 158;
+    /// Raw byte for NI single-color button DIM state (`0xE4` / 228).
+    pub const NI_DIM: u8 = 228;
 
-    /// Raw byte for NI single-color button BRIGHT state (`0xE4` / 228).
-    pub const NI_BRIGHT: u8 = 228;
+    /// Raw byte for NI single-color button BRIGHT state (`0x9E` / 158).
+    pub const NI_BRIGHT: u8 = 158;
 
     /// Raw byte for NI single-color button MAX state (`0xFF` / 255).
     pub const NI_MAX: u8 = 255;
@@ -51,16 +51,18 @@ impl LedValue {
         }
     }
 
-    /// Converts a brightness percentage (0..=100) to Native Instruments 7-bit PWM byte format
+    /// Converts a brightness percentage (0..=100) to Native Instruments PWM byte format
     /// used by single-color button LEDs.
     ///
     /// - `0`: Off (`0x00`)
-    /// - `1..=100`: `0x80 | pct` (e.g. 30% -> `0x9E` / 158, 100% -> `0xE4` / 228)
+    /// - `30`: Dim / half-brightness (`0xE4` / 228)
+    /// - `100`: Bright / active (`0x9E` / 158)
     pub fn to_ni_single_byte(pct: u8) -> u8 {
         if pct == 0 {
             0
         } else {
-            0x80 | pct.min(100)
+            let p = pct.clamp(1, 100) as u16;
+            (258 - p) as u8
         }
     }
 
@@ -170,19 +172,19 @@ mod tests {
     #[test]
     fn test_ni_single_levels() {
         assert_eq!(LedValue::to_ni_single_byte(0), 0);
-        assert_eq!(LedValue::to_ni_single_byte(30), 158); // 0x9E (Dim)
-        assert_eq!(LedValue::to_ni_single_byte(100), 228); // 0xE4 (Bright)
-        assert_eq!(LedValue::to_ni_single_byte(120), 228); // Clamped to 100
+        assert_eq!(LedValue::to_ni_single_byte(30), 228); // 0xE4 (Dim)
+        assert_eq!(LedValue::to_ni_single_byte(100), 158); // 0x9E (Bright)
+        assert_eq!(LedValue::to_ni_single_byte(120), 158); // Clamped to 100
         assert_eq!(LedValue::single_percent(0), LedValue::Off);
-        assert_eq!(LedValue::single_percent(30), LedValue::Single(158));
-        assert_eq!(LedValue::single_percent(100), LedValue::Single(228));
+        assert_eq!(LedValue::single_percent(30), LedValue::Single(228));
+        assert_eq!(LedValue::single_percent(100), LedValue::Single(158));
     }
 
     #[test]
     fn test_led_value_brightness() {
         assert_eq!(LedValue::Off.brightness(), 0);
-        assert_eq!(LedValue::Dim.brightness(), 158);
-        assert_eq!(LedValue::Bright.brightness(), 228);
+        assert_eq!(LedValue::Dim.brightness(), 228);
+        assert_eq!(LedValue::Bright.brightness(), 158);
         assert_eq!(LedValue::Single(42).brightness(), 42);
         assert_eq!(LedValue::Rgb { r: 10, g: 90, b: 30 }.brightness(), 90);
     }

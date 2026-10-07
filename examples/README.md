@@ -32,6 +32,7 @@ cargo run -p encdr-examples --bin <example_name>
 | [`mikro_mk3_vegas`](#maschine-mikro-mk3-vegas-mode) | NI Maschine Mikro Mk3 | Interactive Vegas Mode | Sweeping RGB rainbow wave across 16 pads, Smart Strip LED wave, and telemetry. |
 | [`mk2_vegas`](#maschine-mk2-vegas-mode) | NI Maschine Mk2 | Interactive Vegas Mode | Sweeping RGB rainbow wave across 16 pads, Group A–H RGB cycling, button chase, and telemetry. |
 | [`mk3_vegas`](#maschine-mk3-vegas-mode) | NI Maschine Mk3 | Interactive Vegas Mode | Sweeping RGB rainbow wave across 16 pads, Group A–H cycling, Smart Strip wave, and telemetry. |
+| [`mk3_button_brightness`](#maschine-mk3-control-button-brightness--dimming-test) | NI Maschine Mk3 | LED Brightness & Dimming | Illuminates all 47 monochrome control buttons at DIM (half-brightness), elevating to BRIGHT on press. |
 | [`plus_vegas`](#maschine-plus-vegas-mode) | NI Maschine Plus | Interactive Vegas Mode | Standalone-ready Vegas mode with 16 RGB pads, Smart Strip animations, and full telemetry. |
 | [`studio_vegas`](#maschine-studio-vegas-mode) | NI Maschine Studio | Interactive Vegas Mode | 32-segment Jogwheel ring spinner, stereo master VU meters, 16 RGB pads, and telemetry. |
 | [`kk_mk2_vegas`](#komplete-kontrol-mk2-vegas-mode) | NI Komplete Kontrol Mk2 | Interactive Vegas Mode | Sweeping Light Guide rainbow wave across the keybed (49/61/88 keys) and button telemetry. |
@@ -332,6 +333,22 @@ Interactive Vegas demo and hardware telemetry:
 
 ```bash
 cargo run -p encdr-examples --bin mk3_vegas
+```
+
+---
+
+### Maschine Mk3 Control Button Brightness & Dimming Test
+* **Binary:** `mk3_button_brightness`
+* **Hardware:** Native Instruments Maschine Mk3 (`0x17cc:0x1600`) / Maschine Plus (`0x17cc:0x1820`)
+* **Path:** [`examples/maschine_mk3/button_brightness.rs`](maschine_mk3/button_brightness.rs)
+
+Tests Native Instruments discrete button brightness levels:
+- Illuminates all 47 monochrome function, transport, edit, and mode buttons at `LedValue::Dim` (`0xE4` / 228, half-brightness).
+- Elevates pressed buttons to `LedValue::Bright` (`0x9E` / 158, active state / both LEDs lit), returning to `Dim` upon release.
+- Keeps RGB pads and Group A–H buttons unlit.
+
+```bash
+cargo run -p encdr-examples --bin mk3_button_brightness
 ```
 
 ---
