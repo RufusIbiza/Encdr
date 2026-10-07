@@ -1,3 +1,7 @@
 /target
 Cargo.lock
 /docs/reference
+
+# Session state
+session_state.md
+SESSION_STATE.md
