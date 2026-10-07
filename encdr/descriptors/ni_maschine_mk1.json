@@ -124,6 +124,7 @@
       "interface": "control",
       "buffer_size": 31,
       "prefix": ["0x0c", "0x00"],
+      "protocol": "linear_8bit",
       "items": [
         { "type": "single", "name": "pad_4",       "offset": 0 },
         { "type": "single", "name": "pad_3",       "offset": 1 },
@@ -163,6 +164,7 @@
       "interface": "control",
       "buffer_size": 31,
       "prefix": ["0x0c", "0x1e"],
+      "protocol": "linear_8bit",
       "items": [
         { "type": "single", "name": "step_left",   "offset": 0 },
         { "type": "single", "name": "restart",     "offset": 1 },

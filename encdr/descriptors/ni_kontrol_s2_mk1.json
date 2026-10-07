@@ -124,6 +124,7 @@
       "interface": "control",
       "prefix_byte": "0x80",
       "buffer_size": 62,
+      "protocol": "linear_8bit",
       "items": [
         { "type": "single", "name": "left_peak",          "offset": 1 },
         { "type": "single", "name": "left_loop_in",       "offset": 2 },

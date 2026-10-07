@@ -326,8 +326,13 @@ encdr/
     - Added `LedValue::Dim` and `LedValue::Bright` enum variants with constants (`LedValue::OFF`, `LedValue::DIM`, `LedValue::BRIGHT`, `LedValue::MAX`, `LedValue::NI_OFF`, `LedValue::NI_DIM`, `LedValue::NI_BRIGHT`, `LedValue::NI_MAX`).
     - Added helper methods `LedValue::to_ni_single_byte(pct)` and `LedValue::single_percent(pct)` for setting arbitrary duty cycle percentages ($0..100\%$).
     - Updated `LedValue::brightness()` to return standard levels (`228` for `Dim`, `158` for `Bright`).
-  - **Universal Multi-Target Mapping**:
-    - Updated `LedBuilder` to automatically resolve `LedValue::Dim` and `LedValue::Bright` across all descriptor mappings: single monochrome button LEDs (`228` / `158`), RGB LEDs (`64` / `255`), and NI indexed palette LEDs (intensity `1` / intensity `3` white).
+  - **Universal Multi-Target & Descriptor-Driven Protocol Mapping**:
+    - Introduced `LedProtocol` (`nhl2`, `linear_7bit`, `linear_8bit`) in descriptors allowing each controller's LED layouts to declare their native brightness protocol:
+      - `nhl2` (Maschine Mk3, Plus, Mikro Mk3, KK Mk2/Mk3, X1 Mk3): `Dim` = `228` (`0xE4`), `Bright` = `158` (`0x9E`).
+      - `linear_7bit` (Maschine Jam, Traktor S2/S4 Mk3, etc.): `Dim` = `38` (~30%), `Bright` = `127` (100%).
+      - `linear_8bit` (Maschine Studio, Maschine Mk2, Traktor S4/S5/S8, etc.): `Dim` = `76` (~30%), `Bright` = `255` (100%).
+    - Added optional `dim_value` and `bright_value` override bytes in `LedLayoutDesc` for granular group-level hardware tuning.
+    - Updated `LedBuilder` to automatically resolve `LedValue::Dim` and `LedValue::Bright` per descriptor layout across all target types: monochrome button LEDs, RGB LEDs (`64` / `255`), and NI indexed palette LEDs (intensity `1` / intensity `3` white).
     - Updated `JogRing::set_led()` and USB device thread feature report handlers to support `Dim` and `Bright` states.
   - **Example & Telemetry**:
     - Added `mk3_button_brightness` test example demonstrating full 47-button dimming and active elevation on press/release for Maschine Mk3 / Maschine Plus.

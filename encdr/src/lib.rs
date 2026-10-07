@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use crossbeam_channel::{Receiver, Sender};
 
-pub use crate::core::descriptor::{DeviceDescriptor, PixelFormat};
+pub use crate::core::descriptor::{DeviceDescriptor, LedProtocol, PixelFormat};
 pub use crate::core::error::{EncdrError, Result};
 pub use crate::core::event::{DeviceId, Event};
 pub use crate::core::jog_ring::{JogDeck, JogRing, JogRingMode, JogWheelTracker};

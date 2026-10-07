@@ -129,6 +129,7 @@
       "interface": "control",
       "buffer_size": 64,
       "prefix_byte": "0x80",
+      "protocol": "linear_7bit",
       "items": [
         { "type": "single", "name": "fx1_dry_wet", "offset": 0 },
         { "type": "single", "name": "fx1_1",       "offset": 1 },

@@ -142,6 +142,7 @@
       "interface": "control",
       "buffer_size": 63,
       "prefix_byte": "0x80",
+      "protocol": "linear_8bit",
       "items": [
         { "type": "single", "name": "channel", "offset": 1 },
         { "type": "single", "name": "plugin", "offset": 2 },
@@ -220,6 +221,7 @@
       "interface": "control",
       "buffer_size": 53,
       "prefix_byte": "0x82",
+      "protocol": "linear_8bit",
       "items": [
         { "type": "single", "name": "in_1", "offset": 1 },
         { "type": "single", "name": "in_2", "offset": 2 },
@@ -246,6 +248,7 @@
       "interface": "control",
       "buffer_size": 56,
       "prefix_byte": "0x83",
+      "protocol": "linear_8bit",
       "items": [
         { "type": "strip", "name": "jogwheel_ring", "offset": 1, "count": 32 }
       ]

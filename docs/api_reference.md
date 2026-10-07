@@ -446,10 +446,14 @@ Maps an 8-bit RGB color to the Native Instruments packed 1-byte hardware palette
 let ni_byte = LedValue::to_ni_palette_byte(255, 0, 0); // Red at full brightness -> 0x07
 ```
 
-### Multi-Target Mapping Semantics
+### Multi-Target & Protocol-Aware Mapping Semantics
 
-When `LedValue::Dim` or `LedValue::Bright` is dispatched via `set_led` or `set_led_in_group`, `LedBuilder` automatically tailors output to the hardware target type:
-- **Single (Monochrome Button LED):** `Dim` emits `228` (`0xE4` = half-brightness / 1 LED illuminated), `Bright` emits `158` (`0x9E` = active / both LEDs illuminated).
+When `LedValue::Dim` or `LedValue::Bright` is dispatched via `set_led` or `set_led_in_group`, `LedBuilder` automatically tailors output to the hardware target type and the descriptor's configured [`LedProtocol`](#5-led-values--ni-palette-ledvalue):
+- **Single (Monochrome Button LED):**
+  - **`nhl2`** (Maschine Mk3, Plus, Mikro Mk3, KK Mk2/Mk3, X1 Mk3): `Dim` emits `228` (`0xE4` = half-brightness / 1 LED illuminated), `Bright` emits `158` (`0x9E` = active / both LEDs illuminated).
+  - **`linear_7bit`** (Maschine Jam, Traktor S2/S4 Mk3, etc.): `Dim` emits `38` (~30%), `Bright` emits `127` (100%).
+  - **`linear_8bit`** (Maschine Studio, Maschine Mk2, Traktor S4/S5/S8, etc.): `Dim` emits `76` (~30%), `Bright` emits `255` (100%).
+  - Descriptors can also declare explicit `dim_value` and `bright_value` overrides per LED group.
 - **RGB LEDs:** `Dim` emits `(64, 64, 64)`, `Bright` emits `(255, 255, 255)`.
 - **Indexed Palette LEDs:** `Dim` emits `(17 << 2) | 1` (dim white), `Bright` emits `(17 << 2) | 3` (bright white).
 

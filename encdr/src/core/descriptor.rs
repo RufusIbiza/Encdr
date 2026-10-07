@@ -293,6 +293,50 @@ pub enum EncoderEncoding {
 
 // ── LED layout ─────────────────────────────────────────────────────────────
 
+/// Protocol and duty cycle encoding used by single-color LEDs in an LED layout group.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LedProtocol {
+    /// Modern Native Instruments discrete active-low comparator (Maschine Mk3, Maschine Plus,
+    /// Maschine Mikro Mk3, Komplete Kontrol Mk2 / Mk3, Traktor Kontrol X1 Mk3).
+    /// Dim = 0xE4 (228), Bright = 0x9E (158), Max = 255.
+    Nhl2,
+    /// Standard 7-bit linear positive PWM 0..127 (Maschine Jam, Traktor S2 Mk2, etc.).
+    /// Dim = 38 (~30%), Bright = 127 (100%), Max = 127.
+    #[serde(rename = "linear_7bit")]
+    Linear7Bit,
+    /// Standard 8-bit linear positive PWM 0..255 (Maschine Studio, Maschine Mk2, Traktor S4/S5/S8, etc.).
+    /// Dim = 76 (~30%), Bright = 255 (100%), Max = 255.
+    #[serde(rename = "linear_8bit")]
+    Linear8Bit,
+}
+
+impl Default for LedProtocol {
+    fn default() -> Self {
+        LedProtocol::Nhl2
+    }
+}
+
+impl LedProtocol {
+    /// Default byte value for dim / half-brightness level under this protocol.
+    pub fn default_dim_byte(&self) -> u8 {
+        match self {
+            LedProtocol::Nhl2 => crate::core::led::LedValue::NI_DIM, // 228
+            LedProtocol::Linear7Bit => 38,
+            LedProtocol::Linear8Bit => 76,
+        }
+    }
+
+    /// Default byte value for bright / active level under this protocol.
+    pub fn default_bright_byte(&self) -> u8 {
+        match self {
+            LedProtocol::Nhl2 => crate::core::led::LedValue::NI_BRIGHT, // 158
+            LedProtocol::Linear7Bit => 127,
+            LedProtocol::Linear8Bit => 255,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct LedLayoutDesc {
     #[serde(default)]
@@ -307,6 +351,15 @@ pub struct LedLayoutDesc {
     /// for a command byte plus bank offset).
     #[serde(default)]
     pub prefix: Vec<HexU16>,
+    /// LED brightness protocol used for single-color button LEDs in this layout.
+    #[serde(default)]
+    pub protocol: Option<LedProtocol>,
+    /// Explicit override byte for `LedValue::Dim`.
+    #[serde(default)]
+    pub dim_value: Option<u8>,
+    /// Explicit override byte for `LedValue::Bright`.
+    #[serde(default)]
+    pub bright_value: Option<u8>,
     pub items: Vec<LedItemDesc>,
 }
 
@@ -318,6 +371,18 @@ impl LedLayoutDesc {
             .chain(&self.prefix)
             .map(|b| b.0 as u8)
             .collect()
+    }
+
+    /// Returns the resolved byte value for `LedValue::Dim` on single-color LEDs in this group.
+    pub fn dim_byte(&self) -> u8 {
+        self.dim_value
+            .unwrap_or_else(|| self.protocol.unwrap_or_default().default_dim_byte())
+    }
+
+    /// Returns the resolved byte value for `LedValue::Bright` on single-color LEDs in this group.
+    pub fn bright_byte(&self) -> u8 {
+        self.bright_value
+            .unwrap_or_else(|| self.protocol.unwrap_or_default().default_bright_byte())
     }
 }
 

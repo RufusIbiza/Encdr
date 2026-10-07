@@ -70,6 +70,7 @@
       "interface": "control",
       "buffer_size": 80,
       "prefix_byte": "0x00",
+      "protocol": "linear_8bit",
       "items": [
         { "type": "single", "name": "f1",          "offset": 1 },
         { "type": "single", "name": "f2",          "offset": 2 },

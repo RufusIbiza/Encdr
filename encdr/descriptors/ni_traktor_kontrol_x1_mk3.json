@@ -94,6 +94,7 @@
       "interface": "control",
       "buffer_size": 49,
       "prefix_byte": "0x80",
+      "protocol": "nhl2",
       "items": [
         { "type": "single", "name": "shift",              "offset": 1 },
         { "type": "single", "name": "mode",               "offset": 2 },

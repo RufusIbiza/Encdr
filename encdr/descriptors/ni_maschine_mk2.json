@@ -131,6 +131,7 @@
       "interface": "control",
       "buffer_size": 32,
       "prefix_byte": "0x82",
+      "protocol": "linear_8bit",
       "items": [
         { "type": "single", "name": "control",       "offset": 1 },
         { "type": "single", "name": "step",          "offset": 2 },
@@ -170,6 +171,7 @@
       "interface": "control",
       "buffer_size": 57,
       "prefix_byte": "0x81",
+      "protocol": "linear_8bit",
       "items": [
         { "type": "rgb",    "name": "group_a",       "offsets": {"r": 1,  "g": 2,  "b": 3} },
         { "type": "rgb",    "name": "group_b",       "offsets": {"r": 7,  "g": 8,  "b": 9} },

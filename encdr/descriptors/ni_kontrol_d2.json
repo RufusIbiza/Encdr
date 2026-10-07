@@ -120,6 +120,7 @@
     "interface": "control",
     "buffer_size": 122,
     "prefix_byte": "0x80",
+    "protocol": "linear_8bit",
     "items": [
       { "type": "rgb",    "name": "pad_1",  "offsets": { "r": 2,  "g": 1,  "b": 0  } },
       { "type": "rgb",    "name": "pad_2",  "offsets": { "r": 5,  "g": 4,  "b": 3  } },
