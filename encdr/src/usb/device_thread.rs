@@ -71,6 +71,7 @@ pub enum DeviceCmd {
     SetLedStrip { name: String, values: Vec<u8> },
     SetLedStripInGroup { group: String, name: String, values: Vec<u8> },
     SubmitScreen { screen: String, pixels: Vec<u8>, format: PixelFormat },
+    WriteInterface { interface: String, data: Vec<u8> },
     Disconnect,
 }
 
@@ -179,6 +180,9 @@ impl DeviceHandle {
                 if let Some(ref tx) = self.led_tx {
                     tx.try_send(cmd).ok();
                 }
+            }
+            DeviceCmd::WriteInterface { .. } => {
+                self.cmd_tx.try_send(cmd).ok();
             }
             DeviceCmd::Disconnect => {
                 self.cmd_tx.try_send(DeviceCmd::Disconnect).ok();
@@ -506,11 +510,39 @@ fn run_device(
                     // Timeout tick wakes up the loop so the sweep below executes
                 }
                 Woken::Cmd(cmd) => {
-                    // The only command still routed here is Disconnect.
-                    // LED and Screen commands go to their dedicated threads.
-                    if matches!(cmd, DeviceCmd::Disconnect) {
-                        running = false;
-                        break;
+                    match cmd {
+                        DeviceCmd::Disconnect => {
+                            running = false;
+                            break;
+                        }
+                        DeviceCmd::WriteInterface { interface, data } => {
+                            let target = interfaces.get(&interface).zip(
+                                descriptor
+                                    .interface_by_id(&interface)
+                                    .and_then(|i| i.endpoints.out.as_ref()),
+                            );
+                            if let Some((iface, ep_desc)) = target {
+                                let address = ep_desc.address.0 as u8;
+                                let len = data.len();
+                                let timeout = Duration::from_millis(1000);
+                                let res = match ep_desc.transfer_type {
+                                    TransferType::Bulk => iface
+                                        .endpoint::<Bulk, Out>(address)
+                                        .map(|mut ep| ep.transfer_blocking(data.into(), timeout).status),
+                                    _ => iface
+                                        .endpoint::<Interrupt, Out>(address)
+                                        .map(|mut ep| ep.transfer_blocking(data.into(), timeout).status),
+                                };
+                                match res {
+                                    Ok(Ok(())) => tracing::trace!("Wrote {} bytes to interface '{}' (ep 0x{:02x})", len, interface, address),
+                                    Ok(Err(e)) => tracing::warn!("Write to interface '{}' (ep 0x{:02x}) failed: {}", interface, address, e),
+                                    Err(e) => tracing::warn!("Could not open ep 0x{:02x} on interface '{}': {}", address, interface, e),
+                                }
+                            } else {
+                                tracing::warn!("WriteInterface: interface '{}' not found or has no OUT endpoint", interface);
+                            }
+                        }
+                        _ => {}
                     }
                 }
                 Woken::Read(idx, completion) => {

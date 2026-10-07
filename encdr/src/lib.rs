@@ -16,6 +16,10 @@ pub use crate::core::jog_ring::{JogDeck, JogRing, JogRingMode, JogWheelTracker};
 pub use crate::core::led::LedValue;
 pub use crate::core::seven_segment::SevenSegment;
 pub use crate::device::hooks::PacketHook;
+pub use crate::device::komplete_kontrol::{
+    FileAsset, KkMk3DawController, KkMk3DawEvent, LayoutMode, OdrRpcFramer, ParameterItem,
+    PluginData, RgbColor, ViewAddress, WidgetDisplayType,
+};
 pub use crate::screen::GpuContext;
 
 use crate::device::loader::DescriptorRegistry;
@@ -435,6 +439,87 @@ impl Encdr {
                 format,
             });
         }
+    }
+
+    /// Write raw data to a device interface's OUT endpoint.
+    ///
+    /// Used for vendor-specific bulk or interrupt transfer interfaces
+    /// (e.g. Komplete Kontrol Mk3 `odr_cmd` or `odr_stream`).
+    pub fn write_interface(&self, device_id: DeviceId, interface: &str, data: &[u8]) {
+        if let Some(handle) = self.devices.get(&device_id) {
+            handle.send(DeviceCmd::WriteInterface {
+                interface: interface.to_string(),
+                data: data.to_vec(),
+            });
+        }
+    }
+
+    /// Send an active plugin / parameter page model to a Komplete Kontrol S-Series Mk3 keyboard via ODR.
+    pub fn kk_mk3_set_plugin_data(
+        &self,
+        device_id: DeviceId,
+        plugin_data: &crate::device::komplete_kontrol::PluginData,
+    ) -> Result<()> {
+        let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
+        let bytes = framer.build_set_plugin_data(plugin_data)?;
+        self.write_interface(device_id, "odr_cmd", &bytes);
+        Ok(())
+    }
+
+    /// Update a single parameter's value on a Komplete Kontrol S-Series Mk3 keyboard via ODR.
+    pub fn kk_mk3_update_parameter_value(
+        &self,
+        device_id: DeviceId,
+        param_index: u32,
+        value: f32,
+    ) -> Result<()> {
+        let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
+        let bytes = framer.build_update_parameter_value(param_index, value)?;
+        self.write_interface(device_id, "odr_cmd", &bytes);
+        Ok(())
+    }
+
+    /// Update the Light Guide LEDs on a Komplete Kontrol S-Series Mk3 keyboard via ODR.
+    ///
+    /// Takes a slice of RGB tuples `(r, g, b)` for each key.
+    pub fn kk_mk3_set_lightguide(
+        &self,
+        device_id: DeviceId,
+        rgb_keys: &[(u8, u8, u8)],
+    ) -> Result<()> {
+        let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
+        let bytes = framer.build_set_lightguide(rgb_keys)?;
+        self.write_interface(device_id, "odr_cmd", &bytes);
+        Ok(())
+    }
+
+    /// Register an image asset (PNG or JPEG) into the Komplete Kontrol Mk3 on-device cache.
+    pub fn kk_mk3_register_asset(
+        &self,
+        device_id: DeviceId,
+        asset_id: &str,
+        image_data: &[u8],
+    ) -> Result<()> {
+        let mut framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
+        let asset = crate::device::komplete_kontrol::FileAsset::new(asset_id, image_data.to_vec());
+        let (_msg_id, bytes) = framer.build_register_asset(&asset)?;
+        self.write_interface(device_id, "odr_cmd", &bytes);
+        Ok(())
+    }
+
+    /// Set the top header banner image and update the active plugin page on a Komplete Kontrol Mk3 keyboard.
+    ///
+    /// This registers the image asset in on-device cache and attaches it to the current plugin page model.
+    pub fn kk_mk3_set_header_image(
+        &self,
+        device_id: DeviceId,
+        asset_id: &str,
+        image_data: &[u8],
+        plugin_data: &mut crate::device::komplete_kontrol::PluginData,
+    ) -> Result<()> {
+        self.kk_mk3_register_asset(device_id, asset_id, image_data)?;
+        plugin_data.background = Some(asset_id.to_string());
+        self.kk_mk3_set_plugin_data(device_id, plugin_data)
     }
 
     /// Disconnect a specific device.

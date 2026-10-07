@@ -31,6 +31,9 @@ pub enum EncdrError {
 
     #[error("GPU error: {0}")]
     Gpu(String),
+
+    #[error("Protocol error: {0}")]
+    Protocol(String),
 }
 
 pub type Result<T> = std::result::Result<T, EncdrError>;

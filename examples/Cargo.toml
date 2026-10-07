@@ -186,6 +186,10 @@ path = "komplete_kontrol/kk_mk2_vegas.rs"
 name = "kk_mk3_vegas"
 path = "komplete_kontrol/kk_mk3_vegas.rs"
 
+[[bin]]
+name = "kk_mk3_daw_odr"
+path = "komplete_kontrol/kk_mk3_daw_odr.rs"
+
 # ── Mixer & Probing Tests ──
 
 [[bin]]

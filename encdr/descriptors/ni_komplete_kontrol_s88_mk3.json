@@ -18,6 +18,30 @@
           "type": "interrupt"
         }
       }
+    },
+    {
+      "id": "odr_cmd",
+      "number": 0,
+      "endpoints": {
+        "out": {
+          "address": "0x03",
+          "type": "bulk"
+        }
+      }
+    },
+    {
+      "id": "odr_stream",
+      "number": 0,
+      "endpoints": {
+        "in": {
+          "address": "0x84",
+          "type": "bulk"
+        },
+        "out": {
+          "address": "0x04",
+          "type": "bulk"
+        }
+      }
     }
   ],
   "input_packets": [
