@@ -3,7 +3,7 @@
 use serde::Serialize;
 use crate::core::error::{EncdrError, Result};
 use super::models::{
-    BrowserModel, DeviceSettings, FileAsset, MixerModel, PluginChainModel, PluginData, SmartPlayData,
+    BrowserModel, DeviceSettings, FileAsset, KkMk3Page, MixerModel, PluginChainModel, PluginData, SmartPlayData,
     ViewAddress,
 };
 
@@ -28,6 +28,7 @@ pub mod rpc_methods {
     pub const SET_SMARTPLAY_DATA: &str = "client_smartplay_set_data";
     pub const SET_BROWSER_DATA: &str = "client_browser_set_data_model";
     pub const SET_DEVICE_SETTINGS: &str = "device_setting";
+    pub const SET_PAGE: &str = "client_set_page";
     pub const SET_PROJECT_TREE: &str = "client_host_set_project_tree";
     pub const SET_SELECTED_TRACK: &str = "client_host_set_selected_track";
     pub const REGISTER_ASSET: &str = "asset_device_model_register_asset";
@@ -119,6 +120,11 @@ impl OdrRpcFramer {
     /// Build notification to update hardware device preferences (brightness, velocity, standby).
     pub fn build_set_device_settings(&self, settings: &DeviceSettings) -> Result<Vec<u8>> {
         self.build_notification(rpc_methods::SET_DEVICE_SETTINGS, (settings,))
+    }
+
+    /// Build notification to switch the active screen page / view template.
+    pub fn build_set_page(&self, page: KkMk3Page) -> Result<Vec<u8>> {
+        self.build_notification(rpc_methods::SET_PAGE, (page,))
     }
 
     /// Build notification to navigate the hardware viewstate to a target section or group.

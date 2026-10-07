@@ -18,7 +18,7 @@ pub use crate::core::seven_segment::SevenSegment;
 pub use crate::device::hooks::PacketHook;
 pub use crate::device::komplete_kontrol::{
     ArpConfig, BrowserFilter, BrowserModel, BrowserSoundItem, ChordConfig, DeviceSettings,
-    FileAsset, KkMk3DawController, KkMk3DawEvent, LayoutMode, MixerModel, MixerTrack,
+    FileAsset, KkMk3DawController, KkMk3DawEvent, KkMk3Page, LayoutMode, MixerModel, MixerTrack,
     OdrRpcFramer, ParameterItem, PluginChainItem, PluginChainModel, PluginData, RgbColor,
     ScaleConfig, SmartPlayData, ViewAddress, WidgetDisplayType,
 };
@@ -605,6 +605,18 @@ impl Encdr {
     ) -> Result<()> {
         let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
         let bytes = framer.build_set_device_settings(settings)?;
+        self.write_interface(device_id, "odr_cmd", &bytes);
+        Ok(())
+    }
+
+    /// Switch the active screen page / view template on a Komplete Kontrol Mk3 keyboard.
+    pub fn kk_mk3_set_page(
+        &self,
+        device_id: DeviceId,
+        page: crate::device::komplete_kontrol::KkMk3Page,
+    ) -> Result<()> {
+        let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
+        let bytes = framer.build_set_page(page)?;
         self.write_interface(device_id, "odr_cmd", &bytes);
         Ok(())
     }

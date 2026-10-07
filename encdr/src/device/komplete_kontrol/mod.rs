@@ -10,6 +10,6 @@ pub mod odr;
 pub use daw::{KkMk3DawController, KkMk3DawEvent};
 pub use odr::{
     ArpConfig, BrowserFilter, BrowserModel, BrowserSoundItem, ChordConfig, DeviceSettings,
-    FileAsset, LayoutMode, MixerModel, MixerTrack, OdrRpcFramer, ParameterItem, PluginChainItem,
+    FileAsset, KkMk3Page, LayoutMode, MixerModel, MixerTrack, OdrRpcFramer, ParameterItem, PluginChainItem,
     PluginChainModel, PluginData, RgbColor, ScaleConfig, SmartPlayData, ViewAddress, WidgetDisplayType,
 };

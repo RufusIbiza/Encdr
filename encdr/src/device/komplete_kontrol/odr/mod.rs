@@ -9,7 +9,7 @@ pub mod rpc;
 
 pub use models::{
     ArpConfig, BrowserFilter, BrowserModel, BrowserSoundItem, ChordConfig, DeviceSettings,
-    FileAsset, LayoutMode, MixerModel, MixerTrack, ParameterItem, PluginChainItem, PluginChainModel,
+    FileAsset, KkMk3Page, LayoutMode, MixerModel, MixerTrack, ParameterItem, PluginChainItem, PluginChainModel,
     PluginData, RgbColor, ScaleConfig, SmartPlayData, ViewAddress, WidgetDisplayType,
 };
 pub use rpc::OdrRpcFramer;

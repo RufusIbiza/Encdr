@@ -21,6 +21,35 @@ impl RgbColor {
             is_rgb565: false,
         }
     }
+
+    pub const RED: Self = Self::new(255, 30, 30);
+    pub const ORANGE: Self = Self::new(255, 128, 0);
+    pub const YELLOW: Self = Self::new(255, 220, 0);
+    pub const GREEN: Self = Self::new(40, 220, 80);
+    pub const CYAN: Self = Self::new(0, 210, 255);
+    pub const BLUE: Self = Self::new(30, 100, 255);
+    pub const PURPLE: Self = Self::new(160, 40, 255);
+    pub const MAGENTA: Self = Self::new(255, 40, 180);
+    pub const WHITE: Self = Self::new(255, 255, 255);
+    pub const OFF: Self = Self::new(0, 0, 0);
+}
+
+/// Primary screen view templates on the Komplete Kontrol Mk3 hardware.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KkMk3Page {
+    /// Active instrument/effect parameter controls.
+    Parameters,
+    /// Sound & preset browser with category filters.
+    Browser,
+    /// Multi-track mixer view with VU meters and channel strips.
+    Mixer,
+    /// Scales, chords, and arpeggiator engine view.
+    SmartPlay,
+    /// Multi-device insert chain view.
+    PluginChain,
+    /// Hardware settings and preferences.
+    Settings,
 }
 
 /// Visual control widget representation rendered above and below the physical rotary encoders.
