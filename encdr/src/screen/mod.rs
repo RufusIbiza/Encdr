@@ -483,6 +483,49 @@ fn extract_region(
     out
 }
 
+/// Split a horizontally combined double-width image buffer into left and right screen buffers.
+///
+/// * `pixels`: Contiguous row-major pixel buffer of dimension `(left_width + right_width) * height * bpp`.
+/// * `left_width`: Width of the left screen in pixels.
+/// * `right_width`: Width of the right screen in pixels.
+/// * `height`: Height of the screens in pixels.
+/// * `bpp`: Bytes per pixel (e.g. 4 for RGBA8888, 2 for BGR565/RGB565).
+///
+/// Returns `Some((left_pixels, right_pixels))` or `None` if `pixels.len() != (left_width + right_width) * height * bpp`.
+pub fn split_horizontal(
+    pixels: &[u8],
+    left_width: usize,
+    right_width: usize,
+    height: usize,
+    bpp: usize,
+) -> Option<(Vec<u8>, Vec<u8>)> {
+    if bpp == 0 || height == 0 || left_width == 0 || right_width == 0 {
+        return None;
+    }
+    let row_stride = (left_width + right_width) * bpp;
+    let expected_len = row_stride * height;
+    if pixels.len() != expected_len {
+        return None;
+    }
+
+    let left_row_bytes = left_width * bpp;
+    let right_row_bytes = right_width * bpp;
+
+    let mut left = Vec::with_capacity(left_row_bytes * height);
+    let mut right = Vec::with_capacity(right_row_bytes * height);
+
+    for row in 0..height {
+        let row_start = row * row_stride;
+        let left_end = row_start + left_row_bytes;
+        let right_end = left_end + right_row_bytes;
+
+        left.extend_from_slice(&pixels[row_start..left_end]);
+        right.extend_from_slice(&pixels[left_end..right_end]);
+    }
+
+    Some((left, right))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -638,5 +681,45 @@ mod tests {
         frame_red[0] = 0x00;
         let res4 = sm.submit(&frame_red, PixelFormat::Bgr565Be, &desc);
         assert!(res4.is_some(), "Partial change should return Some");
+    }
+
+    #[test]
+    fn test_split_horizontal_success() {
+        // 2x2 left screen, 3x2 right screen, 2 bpp (e.g. RGB565)
+        // Combined width: 5, height: 2, row_stride: 10 bytes, total 20 bytes.
+        // Row 0: L0 L1 R0 R1 R2
+        // Row 1: L2 L3 R3 R4 R5
+        let pixels: Vec<u8> = vec![
+            // Row 0:
+            1, 1, 2, 2, 10, 10, 20, 20, 30, 30,
+            // Row 1:
+            3, 3, 4, 4, 40, 40, 50, 50, 60, 60,
+        ];
+
+        let (left, right) = split_horizontal(&pixels, 2, 3, 2, 2).expect("split should succeed");
+
+        assert_eq!(left, vec![
+            1, 1, 2, 2,
+            3, 3, 4, 4,
+        ]);
+
+        assert_eq!(right, vec![
+            10, 10, 20, 20, 30, 30,
+            40, 40, 50, 50, 60, 60,
+        ]);
+    }
+
+    #[test]
+    fn test_split_horizontal_invalid_length() {
+        let pixels = vec![0u8; 19]; // expected 20
+        assert!(split_horizontal(&pixels, 2, 3, 2, 2).is_none());
+    }
+
+    #[test]
+    fn test_split_horizontal_zero_dimensions() {
+        assert!(split_horizontal(&[], 0, 3, 2, 2).is_none());
+        assert!(split_horizontal(&[], 2, 0, 2, 2).is_none());
+        assert!(split_horizontal(&[], 2, 3, 0, 2).is_none());
+        assert!(split_horizontal(&[], 2, 3, 2, 0).is_none());
     }
 }

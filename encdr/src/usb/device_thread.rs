@@ -71,6 +71,12 @@ pub enum DeviceCmd {
     SetLedStrip { name: String, values: Vec<u8> },
     SetLedStripInGroup { group: String, name: String, values: Vec<u8> },
     SubmitScreen { screen: String, pixels: Vec<u8>, format: PixelFormat },
+    SubmitDualScreen {
+        left_screen: String,
+        right_screen: String,
+        pixels: Vec<u8>,
+        format: PixelFormat,
+    },
     Disconnect,
 }
 
@@ -167,7 +173,7 @@ impl DeviceHandle {
 
     pub fn send(&self, cmd: DeviceCmd) {
         match &cmd {
-            DeviceCmd::SubmitScreen { .. } => {
+            DeviceCmd::SubmitScreen { .. } | DeviceCmd::SubmitDualScreen { .. } => {
                 if let Some(ref tx) = self.screen_tx {
                     tx.try_send(cmd).ok();
                 }
@@ -743,32 +749,118 @@ fn run_screens(
             }
         }
 
-        while let Ok(cmd) = screen_rx.recv().await {
-            let (screen, pixels, format) = match cmd {
-                DeviceCmd::Disconnect => break,
-                DeviceCmd::SubmitScreen { screen, pixels, format } => (screen, pixels, format),
-                _ => continue,
-            };
-            let Some(sm) = screen_managers.get_mut(&screen) else {
+        async fn process_and_send_screen(
+            screen: &str,
+            pixels: &[u8],
+            format: PixelFormat,
+            descriptor: &DeviceDescriptor,
+            screen_managers: &mut HashMap<String, ScreenManager>,
+            screen_to_ep: &HashMap<String, (String, u8)>,
+            endpoints: &mut HashMap<(String, u8), OutEndpoint>,
+        ) {
+            let Some(sm) = screen_managers.get_mut(screen) else {
                 tracing::warn!("ScreenManager for '{}' not found", screen);
-                continue;
+                return;
             };
             let Some(screen_desc) = descriptor.screens.iter().find(|s| s.name == screen) else {
                 tracing::warn!("screen_desc for '{}' not found in descriptor", screen);
-                continue;
+                return;
             };
-            let Some(blit_data) = sm.submit(&pixels, format, screen_desc) else {
-                continue;
+            let Some(blit_data) = sm.submit(pixels, format, screen_desc) else {
+                return;
             };
-            let Some(ep) = screen_to_ep.get(&screen).and_then(|key| endpoints.get_mut(key)) else {
+            let Some(ep) = screen_to_ep.get(screen).and_then(|key| endpoints.get_mut(key)) else {
                 tracing::warn!("Screen endpoint for '{}' not found", screen);
-                continue;
+                return;
             };
             tracing::debug!("Sending {} bytes for screen '{}'...", blit_data.len(), screen);
             if let Err(e) = ep.write_each(protocol::frame_transfers(screen_desc, blit_data)).await {
                 tracing::warn!("Screen transfer for '{}' failed: {}", screen, e);
             }
             tracing::debug!("Bulk out completed for screen '{}'", screen);
+        }
+
+        while let Ok(cmd) = screen_rx.recv().await {
+            match cmd {
+                DeviceCmd::Disconnect => break,
+                DeviceCmd::SubmitScreen { screen, pixels, format } => {
+                    process_and_send_screen(
+                        &screen,
+                        &pixels,
+                        format,
+                        &descriptor,
+                        &mut screen_managers,
+                        &screen_to_ep,
+                        &mut endpoints,
+                    )
+                    .await;
+                }
+                DeviceCmd::SubmitDualScreen {
+                    left_screen,
+                    right_screen,
+                    pixels,
+                    format,
+                } => {
+                    let left_desc = descriptor.screens.iter().find(|s| s.name == left_screen);
+                    let right_desc = descriptor.screens.iter().find(|s| s.name == right_screen);
+                    let (Some(left_desc), Some(right_desc)) = (left_desc, right_desc) else {
+                        tracing::warn!(
+                            "SubmitDualScreen: could not find screens '{}' and/or '{}'",
+                            left_screen,
+                            right_screen
+                        );
+                        continue;
+                    };
+                    if left_desc.height != right_desc.height {
+                        tracing::warn!(
+                            "SubmitDualScreen: left height ({}) != right height ({})",
+                            left_desc.height,
+                            right_desc.height
+                        );
+                        continue;
+                    }
+                    let bpp = format.bytes_per_pixel();
+                    let Some((left_pixels, right_pixels)) = crate::screen::split_horizontal(
+                        &pixels,
+                        left_desc.width as usize,
+                        right_desc.width as usize,
+                        left_desc.height as usize,
+                        bpp,
+                    ) else {
+                        tracing::warn!(
+                            "SubmitDualScreen: pixel buffer size mismatch (expected {} bytes, got {})",
+                            (left_desc.width as usize + right_desc.width as usize)
+                                * left_desc.height as usize
+                                * bpp,
+                            pixels.len()
+                        );
+                        continue;
+                    };
+
+                    process_and_send_screen(
+                        &left_screen,
+                        &left_pixels,
+                        format,
+                        &descriptor,
+                        &mut screen_managers,
+                        &screen_to_ep,
+                        &mut endpoints,
+                    )
+                    .await;
+
+                    process_and_send_screen(
+                        &right_screen,
+                        &right_pixels,
+                        format,
+                        &descriptor,
+                        &mut screen_managers,
+                        &screen_to_ep,
+                        &mut endpoints,
+                    )
+                    .await;
+                }
+                _ => continue,
+            }
         }
     });
 }

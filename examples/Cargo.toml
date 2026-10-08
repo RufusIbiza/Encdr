@@ -143,6 +143,10 @@ name = "mk3_screen_test"
 path = "maschine_mk3/mk3_screen_test.rs"
 
 [[bin]]
+name = "mk3_dual_screen"
+path = "maschine_mk3/mk3_dual_screen.rs"
+
+[[bin]]
 name = "mk3_pad_rainbow"
 path = "maschine_mk3/pad_rainbow.rs"
 

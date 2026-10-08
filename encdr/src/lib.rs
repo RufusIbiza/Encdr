@@ -438,6 +438,47 @@ impl Encdr {
         }
     }
 
+    /// Submit a combined double-width frame for a dual-screen device.
+    ///
+    /// The pixels should be in RGBA8888 format with dimension
+    /// `(left_width + right_width) x height`. Encdr splits the frame
+    /// horizontally and feeds each half independently through format conversion,
+    /// dirty-rect diffing, and USB transfer.
+    pub fn submit_dual_screen(
+        &self,
+        device_id: DeviceId,
+        left_screen: &str,
+        right_screen: &str,
+        pixels: &[u8],
+    ) {
+        self.submit_dual_screen_with_format(
+            device_id,
+            left_screen,
+            right_screen,
+            pixels,
+            PixelFormat::Rgba8888,
+        );
+    }
+
+    /// Submit a combined double-width frame for a dual-screen device with an explicit pixel format.
+    pub fn submit_dual_screen_with_format(
+        &self,
+        device_id: DeviceId,
+        left_screen: &str,
+        right_screen: &str,
+        pixels: &[u8],
+        format: PixelFormat,
+    ) {
+        if let Some(handle) = self.devices.get(&device_id) {
+            handle.send(DeviceCmd::SubmitDualScreen {
+                left_screen: left_screen.to_string(),
+                right_screen: right_screen.to_string(),
+                pixels: pixels.to_vec(),
+                format,
+            });
+        }
+    }
+
     /// Disconnect a specific device.
     pub fn disconnect(&mut self, device_id: DeviceId) {
         if let Some(handle) = self.devices.remove(&device_id) {

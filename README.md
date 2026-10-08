@@ -61,7 +61,11 @@ cargo add encdr-view
 
 ### I made something with Encdr, what now?
 
-Awesome! Please share it with the community by posting in the ['Show and Tell'](https://github.com/RufusIbiza/Encdr/discussions/categories/show-and-tell) category in the discussions tab here on GitHub!
+Awesome! Please share it with the community by posting in the ['Show and Tell'](https://github.com/RufusIbiza/Encdr/discussions/categories/show-and-tell) category in the discussions tab here on GitHub, and I'll include it in the list below!
+
+### Projects made using Encdr
+- **[encdr-maschine-bitwig](https://github.com/RufusIbiza/encdr-maschine-bitwig)** - A Bitwig Studio controller script for the Maschine Mk3. My hope is to eventually implement as many of the exposed functions of Bitwig as possible.
+- **[S4MK3-HID-MIDI-Bridge](https://github.com/jtoronto/S4MK3-HID-MIDI-BRIDGE)** - Native Instruments S4MK3 HID → MIDI Bridge. Allows use of the S4 mk3 in other DJ software, and comes with a mapping for Algoriddim DJay. 
 
 ## Quick Start
 
@@ -319,8 +323,17 @@ encdr/
 | COM/WebView2 (Windows)  | `webview2-com` + `windows` | WebView2 `CapturePreview` pixel capture  |
 | PNG decode (Windows)    | `png`                      | Decode CapturePreview PNG output to RGBA |
 
-
 ## Changelog
+### v0.7.7
+- **Unified Dual-Screen Support & `DualScreenView`**:
+  - Added `DualScreenView` to `encdr-view`: hosts a single double-width offscreen WebView sized to `(left_width + right_width) x height` (e.g. 960×272 on Maschine Mk3 / KK Mk2 / Traktor S8, or 640×240 on Traktor S4 Mk3).
+  - Cuts WebKit/WebView2 process, memory, and CPU overhead in half by rendering both displays in a single browser instance and shared DOM tree.
+  - Added `split_horizontal` zero-cost row-by-row horizontal frame splitter (~0.02ms) in `encdr::screen`.
+  - Added `Encdr::submit_dual_screen` and `Encdr::submit_dual_screen_with_format` with `DeviceCmd::SubmitDualScreen`.
+  - Encdr splits the double-width frame before the diffing stage so each screen independently performs format conversion, keyframe tracking, and dirty-rect diffing. If only one screen's content changes, zero USB packets are sent to the other display.
+  - Hardened bridge IPC notifications and JavaScript bridge bindings to prevent object overwrite and eliminate frame dispatch latency.
+  - Added `mk3_dual_screen` example demonstrating single 960×272 WebView rendering on Maschine Mk3.
+
 ### v0.7.5
 - **Komplete Kontrol S-Series Mk1 Hardware Support**:
   - Added hardware descriptors and built-in registry support for all four Komplete Kontrol Mk1 keyboard models:

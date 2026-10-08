@@ -243,6 +243,26 @@ let bgr_pixels = vec![0u8; 480 * 272 * 2]; // Native BGR565-BE
 encdr.submit_screen_with_format(device_id, "left", &bgr_pixels, PixelFormat::Bgr565Be);
 ```
 
+#### `pub fn submit_dual_screen(&self, device_id: DeviceId, left_screen: &str, right_screen: &str, pixels: &[u8])`
+Submits a single combined double-width frame of `RGBA8888` pixels (e.g. `960x272` for dual `480x272` screens or `640x240` for dual `320x240` screens).
+
+Encdr splits the frame horizontally before feeding each half independently through GPU format conversion, frame diffing, and USB transfer. If one display's content is unchanged, zero USB packets are transmitted for that screen.
+
+```rust
+let dual_rgba = vec![0u8; 960 * 272 * 4]; // 960x272 double-width canvas
+encdr.submit_dual_screen(device_id, "left", "right", &dual_rgba);
+```
+
+#### `pub fn submit_dual_screen_with_format(&self, device_id: DeviceId, left_screen: &str, right_screen: &str, pixels: &[u8], format: PixelFormat)`
+Submits a single combined double-width frame with an explicit [`PixelFormat`](#6-pixel-formats-pixelformat).
+
+```rust
+use encdr::PixelFormat;
+
+let dual_bgr = vec![0u8; 960 * 272 * 2];
+encdr.submit_dual_screen_with_format(device_id, "left", "right", &dual_bgr, PixelFormat::Bgr565Be);
+```
+
 #### `pub fn load_descriptor_dir(&mut self, path: impl AsRef<Path>) -> Result<()>`
 Loads all JSON device descriptors located in a directory.
 
@@ -828,3 +848,60 @@ Returns the `DeviceId` associated with this view.
 
 #### `pub fn screen_name(&self) -> &str`
 Returns the target screen identifier string.
+
+---
+
+### `DualScreenView` Methods
+
+Defined in [`encdr-view::DualScreenView`](file:///home/rufus/Documents/Projects/Encdr/encdr-view/src/lib.rs#L224-L394).
+
+`DualScreenView` hosts a single offscreen WebView sized to `(left_width + right_width) x height` (e.g. `960x272` on Maschine Mk3 / KK Mk2 / Traktor S8, or `640x240` on Traktor S4 Mk3). 
+
+#### Advantages over Two Separate `ScreenView`s:
+- **50% RAM & CPU savings**: Runs only 1 WebKit/WebView2 browser engine instance instead of 2.
+- **Single DOM/State tree**: Animate or layout UI components seamlessly across both displays using standard CSS grid or flexbox (`width: 50%` per deck or screen half).
+- **Zero-cost diffing preserved**: Before sending across USB, Encdr slices the frame in half. If one screen's content has not changed, zero USB packets are transmitted for that screen.
+
+#### `pub fn new(encdr: &Encdr, device_id: DeviceId, content: ScreenContent, visible: bool) -> Result<Self, String>`
+Creates a new double-width WebView renderer defaulting to screen names `"left"` and `"right"`.
+
+```rust
+use encdr_view::{ScreenContent, DualScreenView};
+
+let dual_view = DualScreenView::new(
+    &encdr,
+    device_id,
+    ScreenContent::File("./ui/dual_screen.html".to_string()),
+    false,
+)?;
+```
+
+#### `pub fn new_with_screens(encdr: &Encdr, device_id: DeviceId, left_screen: &str, right_screen: &str, content: ScreenContent, visible: bool) -> Result<Self, String>`
+Creates a new double-width WebView renderer with custom screen identifiers.
+
+#### `pub fn capture_and_submit(&self, encdr: &Encdr) -> Result<(), String>`
+Captures the double-width surface and dispatches it via `encdr.submit_dual_screen_with_format`.
+
+#### `pub fn poll(&self, encdr: &Encdr)`
+Checks `is_frame_ready()`, and if new content was composited, captures and submits the dual-screen frame to Encdr.
+
+```rust
+// Application loop:
+ScreenView::pump_events();
+dual_view.poll(&encdr);
+```
+
+#### `pub fn send(&self, channel: &str, data: serde_json::Value)`
+Dispatches a JSON event to `window.encdr.onMessage(channel, data)` across the shared WebView page.
+
+#### `pub fn load_html(&self, html: &str) -> Result<(), String>`
+Replaces the currently loaded HTML page.
+
+#### `pub fn eval(&self, js: &str) -> Result<(), String>`
+Executes arbitrary JavaScript within the shared WebView.
+
+#### `pub fn left_screen_name(&self) -> &str`
+Returns the left display identifier string.
+
+#### `pub fn right_screen_name(&self) -> &str`
+Returns the right display identifier string.
