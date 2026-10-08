@@ -274,11 +274,10 @@ fn run_device(
                     claimed_by_num.insert(iface_desc.number, iface);
                 }
                 Err(e) => {
-                    tracing::error!(
-                        "Failed to claim interface {} ({}): {}",
+                    crate::usb::service_detector::diagnose_claim_failure(
                         iface_desc.number,
-                        iface_desc.id,
-                        e
+                        &iface_desc.id,
+                        &e,
                     );
                     return;
                 }

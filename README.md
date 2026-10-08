@@ -174,6 +174,7 @@ fn main() {
 - [NI Maschine Mk3](docs/hardware/ni_maschine_mk3.md)
 - [NI Maschine Plus](docs/hardware/ni_maschine_plus.md)
 - [NI Maschine Studio](docs/hardware/ni_maschine_studio.md)
+- [NI Komplete Kontrol Mk1](docs/hardware/ni_komplete_kontrol_mk1.md)
 - [NI Komplete Kontrol Mk2](docs/hardware/ni_komplete_kontrol_mk2.md)
 - [NI Komplete Kontrol Mk3](docs/hardware/ni_komplete_kontrol_mk3.md)
 
@@ -203,6 +204,7 @@ fn main() {
 | NI Maschine Mk3           | `17cc:1600`       | Implemented | 63 buttons, 10 touches, 9 encoders, 1 slider, 16 pads | 16 RGB pads, 62 singles, 1 strip     | 2x 480x272 BGR565 |
 | NI Maschine Plus          | `17cc:1820`       | Implemented | 63 buttons, 10 touches, 9 encoders, 1 slider, 16 pads | 16 RGB pads, 62 singles, 1 strip     | 2x 480x272 BGR565 |
 | NI Maschine Studio        | `17cc:1300`       | Implemented | 64 buttons, 5 touches, 10 encoders, 16 pads   | 16 RGB pads, 8 RGB groups, stereo meters, 32-seg ring | 2x 480x272 BGR565 |
+| NI Komplete Kontrol S-Mk1 | `17cc:1340/50/60/1410` | Implemented | 19 buttons, 8 encoders, 8 touch sensors, 2 touchstrips | 14 singles, Light Guide (25/49/61/88 keys) | 8x 128x32 1-bit OLED |
 | NI Komplete Kontrol S-Mk2 | `17cc:1610/20/30` | Implemented | 28 buttons, 9 encoders, pitch/mod wheels, touchstrip | 20 singles, Light Guide (RGB per-key)       | 2x 480x272 BGR565 |
 | NI Komplete Kontrol S-Mk3 | `17cc:2100/10/20` | Preliminary | Keybed (49/61/88 keys), 4D encoder, touchstrip, high-res encoders | Light Guide RGB strips, RGB button backlights | Full-color wide LCD |
 
@@ -212,10 +214,14 @@ fn main() {
 encdr/
 ├── encdr/                  Core crate
 │   ├── descriptors/        Built-in JSON device descriptors
+│   │   ├── ni_komplete_kontrol_s25_mk1.json
+│   │   ├── ni_komplete_kontrol_s49_mk1.json
 │   │   ├── ni_komplete_kontrol_s49_mk2.json
 │   │   ├── ni_komplete_kontrol_s49_mk3.json
+│   │   ├── ni_komplete_kontrol_s61_mk1.json
 │   │   ├── ni_komplete_kontrol_s61_mk2.json
 │   │   ├── ni_komplete_kontrol_s61_mk3.json
+│   │   ├── ni_komplete_kontrol_s88_mk1.json
 │   │   ├── ni_komplete_kontrol_s88_mk2.json
 │   │   ├── ni_komplete_kontrol_s88_mk3.json
 │   │   ├── ni_kontrol_d2.json
@@ -259,7 +265,7 @@ encdr/
 │       └── capture_windows.rs  Windows: pixel capture via WebView2 CapturePreview
 │
 ├── examples/               Collection of examples organized by controller
-│   ├── komplete_kontrol/   Komplete Kontrol Mk2 & Mk3 examples
+│   ├── komplete_kontrol/   Komplete Kontrol Mk1, Mk2 & Mk3 examples (e.g. kk_mk1_vegas, kk_mk2_vegas)
 │   ├── kontrol_d2/         D2 examples (e.g. d2_screen_test, d2_vegas)
 │   ├── kontrol_f1/         F1 examples (e.g. f1_vegas)
 │   ├── kontrol_s2/         S2 Mk1 & Mk2 examples (e.g. s2_mk1_vegas, s2_mk2_vegas)
@@ -315,6 +321,21 @@ encdr/
 
 
 ## Changelog
+### v0.7.5
+- **Komplete Kontrol S-Series Mk1 Hardware Support**:
+  - Added hardware descriptors and built-in registry support for all four Komplete Kontrol Mk1 keyboard models:
+    - **S25 Mk1** (`0x17cc:0x1340`, 25 keys)
+    - **S49 Mk1** (`0x17cc:0x1350`, 49 keys)
+    - **S61 Mk1** (`0x17cc:0x1360`, 61 keys)
+    - **S88 Mk1** (`0x17cc:0x1410`, 88 keys)
+  - Full support for 19 transport, mode, and navigation buttons; 8 rotary encoders with 4-bit `wrap16` relative tracking; capacitive knob touch sensors; and dual touch strips.
+  - Supported all 8 dedicated 128×32 monochrome OLED parameter displays (`display_1` .. `display_8`) with 1-bit monochrome blit commands.
+  - Added button LED brightness controls (`linear_7bit`) and per-key Light Guide strip illumination (`0x81`).
+  - Added `kk_mk1_vegas` interactive demo example and hardware reference documentation (`docs/hardware/ni_komplete_kontrol_mk1.md`).
+- **Background Hardware Service Conflict Detection**:
+  - Added diagnostic detection for active Native Instruments background helper processes (`NIHardwareService`, `NIHostIntegrationAgent`, `NIHardwareConnectionService`) on Windows and macOS.
+  - Automatically emits informative warnings during device scan or USB interface claim failures with platform-specific instructions on how to suspend or terminate conflicting background services.
+
 ### v0.7.4
 - **Descriptor-Driven Multi-Controller `LedProtocol` Architecture**:
   - Introduced `LedProtocol` (`nhl2`, `linear_7bit`, `linear_8bit`) in hardware descriptors allowing each controller's LED layouts to declare their native brightness protocol:

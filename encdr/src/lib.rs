@@ -90,6 +90,7 @@ impl Encdr {
     /// Scan for connected devices matching loaded descriptors and connect to them.
     /// Emits DeviceConnected events for newly found devices.
     pub fn scan(&mut self) -> Result<Vec<DeviceId>> {
+        crate::usb::service_detector::warn_active_services_if_detected();
         let detected = hotplug::scan_devices(&self.registry);
         let mut connected = Vec::new();
 

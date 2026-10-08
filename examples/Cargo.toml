@@ -183,6 +183,10 @@ path = "maschine_studio/studio_vegas.rs"
 # ── Komplete Kontrol ──
 
 [[bin]]
+name = "kk_mk1_vegas"
+path = "komplete_kontrol/kk_mk1_vegas.rs"
+
+[[bin]]
 name = "kk_mk2_vegas"
 path = "komplete_kontrol/kk_mk2_vegas.rs"
 
