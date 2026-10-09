@@ -289,6 +289,7 @@ fn run_device(
                         &iface_desc.id,
                         &e,
                     );
+                    event_tx.send(Event::DeviceDisconnected { id: device_id }).ok();
                     return;
                 }
             }
@@ -307,6 +308,7 @@ fn run_device(
 
     let Some(control_iface) = interfaces.get(&control_iface_id).cloned() else {
         tracing::error!("Control interface '{}' not found", control_iface_id);
+        event_tx.send(Event::DeviceDisconnected { id: device_id }).ok();
         return;
     };
 
@@ -324,6 +326,7 @@ fn run_device(
         }
         let Some(iface) = interfaces.get(&packet.interface) else {
             tracing::error!("Input interface '{}' not found", packet.interface);
+            event_tx.send(Event::DeviceDisconnected { id: device_id }).ok();
             return;
         };
         let (address, transfer_type) = descriptor
@@ -334,7 +337,43 @@ fn run_device(
         let mut ep = match InEndpoint::open(iface, address, transfer_type) {
             Ok(ep) => ep,
             Err(e) => {
-                tracing::error!("Failed to open input endpoint 0x{:02x}: {}", address, e);
+                let available_eps: Vec<String> = iface
+                    .descriptor()
+                    .map(|d| {
+                        d.endpoints()
+                            .map(|ep| format!("0x{:02x} ({:?})", ep.address(), ep.transfer_type()))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                let all_ifaces: Vec<String> = usb_device
+                    .configurations()
+                    .flat_map(|c| c.interfaces())
+                    .map(|intf| {
+                        let eps: Vec<String> = intf
+                            .alt_settings()
+                            .flat_map(|alt| {
+                                alt.endpoints().map(|ep| {
+                                    format!("0x{:02x} ({:?})", ep.address(), ep.transfer_type())
+                                })
+                            })
+                            .collect();
+                        format!("iface #{}: [{}]", intf.interface_number(), eps.join(", "))
+                    })
+                    .collect();
+
+                tracing::error!(
+                    "Failed to open input endpoint 0x{:02x} on interface {} ('{}'): {}. \
+                     Endpoints available on this interface: [{}]. \
+                     All interfaces on device: {}",
+                    address,
+                    iface.interface_number(),
+                    packet.interface,
+                    e,
+                    available_eps.join(", "),
+                    all_ifaces.join("; ")
+                );
+                event_tx.send(Event::DeviceDisconnected { id: device_id }).ok();
                 return;
             }
         };

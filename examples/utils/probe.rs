@@ -113,4 +113,78 @@ fn main() {
             println!("  Scan error: {}", e);
         }
     }
+
+    // Inspect physical USB descriptors of connected hardware
+    println!("\n--- Connected USB Hardware (Physical Descriptors) ---\n");
+    let args: Vec<String> = std::env::args().collect();
+    let show_all = args.iter().any(|a| a == "--all");
+
+    use nusb::MaybeFuture;
+    match nusb::list_devices().wait() {
+        Ok(devices) => {
+            let mut found_any = false;
+            for dev in devices {
+                let vid = dev.vendor_id();
+                let pid = dev.product_id();
+                let is_ni = vid == 0x17cc;
+                if !is_ni && !show_all {
+                    continue;
+                }
+                found_any = true;
+                let bus = dev.bus_id();
+                let addr = dev.device_address();
+                let mfr = dev.manufacturer_string().unwrap_or("Unknown");
+                let prod = dev.product_string().unwrap_or("Unknown");
+                println!(
+                    "  Device {:04x}:{:04x} [Bus {}, Addr {}]: {} {}",
+                    vid, pid, bus, addr, mfr, prod
+                );
+
+                match dev.open().wait() {
+                    Ok(device) => {
+                        for config in device.configurations() {
+                            println!("    Configuration {}:", config.configuration_value());
+                            for intf in config.interfaces() {
+                                for alt in intf.alt_settings() {
+                                    let mut eps_desc = Vec::new();
+                                    for ep in alt.endpoints() {
+                                        eps_desc.push(format!(
+                                            "0x{:02x} ({:?} {:?}, max packet {})",
+                                            ep.address(),
+                                            ep.direction(),
+                                            ep.transfer_type(),
+                                            ep.max_packet_size()
+                                        ));
+                                    }
+                                    println!(
+                                        "      Interface #{} (Alt {}, Class 0x{:02x}, Subclass 0x{:02x}, Proto 0x{:02x}): Endpoints: [{}]",
+                                        intf.interface_number(),
+                                        alt.alternate_setting(),
+                                        alt.class(),
+                                        alt.subclass(),
+                                        alt.protocol(),
+                                        if eps_desc.is_empty() {
+                                            "none".to_string()
+                                        } else {
+                                            eps_desc.join("; ")
+                                        }
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("    (Could not open device for descriptor enumeration: {})", e);
+                    }
+                }
+                println!();
+            }
+            if !found_any {
+                println!("  No Native Instruments devices detected. (Pass --all to inspect all connected USB devices)");
+            }
+        }
+        Err(e) => {
+            println!("  Failed to list USB devices: {}", e);
+        }
+    }
 }
