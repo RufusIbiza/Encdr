@@ -1,6 +1,7 @@
 pub mod gpu;
 pub mod gpu_pipeline;
 pub mod protocol;
+pub mod screensaver;
 
 use std::sync::Arc;
 
@@ -126,7 +127,7 @@ impl ScreenManager {
 
 // ── Format conversion ──────────────────────────────────────────────────────
 
-fn convert_format(
+pub fn convert_format(
     pixels: &[u8],
     from: PixelFormat,
     to: PixelFormat,

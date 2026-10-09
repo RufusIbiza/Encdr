@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" alt="Encdr Logo" width="500">
+</p>
+
 # Encdr
 
 ### What is it?
@@ -324,6 +328,16 @@ encdr/
 | PNG decode (Windows)    | `png`                      | Decode CapturePreview PNG output to RGBA |
 
 ## Changelog
+### v0.7.8
+- **Clean Exit & Screensaver Support**:
+  - Implemented automatic clean shutdown handling across all connected controllers via `Encdr::clean_exit()`, `Encdr::shutdown()`, and on `Drop`.
+  - When disconnecting or exiting, Encdr submits the bundled screensaver image (`assets/screensaver.png`) as the final frame across all color screens (or clears monochrome displays).
+  - Automatically turns off all illuminated LEDs on disconnect, flushing zero-filled buffers to all standard LED groups and sending zero-mask reports for all feature-report quirk LEDs.
+  - Added compile-time embedded screensaver asset decoding and dynamic resolution adaptation in `encdr::screen::screensaver`.
+  - Synchronously joins worker threads (`screen_thread` and `led_thread`) before releasing USB interface handles to ensure all exit frames and LED packets are fully transmitted to the hardware.
+- **Branding & Assets**:
+  - Added official project logo and assets to documentation and repository.
+
 ### v0.7.7
 - **Unified Dual-Screen Support & `DualScreenView`**:
   - Added `DualScreenView` to `encdr-view`: hosts a single double-width offscreen WebView sized to `(left_width + right_width) x height` (e.g. 960×272 on Maschine Mk3 / KK Mk2 / Traktor S8, or 640×240 on Traktor S4 Mk3).

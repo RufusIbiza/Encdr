@@ -407,7 +407,7 @@ fn run_device(
 
     // If device has screens, delegate them entirely to a dedicated screen thread
     // so that screen bulk transfers never stall the interrupt input loop.
-    if !descriptor.screens.is_empty() && screen_rx.is_some() {
+    let screen_thread = if !descriptor.screens.is_empty() && screen_rx.is_some() {
         let screen_rx = screen_rx.unwrap();
         let screen_desc = descriptor.clone();
         let mut screen_ifaces = HashMap::new();
@@ -422,26 +422,32 @@ fn run_device(
             screen_managers.insert(s.name.clone(), sm);
         }
 
-        let _ = thread::Builder::new()
+        thread::Builder::new()
             .name(format!("encdr-screen-{}", descriptor.name.replace(' ', "-").to_lowercase()))
             .spawn(move || {
                 run_screens(screen_desc, screen_ifaces, screen_managers, screen_rx);
-            });
-    }
+            })
+            .ok()
+    } else {
+        None
+    };
 
     // Spawn a dedicated LED thread so that interrupt OUT transfers never block the
     // interrupt IN read loop. The LED thread gets its own clone of control_iface
     // (nusb::Interface is Arc-based and supports concurrent transfers).
-    if let Some(led_rx) = led_rx {
+    let led_thread = if let Some(led_rx) = led_rx {
         let led_iface = control_iface.clone();
         let led_builders = led_builders;
         let feature_leds = descriptor.quirks.feature_report_leds.clone();
-        let _ = thread::Builder::new()
+        thread::Builder::new()
             .name(format!("encdr-led-{}", descriptor.name.replace(' ', "-").to_lowercase()))
             .spawn(move || {
                 run_leds(led_iface, led_builders, feature_leds, led_rx);
-            });
-    }
+            })
+            .ok()
+    } else {
+        None
+    };
 
     // Build packet parser
     let mut parser = PacketParser::new(device_id, &descriptor, names);
@@ -572,6 +578,14 @@ fn run_device(
             }
         }
     });
+
+    // Join worker threads to ensure clean exit transfers complete
+    if let Some(th) = screen_thread {
+        th.join().ok();
+    }
+    if let Some(th) = led_thread {
+        th.join().ok();
+    }
 
     tracing::info!("Device thread exiting for {:?}", device_id);
 }
@@ -862,6 +876,42 @@ fn run_screens(
                 _ => continue,
             }
         }
+
+        // Clean exit: render screensaver image to color screens, blank monochrome screens
+        for screen_desc in &descriptor.screens {
+            let Some(ep) = screen_to_ep.get(&screen_desc.name).and_then(|key| endpoints.get_mut(key)) else {
+                continue;
+            };
+
+            let native_pixels = if screen_desc.pixel_format == PixelFormat::Mono
+                || screen_desc.pixel_format == PixelFormat::St7529Gray5
+            {
+                vec![screen_desc.pixel_format.black_fill(); screen_desc.byte_size()]
+            } else {
+                let rgba = crate::screen::screensaver::render_screensaver_frame(
+                    screen_desc.width,
+                    screen_desc.height,
+                );
+                crate::screen::convert_format(
+                    &rgba,
+                    PixelFormat::Rgba8888,
+                    screen_desc.pixel_format,
+                    screen_desc.width,
+                    screen_desc.height,
+                )
+            };
+
+            let blit_buf = protocol::build_full_blit(screen_desc, &native_pixels);
+            let transfers = protocol::frame_transfers(screen_desc, blit_buf);
+            tracing::info!(
+                "Clean exit: sending screensaver to '{}' ({} bytes)",
+                screen_desc.name,
+                transfers.iter().map(Vec::len).sum::<usize>()
+            );
+            if let Err(e) = ep.write_each(transfers).await {
+                tracing::warn!("Screensaver transfer for '{}' failed on clean exit: {}", screen_desc.name, e);
+            }
+        }
     });
 }
 
@@ -905,9 +955,13 @@ fn run_leds(
             // Apply this command, then drain any others already queued so a
             // burst of updates (e.g. all 16 pad LEDs) gets batched into one flush.
             let mut cmd = Some(first_cmd);
+            let mut disconnected = false;
             while let Some(c) = cmd.take() {
                 match c {
-                    DeviceCmd::Disconnect => return,
+                    DeviceCmd::Disconnect => {
+                        disconnected = true;
+                        break;
+                    }
                     DeviceCmd::SetLed { name, value } => {
                         let mut handled = false;
                         if let Some(ref quirk) = feature_report_leds {
@@ -1001,6 +1055,10 @@ fn run_leds(
                 }
             }
 
+            if disconnected {
+                break;
+            }
+
             // Flush any LED groups that were dirtied by this batch
             for lb in &mut led_builders {
                 if let Some(wire_buf) = lb.flush() {
@@ -1063,25 +1121,27 @@ fn run_leds(
 
         // Cleanup: clear feature report LEDs on shutdown
         if let Some(ref quirk) = feature_report_leds {
-            for (&cmd_byte, entry) in &mut feature_cmd_masks {
-                if entry.0 != 0 {
-                    let mut buf = vec![0u8; quirk.payload_length];
-                    if !buf.is_empty() {
-                        buf[0] = quirk.report_id.0 as u8;
-                    }
-                    if buf.len() > 1 {
-                        buf[1] = cmd_byte;
-                    }
-                    let control = ControlOut {
-                        control_type: ControlType::Class,
-                        recipient: Recipient::Interface,
-                        request: 0x09,
-                        value: (0x03 << 8) | (quirk.report_id.0 as u16),
-                        index: quirk.interface as u16,
-                        data: &buf,
-                    };
-                    let _ = iface.control_out(control, Duration::from_millis(100)).await;
+            let mut all_cmd_bytes: std::collections::HashSet<u8> = feature_cmd_masks.keys().copied().collect();
+            for item in quirk.items.values() {
+                all_cmd_bytes.insert(item.command.0 as u8);
+            }
+            for cmd_byte in all_cmd_bytes {
+                let mut buf = vec![0u8; quirk.payload_length];
+                if !buf.is_empty() {
+                    buf[0] = quirk.report_id.0 as u8;
                 }
+                if buf.len() > 1 {
+                    buf[1] = cmd_byte;
+                }
+                let control = ControlOut {
+                    control_type: ControlType::Class,
+                    recipient: Recipient::Interface,
+                    request: 0x09,
+                    value: (0x03 << 8) | (quirk.report_id.0 as u16),
+                    index: quirk.interface as u16,
+                    data: &buf,
+                };
+                let _ = iface.control_out(control, Duration::from_millis(100)).await;
             }
         }
     });

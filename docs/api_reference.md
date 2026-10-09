@@ -293,10 +293,22 @@ Returns a list of all currently active [`DeviceId`](#3-device-identifiers-device
 Returns all loaded descriptors in the registry.
 
 #### `pub fn disconnect(&mut self, device_id: DeviceId)`
-Gracefully terminates background I/O threads, clears all LEDs on the device, releases claimed USB interfaces, and removes the device from the active device list.
+Performs a graceful clean exit on the specified controller:
+1. Submits the default screensaver image as the final frame across all color screens (or clears monochrome displays).
+2. Clears all illuminated LEDs to off (both standard output groups and feature-report quirk LEDs).
+3. Synchronously joins worker threads to guarantee all USB transfers are completed before releasing claimed interfaces.
+4. Removes the device from the active device list.
 
 #### `pub fn shutdown(&mut self)`
-Disconnects all active devices and cleanly terminates worker threads. Also called automatically on `Drop`.
+Disconnects all active devices and cleanly terminates worker threads using the clean exit procedure. Also invoked automatically when `Encdr` is dropped.
+
+#### `pub fn clean_exit(&mut self)`
+Explicit clean shutdown method. Submits the screensaver image to all screens, extinguishes all lit LEDs, and disconnects all controllers. Alias for `shutdown()`.
+
+```rust
+// In application shutdown handler or exit path:
+encdr.clean_exit();
+```
 
 ---
 

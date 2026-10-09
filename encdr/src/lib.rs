@@ -486,12 +486,22 @@ impl Encdr {
         }
     }
 
-    /// Disconnect all devices and shut down.
+    /// Disconnect all devices and shut down cleanly.
+    ///
+    /// Performs a clean exit across all connected controllers: submits the screensaver
+    /// image as the final frame to all screens, clears all illuminated LEDs,
+    /// and terminates device communication.
     pub fn shutdown(&mut self) {
         let ids: Vec<DeviceId> = self.devices.keys().copied().collect();
         for id in ids {
             self.disconnect(id);
         }
+    }
+
+    /// Cleanly exit Encdr: displays the screensaver image on all controller screens,
+    /// turns off all lit LEDs, and disconnects all devices.
+    pub fn clean_exit(&mut self) {
+        self.shutdown();
     }
 
     /// Get the descriptor for a connected device.
