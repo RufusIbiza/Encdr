@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/header-logo.png" alt="Encdr Logo" width="500">
+</p>
+
 # Encdr
 
 ### What is it?
@@ -35,7 +39,7 @@ On its own, nothing. Add a sprinkling of imagination, though, and it allows you 
 - **Native Instruments software integration** — Encdr communicates directly with the controller hardware; it does not interface with Traktor Pro, Maschine, or Komplete Kontrol software libraries, or proprietary NKS preset databases. It can't add additional functionality to these apps, nor can it make these apps support non-NI or previously unsupported hardware.
 - **Wireless or Bluetooth operation** — All supported controllers communicate strictly over wired USB.
 
-## How do I install it?
+### How do I install it?
 
 If you're asking this question, Encdr is probably not for you. It's a developer tool, and needs to be compiled into a larger application to be useful. It also requires you to be comfortable with Rust programming (although I've tried to make it as easy to use with AI/LLM coding tools as possible — just point your LLM at [this repository](https://github.com/RufusIbiza/Encdr), and it should be able to guide you through the process of building and running an app).
 
@@ -61,7 +65,11 @@ cargo add encdr-view
 
 ### I made something with Encdr, what now?
 
-Awesome! Please share it with the community by posting in the ['Show and Tell'](https://github.com/RufusIbiza/Encdr/discussions/categories/show-and-tell) category in the discussions tab here on GitHub!
+Awesome! Please share it with the community by posting in the ['Show and Tell'](https://github.com/RufusIbiza/Encdr/discussions/categories/show-and-tell) category in the discussions tab here on GitHub, and I'll include it in the list below!
+
+### Projects made using Encdr
+- **[encdr-maschine-bitwig](https://github.com/RufusIbiza/encdr-maschine-bitwig)** - A Bitwig Studio controller script for the Maschine Mk3. My hope is to eventually implement as many of the exposed functions of Bitwig as possible.
+- **[S4MK3-HID-MIDI-Bridge](https://github.com/jtoronto/S4MK3-HID-MIDI-BRIDGE)** - Native Instruments S4MK3 HID → MIDI Bridge. Allows use of the S4 mk3 in other DJ software, and comes with a mapping for Algoriddim DJay. 
 
 ## Quick Start
 
@@ -206,6 +214,7 @@ flowchart TD
 - [NI Maschine Mk3](docs/hardware/ni_maschine_mk3.md)
 - [NI Maschine Plus](docs/hardware/ni_maschine_plus.md)
 - [NI Maschine Studio](docs/hardware/ni_maschine_studio.md)
+- [NI Komplete Kontrol Mk1](docs/hardware/ni_komplete_kontrol_mk1.md)
 - [NI Komplete Kontrol Mk2](docs/hardware/ni_komplete_kontrol_mk2.md)
 - [NI Komplete Kontrol Mk3](docs/hardware/ni_komplete_kontrol_mk3.md)
 
@@ -235,6 +244,7 @@ flowchart TD
 | NI Maschine Mk3           | `17cc:1600`       | Implemented | 63 buttons, 10 touches, 9 encoders, 1 slider, 16 pads | 16 RGB pads, 62 singles, 1 strip     | 2x 480x272 BGR565 |
 | NI Maschine Plus          | `17cc:1820`       | Implemented | 63 buttons, 10 touches, 9 encoders, 1 slider, 16 pads | 16 RGB pads, 62 singles, 1 strip     | 2x 480x272 BGR565 |
 | NI Maschine Studio        | `17cc:1300`       | Implemented | 64 buttons, 5 touches, 10 encoders, 16 pads   | 16 RGB pads, 8 RGB groups, stereo meters, 32-seg ring | 2x 480x272 BGR565 |
+| NI Komplete Kontrol S-Mk1 | `17cc:1340/50/60/1410` | Implemented | 19 buttons, 8 encoders, 8 touch sensors, 2 touchstrips | 14 singles, Light Guide (25/49/61/88 keys) | 8x 128x32 1-bit OLED |
 | NI Komplete Kontrol S-Mk2 | `17cc:1610/20/30` | Complete (Untested) | 28 buttons, 9 encoders, pitch/mod wheels, touchstrip | 20 singles, Light Guide (RGB per-key)       | 2x 480x272 BGR565 |
 | NI Komplete Kontrol S-Mk3 | `17cc:2100/10/20` | Complete (Untested) | Keybed (49/61/88 keys), 4D encoder, touchstrip, high-res encoders | Light Guide RGB strips, RGB button backlights | Full-color wide LCD |
 
@@ -244,10 +254,14 @@ flowchart TD
 encdr/
 ├── encdr/                  Core crate
 │   ├── descriptors/        Built-in JSON device descriptors
+│   │   ├── ni_komplete_kontrol_s25_mk1.json
+│   │   ├── ni_komplete_kontrol_s49_mk1.json
 │   │   ├── ni_komplete_kontrol_s49_mk2.json
 │   │   ├── ni_komplete_kontrol_s49_mk3.json
+│   │   ├── ni_komplete_kontrol_s61_mk1.json
 │   │   ├── ni_komplete_kontrol_s61_mk2.json
 │   │   ├── ni_komplete_kontrol_s61_mk3.json
+│   │   ├── ni_komplete_kontrol_s88_mk1.json
 │   │   ├── ni_komplete_kontrol_s88_mk2.json
 │   │   ├── ni_komplete_kontrol_s88_mk3.json
 │   │   ├── ni_kontrol_d2.json
@@ -291,7 +305,7 @@ encdr/
 │       └── capture_windows.rs  Windows: pixel capture via WebView2 CapturePreview
 │
 ├── examples/               Collection of examples organized by controller
-│   ├── komplete_kontrol/   Komplete Kontrol Mk2 & Mk3 examples
+│   ├── komplete_kontrol/   Komplete Kontrol Mk1, Mk2 & Mk3 examples (e.g. kk_mk1_vegas, kk_mk2_vegas)
 │   ├── kontrol_d2/         D2 examples (e.g. d2_screen_test, d2_vegas)
 │   ├── kontrol_f1/         F1 examples (e.g. f1_vegas)
 │   ├── kontrol_s2/         S2 Mk1 & Mk2 examples (e.g. s2_mk1_vegas, s2_mk2_vegas)
@@ -346,8 +360,8 @@ encdr/
 | PNG Codec (Cross-Platform)  | `png`                      | In-memory PNG encoding for offscreen views & Windows `CapturePreview` decode |
 | ODR MsgPack-RPC             | `rmp-serde`                | MessagePack serialization for Komplete Kontrol Mk3 On-Device Rendering |
 
-
 ## Changelog
+
 ### v0.8.0
 - **Native Instruments Komplete Kontrol S-Series Mk3 DAW Remote & ODR Integration**:
   - **Direct DAW Remote Protocol**:
@@ -387,6 +401,70 @@ encdr/
   - Authored comprehensive dedicated documentation: [`docs/usage_kk_mk3.md`](docs/usage_kk_mk3.md) covering hardware architecture, what the Mk3 can and cannot do, DAW Remote setup, ODR models, header banners, dynamic `encdr-view` workflow, and complete working code examples.
   - Updated [`docs/api_reference.md`](docs/api_reference.md) with Section 14 and all new facade / `encdr-view` methods.
   - Updated [`examples/README.md`](examples/README.md) and [`README.md`](README.md).
+
+### v0.7.8
+- **Clean Exit & Screensaver Support**:
+  - Implemented automatic clean shutdown handling across all connected controllers via `Encdr::clean_exit()`, `Encdr::shutdown()`, and on `Drop`.
+  - When disconnecting or exiting, Encdr submits the bundled screensaver image (`assets/screensaver.png`) as the final frame across all color screens (or clears monochrome displays).
+  - Automatically turns off all illuminated LEDs on disconnect, flushing zero-filled buffers to all standard LED groups and sending zero-mask reports for all feature-report quirk LEDs.
+  - Added compile-time embedded screensaver asset decoding and dynamic resolution adaptation in `encdr::screen::screensaver`.
+  - Synchronously joins worker threads (`screen_thread` and `led_thread`) before releasing USB interface handles to ensure all exit frames and LED packets are fully transmitted to the hardware.
+- **Branding & Assets**:
+  - Added official project logo and assets to documentation and repository.
+
+### v0.7.7
+- **Unified Dual-Screen Support & `DualScreenView`**:
+  - Added `DualScreenView` to `encdr-view`: hosts a single double-width offscreen WebView sized to `(left_width + right_width) x height` (e.g. 960×272 on Maschine Mk3 / KK Mk2 / Traktor S8, or 640×240 on Traktor S4 Mk3).
+  - Cuts WebKit/WebView2 process, memory, and CPU overhead in half by rendering both displays in a single browser instance and shared DOM tree.
+  - Added `split_horizontal` zero-cost row-by-row horizontal frame splitter (~0.02ms) in `encdr::screen`.
+  - Added `Encdr::submit_dual_screen` and `Encdr::submit_dual_screen_with_format` with `DeviceCmd::SubmitDualScreen`.
+  - Encdr splits the double-width frame before the diffing stage so each screen independently performs format conversion, keyframe tracking, and dirty-rect diffing. If only one screen's content changes, zero USB packets are sent to the other display.
+  - Hardened bridge IPC notifications and JavaScript bridge bindings to prevent object overwrite and eliminate frame dispatch latency.
+  - Added `mk3_dual_screen` example demonstrating single 960×272 WebView rendering on Maschine Mk3.
+
+### v0.7.5
+- **Komplete Kontrol S-Series Mk1 Hardware Support**:
+  - Added hardware descriptors and built-in registry support for all four Komplete Kontrol Mk1 keyboard models:
+    - **S25 Mk1** (`0x17cc:0x1340`, 25 keys)
+    - **S49 Mk1** (`0x17cc:0x1350`, 49 keys)
+    - **S61 Mk1** (`0x17cc:0x1360`, 61 keys)
+    - **S88 Mk1** (`0x17cc:0x1410`, 88 keys)
+  - Full support for 19 transport, mode, and navigation buttons; 8 rotary encoders with 4-bit `wrap16` relative tracking; capacitive knob touch sensors; and dual touch strips.
+  - Supported all 8 dedicated 128×32 monochrome OLED parameter displays (`display_1` .. `display_8`) with 1-bit monochrome blit commands.
+  - Added button LED brightness controls (`linear_7bit`) and per-key Light Guide strip illumination (`0x81`).
+  - Added `kk_mk1_vegas` interactive demo example and hardware reference documentation (`docs/hardware/ni_komplete_kontrol_mk1.md`).
+- **Background Hardware Service Conflict Detection**:
+  - Added diagnostic detection for active Native Instruments background helper processes (`NIHardwareService`, `NIHostIntegrationAgent`, `NIHardwareConnectionService`) on Windows and macOS.
+  - Automatically emits informative warnings during device scan or USB interface claim failures with platform-specific instructions on how to suspend or terminate conflicting background services.
+
+### v0.7.4
+- **Descriptor-Driven Multi-Controller `LedProtocol` Architecture**:
+  - Introduced `LedProtocol` (`nhl2`, `linear_7bit`, `linear_8bit`) in hardware descriptors allowing each controller's LED layouts to declare their native brightness protocol:
+    - `nhl2` (Maschine Mk3, Plus, Mikro Mk3, KK Mk2/Mk3, X1 Mk3): Dual physical LEDs with active-low comparator — `Dim` = `228` (`0xE4`, single LED illuminated), `Bright` = `158` (`0x9E`, dual LEDs illuminated).
+    - `linear_7bit` (Maschine Jam, Traktor S2 Mk2, S4 Mk3, etc.): 7-bit linear PWM (`0..127`) — `Dim` = `38` (~30%), `Bright` = `127` (100%).
+    - `linear_8bit` (Maschine Studio, Maschine Mk2, Mikro Mk2, Mk1, Traktor S4 Mk2, S5, S8, D2, F1, Z1, Z2, S2 Mk1): 8-bit linear PWM (`0..255`) — `Dim` = `76` (~30%), `Bright` = `255` (100%).
+  - Added optional `dim_value` and `bright_value` override bytes in `LedLayoutDesc` for granular group-level hardware tuning.
+  - Updated `LedBuilder` to automatically resolve `LedValue::Dim` and `LedValue::Bright` per descriptor layout across all target types: monochrome button LEDs, RGB LEDs (`64` / `255`), and NI indexed palette LEDs (intensity `1` / intensity `3` white).
+  - Updated `JogRing::set_led()` and USB device thread feature report handlers to support `Dim` and `Bright` states.
+- **Hardware Button Brightness Calibration & Verification Example**:
+  - Calibrated active-low comparator thresholds (`NI_DIM = 228`, `NI_BRIGHT = 158`) ensuring buttons idle at dim half-brightness and illuminate at full brightness when pressed.
+  - Added interactive verification example `mk3_button_brightness` for Maschine Mk3 / Maschine Plus testing all 47 control buttons with real-time dim-to-bright press elevation.
+  - Added comprehensive unit tests in `encdr/src/device/led_builder.rs` validating protocol resolution across all protocol variants and overrides.
+
+### v0.7.3
+- **Native Instruments Discrete LED Brightness & Half-Brightness Support**:
+  - **Button LED Protocol Handling**: Added Native Instruments button LED brightness protocol handling, supporting discrete levels and PWM duty cycle encoding on Report `0x80`:
+    - `0x00`: **Off**
+    - `0xE4` (228): **Dim / Half-brightness** (idle state, illuminating 1 LED under the button)
+    - `0x9E` (158): **Bright / Active** (active state, illuminating both LEDs under the button)
+    - `0xFF` (255): **Max drive**
+  - **Core LED Engine Enhancements**:
+    - Added `LedValue::Dim` and `LedValue::Bright` enum variants with constants (`LedValue::OFF`, `LedValue::DIM`, `LedValue::BRIGHT`, `LedValue::MAX`, `LedValue::NI_OFF`, `LedValue::NI_DIM`, `LedValue::NI_BRIGHT`, `LedValue::NI_MAX`).
+    - Added helper methods `LedValue::to_ni_single_byte(pct)` and `LedValue::single_percent(pct)` for setting arbitrary duty cycle percentages ($0..100\%$).
+    - Updated `LedValue::brightness()` to return standard levels.
+  - **Documentation & Hardware Reference Updates**:
+    - Updated hardware references for NI Maschine Mk3 ([`docs/hardware/ni_maschine_mk3.md`](docs/hardware/ni_maschine_mk3.md)), Maschine Plus ([`docs/hardware/ni_maschine_plus.md`](docs/hardware/ni_maschine_plus.md)), Maschine Mikro Mk3 ([`docs/hardware/ni_maschine_mikro_mk3.md`](docs/hardware/ni_maschine_mikro_mk3.md)), Komplete Kontrol Mk2 ([`docs/hardware/ni_komplete_kontrol_mk2.md`](docs/hardware/ni_komplete_kontrol_mk2.md)), and Komplete Kontrol Mk3 ([`docs/hardware/ni_komplete_kontrol_mk3.md`](docs/hardware/ni_komplete_kontrol_mk3.md)).
+    - Updated [`docs/api_reference.md`](docs/api_reference.md) with complete `LedValue` documentation, constants, helper methods, and multi-target mapping semantics.
 
 ### v0.7.2
 - **Traktor Kontrol S4 MK3 Jog Wheel LED Ring Support & Real-Time Sync**:
@@ -548,7 +626,7 @@ encdr/
   - Added hardware reference documentation (`docs/hardware/ni_komplete_kontrol_mk2.md`).
 - **Maschine Mk3 Velocity & Pressure Pads**:
   - Implemented Report `0x02` pad packet decoding with double-pumped 128-byte packet handling (Set A & Set B 64-byte chunks).
-  - Reverse-engineered 3-byte tuple decoding (`pad_index`, `d1`, `d2`) with 12-bit pressure extraction (`((d1 & 0xf) << 8) | d2`).
+  - Implemented 3-byte tuple decoding (`pad_index`, `d1`, `d2`) with 12-bit pressure extraction (`((d1 & 0xf) << 8) | d2`).
   - Implemented state-machine event dispatch matching NI's hardware service: `0x00` (Switch ON), `0x10` (Hit attack velocity ON), `0x20`/`0x30` (Switch/Hit OFF release), and `0x40` (continuous Aftertouch).
   - Added 16 RGB Pad LED control via indexed palette and brightness levels in Report `0x81`.
   - Added `examples/maschine_mk3/pad_rainbow.rs` demonstration and HTML screen visualizers (`screens/mk3_pad_matrix.html`, `screens/mk3_group_status.html`).

@@ -69,7 +69,7 @@ Updates an LED state by control name. Matches against the first LED group contai
 
 - `device_id`: Target device.
 - `name`: Identifier as declared in the device descriptor JSON (e.g. `"play"`, `"pad_1"`).
-- `value`: State to assign ([`LedValue::Off`](#5-led-values--ni-palette-ledvalue), [`LedValue::Single`](#5-led-values--ni-palette-ledvalue), or [`LedValue::Rgb`](#5-led-values--ni-palette-ledvalue)).
+- `value`: State to assign ([`LedValue::Off`](#5-led-values--ni-palette-ledvalue), [`LedValue::Dim`](#5-led-values--ni-palette-ledvalue), [`LedValue::Bright`](#5-led-values--ni-palette-ledvalue), [`LedValue::Single`](#5-led-values--ni-palette-ledvalue), or [`LedValue::Rgb`](#5-led-values--ni-palette-ledvalue)).
 
 ```rust
 use encdr::LedValue;
@@ -243,6 +243,25 @@ use encdr::PixelFormat;
 let bgr_pixels = vec![0u8; 480 * 272 * 2]; // Native BGR565-BE
 encdr.submit_screen_with_format(device_id, "left", &bgr_pixels, PixelFormat::Bgr565Be);
 ```
+#### `pub fn submit_dual_screen(&self, device_id: DeviceId, left_screen: &str, right_screen: &str, pixels: &[u8])`
+Submits a single combined double-width frame of `RGBA8888` pixels (e.g. `960x272` for dual `480x272` screens or `640x240` for dual `320x240` screens).
+
+Encdr splits the frame horizontally before feeding each half independently through GPU format conversion, frame diffing, and USB transfer. If one display's content is unchanged, zero USB packets are transmitted for that screen.
+
+```rust
+let dual_rgba = vec![0u8; 960 * 272 * 4]; // 960x272 double-width canvas
+encdr.submit_dual_screen(device_id, "left", "right", &dual_rgba);
+```
+
+#### `pub fn submit_dual_screen_with_format(&self, device_id: DeviceId, left_screen: &str, right_screen: &str, pixels: &[u8], format: PixelFormat)`
+Submits a single combined double-width frame with an explicit [`PixelFormat`](#6-pixel-formats-pixelformat).
+
+```rust
+use encdr::PixelFormat;
+
+let dual_bgr = vec![0u8; 960 * 272 * 2];
+encdr.submit_dual_screen_with_format(device_id, "left", "right", &dual_bgr, PixelFormat::Bgr565Be);
+```
 
 #### `pub fn write_interface(&self, device_id: DeviceId, interface: &str, data: &[u8])`
 Transmits raw payload bytes directly to a named USB interface's OUT endpoint. Used for vendor-specific bulk pipes (such as Komplete Kontrol Mk3's `odr_cmd`).
@@ -400,10 +419,22 @@ Returns a list of all currently active [`DeviceId`](#3-device-identifiers-device
 Returns all loaded descriptors in the registry.
 
 #### `pub fn disconnect(&mut self, device_id: DeviceId)`
-Gracefully terminates background I/O threads, clears all LEDs on the device, releases claimed USB interfaces, and removes the device from the active device list.
+Performs a graceful clean exit on the specified controller:
+1. Submits the default screensaver image as the final frame across all color screens (or clears monochrome displays).
+2. Clears all illuminated LEDs to off (both standard output groups and feature-report quirk LEDs).
+3. Synchronously joins worker threads to guarantee all USB transfers are completed before releasing claimed interfaces.
+4. Removes the device from the active device list.
 
 #### `pub fn shutdown(&mut self)`
-Disconnects all active devices and cleanly terminates worker threads. Also called automatically on `Drop`.
+Disconnects all active devices and cleanly terminates worker threads using the clean exit procedure. Also invoked automatically when `Encdr` is dropped.
+
+#### `pub fn clean_exit(&mut self)`
+Explicit clean shutdown method. Submits the screensaver image to all screens, extinguishes all lit LEDs, and disconnects all controllers. Alias for `shutdown()`.
+
+```rust
+// In application shutdown handler or exit path:
+encdr.clean_exit();
+```
 
 ---
 
@@ -524,15 +555,44 @@ Defined in [`encdr::core::led::LedValue`](file:///home/rufus/Documents/Projects/
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LedValue {
     Off,
+    Dim,
+    Bright,
     Single(u8),
     Rgb { r: u8, g: u8, b: u8 },
 }
 ```
 
+### Constants
+
+| Constant | Value | Description |
+| :--- | :--- | :--- |
+| `LedValue::OFF` | `LedValue::Off` | Off state |
+| `LedValue::DIM` | `LedValue::Dim` | Dim / half-brightness level (idle / 1 LED illuminated) |
+| `LedValue::BRIGHT` | `LedValue::Bright` | Bright / active level (active / 2 LEDs illuminated) |
+| `LedValue::MAX` | `LedValue::Single(255)` | Maximum drive level |
+| `LedValue::NI_OFF` | `0` (`0x00`) | Raw byte for NI single-color button off state |
+| `LedValue::NI_DIM` | `228` (`0xE4`) | Raw byte for NI single-color button dim / half-brightness (idle) |
+| `LedValue::NI_BRIGHT` | `158` (`0x9E`) | Raw byte for NI single-color button bright / active |
+| `LedValue::NI_MAX` | `255` (`0xFF`) | Raw byte for NI single-color button maximum drive |
+
 ### Methods
 
 #### `pub fn brightness(&self) -> u8`
-Returns the effective brightness (0–255) of the value. For RGB values, returns $\max(r, g, b)$.
+Returns the effective brightness (0–255) of the value.
+- `Off`: `0`
+- `Dim`: `228` (`LedValue::NI_DIM`)
+- `Bright`: `158` (`LedValue::NI_BRIGHT`)
+- `Single(b)`: `b`
+- `Rgb { r, g, b }`: $\max(r, g, b)$
+
+#### `pub fn to_ni_single_byte(pct: u8) -> u8`
+Converts a brightness percentage ($0..100$) to the Native Instruments PWM duty cycle byte format used by single-color button LEDs:
+- `0`: Off (`0x00`)
+- `30`: Dim / half-brightness (`0xE4` = 228)
+- `100`: Bright / active (`0x9E` = 158)
+
+#### `pub fn single_percent(pct: u8) -> Self`
+Convenience constructor returning `LedValue::Off` for $0$, or `LedValue::Single(to_ni_single_byte(pct))` for $1..=100$.
 
 #### `pub fn to_ni_palette_byte(r: u8, g: u8, b: u8) -> u8`
 Maps an 8-bit RGB color to the Native Instruments packed 1-byte hardware palette format used by Maschine Mk3, Maschine Mikro Mk3, and Komplete Kontrol Mk2:
@@ -543,6 +603,17 @@ Maps an 8-bit RGB color to the Native Instruments packed 1-byte hardware palette
 ```rust
 let ni_byte = LedValue::to_ni_palette_byte(255, 0, 0); // Red at full brightness -> 0x07
 ```
+
+### Multi-Target & Protocol-Aware Mapping Semantics
+
+When `LedValue::Dim` or `LedValue::Bright` is dispatched via `set_led` or `set_led_in_group`, `LedBuilder` automatically tailors output to the hardware target type and the descriptor's configured [`LedProtocol`](#5-led-values--ni-palette-ledvalue):
+- **Single (Monochrome Button LED):**
+  - **`nhl2`** (Maschine Mk3, Plus, Mikro Mk3, KK Mk2/Mk3, X1 Mk3): `Dim` emits `228` (`0xE4` = half-brightness / 1 LED illuminated), `Bright` emits `158` (`0x9E` = active / both LEDs illuminated).
+  - **`linear_7bit`** (Maschine Jam, Traktor S2/S4 Mk3, etc.): `Dim` emits `38` (~30%), `Bright` emits `127` (100%).
+  - **`linear_8bit`** (Maschine Studio, Maschine Mk2, Traktor S4/S5/S8, etc.): `Dim` emits `76` (~30%), `Bright` emits `255` (100%).
+  - Descriptors can also declare explicit `dim_value` and `bright_value` overrides per LED group.
+- **RGB LEDs:** `Dim` emits `(64, 64, 64)`, `Bright` emits `(255, 255, 255)`.
+- **Indexed Palette LEDs:** `Dim` emits `(17 << 2) | 1` (dim white), `Bright` emits `(17 << 2) | 3` (bright white).
 
 ---
 
@@ -936,6 +1007,61 @@ Returns the `DeviceId` associated with this view, or `None` if created via `new_
 #### `pub fn screen_name(&self) -> &str`
 Returns the target screen identifier string.
 
+### `DualScreenView` Methods
+
+Defined in [`encdr-view::DualScreenView`](file:///home/rufus/Documents/Projects/Encdr/encdr-view/src/lib.rs#L224-L394).
+
+`DualScreenView` hosts a single offscreen WebView sized to `(left_width + right_width) x height` (e.g. `960x272` on Maschine Mk3 / KK Mk2 / Traktor S8, or `640x240` on Traktor S4 Mk3). 
+
+#### Advantages over Two Separate `ScreenView`s:
+- **50% RAM & CPU savings**: Runs only 1 WebKit/WebView2 browser engine instance instead of 2.
+- **Single DOM/State tree**: Animate or layout UI components seamlessly across both displays using standard CSS grid or flexbox (`width: 50%` per deck or screen half).
+- **Zero-cost diffing preserved**: Before sending across USB, Encdr slices the frame in half. If one screen's content has not changed, zero USB packets are transmitted for that screen.
+
+#### `pub fn new(encdr: &Encdr, device_id: DeviceId, content: ScreenContent, visible: bool) -> Result<Self, String>`
+Creates a new double-width WebView renderer defaulting to screen names `"left"` and `"right"`.
+
+```rust
+use encdr_view::{ScreenContent, DualScreenView};
+
+let dual_view = DualScreenView::new(
+    &encdr,
+    device_id,
+    ScreenContent::File("./ui/dual_screen.html".to_string()),
+    false,
+)?;
+```
+
+#### `pub fn new_with_screens(encdr: &Encdr, device_id: DeviceId, left_screen: &str, right_screen: &str, content: ScreenContent, visible: bool) -> Result<Self, String>`
+Creates a new double-width WebView renderer with custom screen identifiers.
+
+#### `pub fn capture_and_submit(&self, encdr: &Encdr) -> Result<(), String>`
+Captures the double-width surface and dispatches it via `encdr.submit_dual_screen_with_format`.
+
+#### `pub fn poll(&self, encdr: &Encdr)`
+Checks `is_frame_ready()`, and if new content was composited, captures and submits the dual-screen frame to Encdr.
+
+```rust
+// Application loop:
+ScreenView::pump_events();
+dual_view.poll(&encdr);
+```
+
+#### `pub fn send(&self, channel: &str, data: serde_json::Value)`
+Dispatches a JSON event to `window.encdr.onMessage(channel, data)` across the shared WebView page.
+
+#### `pub fn load_html(&self, html: &str) -> Result<(), String>`
+Replaces the currently loaded HTML page.
+
+#### `pub fn eval(&self, js: &str) -> Result<(), String>`
+Executes arbitrary JavaScript within the shared WebView.
+
+#### `pub fn left_screen_name(&self) -> &str`
+Returns the left display identifier string.
+
+#### `pub fn right_screen_name(&self) -> &str`
+Returns the right display identifier string.
+
 ---
 
 ## 14. Komplete Kontrol Mk3 DAW & On-Device Rendering (ODR)
@@ -1078,4 +1204,3 @@ Onboard view template selector:
 
 #### `OdrRpcFramer`
 MessagePack-RPC packet framer used internally to encode notifications (`[2, method, params]`) and requests (`[0, msg_id, method, params]`) over Bulk OUT `0x03`.
-

@@ -274,3 +274,173 @@ impl ScreenView {
         &self.screen_name
     }
 }
+
+/// A WebView-backed screen renderer for dual-screen devices using a single double-width canvas.
+///
+/// Manages a single offscreen WebView sized to `(left_width + right_width) x height`.
+/// Renders HTML/CSS/JS across the entire dual display surface, automatically captures
+/// pixels once per frame, and submits them to encdr's dual-screen pipeline which splits
+/// the frame horizontally and updates both displays independently.
+pub struct DualScreenView {
+    #[cfg(target_os = "linux")]
+    inner: webview::ManagedWebView,
+    #[cfg(target_os = "macos")]
+    inner: webview_macos::ManagedWebView,
+    #[cfg(target_os = "windows")]
+    inner: webview_windows::ManagedWebView,
+    device_id: DeviceId,
+    left_screen: String,
+    right_screen: String,
+}
+
+impl DualScreenView {
+    /// Create a new double-width WebView renderer for a dual-screen device,
+    /// defaulting to screens named `"left"` and `"right"`.
+    pub fn new(
+        encdr: &Encdr,
+        device_id: DeviceId,
+        content: ScreenContent,
+        visible: bool,
+    ) -> Result<Self, String> {
+        Self::new_with_screens(encdr, device_id, "left", "right", content, visible)
+    }
+
+    /// Create a new double-width WebView renderer specifying custom screen names.
+    pub fn new_with_screens(
+        encdr: &Encdr,
+        device_id: DeviceId,
+        left_screen: &str,
+        right_screen: &str,
+        content: ScreenContent,
+        visible: bool,
+    ) -> Result<Self, String> {
+        let descriptor = encdr
+            .device_descriptor(device_id)
+            .ok_or_else(|| format!("Device {:?} not connected", device_id))?;
+
+        let left_desc = descriptor
+            .screens
+            .iter()
+            .find(|s| s.name == left_screen)
+            .ok_or_else(|| format!("Left screen '{}' not found on device", left_screen))?;
+
+        let right_desc = descriptor
+            .screens
+            .iter()
+            .find(|s| s.name == right_screen)
+            .ok_or_else(|| format!("Right screen '{}' not found on device", right_screen))?;
+
+        if left_desc.height != right_desc.height {
+            return Err(format!(
+                "Left screen height ({}) does not match right screen height ({})",
+                left_desc.height, right_desc.height
+            ));
+        }
+
+        let width = (left_desc.width + right_desc.width) as u32;
+        let height = left_desc.height as u32;
+        let html = content.to_html()?;
+
+        #[cfg(target_os = "linux")]
+        let inner = webview::ManagedWebView::new(width, height, &html, visible)?;
+
+        #[cfg(target_os = "macos")]
+        let inner = webview_macos::ManagedWebView::new(width, height, &html, visible)?;
+
+        #[cfg(target_os = "windows")]
+        let inner = webview_windows::ManagedWebView::new(width, height, &html, visible)?;
+
+        Ok(Self {
+            inner,
+            device_id,
+            left_screen: left_screen.to_string(),
+            right_screen: right_screen.to_string(),
+        })
+    }
+
+    /// Push a state update to the WebView.
+    ///
+    /// Calls `window.encdr.onMessage(channel, data)` in the WebView's JS context.
+    pub fn send(&self, channel: &str, data: Value) {
+        let js = bridge::build_send_js(channel, &data);
+        if let Err(e) = self.inner.eval(&js) {
+            tracing::warn!("Failed to send to WebView: {}", e);
+        }
+    }
+
+    /// Capture the current double-width WebView contents and submit to encdr for USB transfer.
+    pub fn capture_and_submit(&self, encdr: &Encdr) -> Result<(), String> {
+        #[cfg(target_os = "linux")]
+        let (_w, _h, rgba) = capture::capture_webview_pixels(
+            &self.inner.webkit_view,
+            self.inner.width,
+            self.inner.height,
+        )?;
+
+        #[cfg(target_os = "macos")]
+        let (_w, _h, rgba) = capture_macos::capture_webview_pixels(
+            &self.inner.webview,
+            self.inner.width,
+            self.inner.height,
+        )?;
+
+        #[cfg(target_os = "windows")]
+        let (_w, _h, rgba) = capture_windows::capture_webview_pixels(
+            &self.inner.webview,
+            self.inner.width,
+            self.inner.height,
+        )?;
+
+        encdr.submit_dual_screen_with_format(
+            self.device_id,
+            &self.left_screen,
+            &self.right_screen,
+            &rgba,
+            PixelFormat::Rgba8888,
+        );
+
+        self.inner.clear_frame_ready();
+        Ok(())
+    }
+
+    /// Check if the WebView has signaled that new content is ready for capture.
+    pub fn is_frame_ready(&self) -> bool {
+        self.inner.is_frame_ready()
+    }
+
+    /// Process pending frames: if the WebView has rendered new content,
+    /// capture and submit it to encdr.
+    pub fn poll(&self, encdr: &Encdr) {
+        if self.is_frame_ready() {
+            if let Err(e) = self.capture_and_submit(encdr) {
+                tracing::warn!("Frame capture failed: {}", e);
+            }
+        }
+    }
+
+    /// Load new HTML content into the WebView, replacing the current page.
+    pub fn load_html(&self, html: &str) -> Result<(), String> {
+        self.inner.load_html(html)
+    }
+
+    /// Execute arbitrary JavaScript in the WebView.
+    pub fn eval(&self, js: &str) -> Result<(), String> {
+        self.inner.eval(js)
+    }
+
+    /// Get the device ID this view is attached to.
+    pub fn device_id(&self) -> DeviceId {
+        self.device_id
+    }
+
+    /// Get the left screen name this view renders to.
+    pub fn left_screen_name(&self) -> &str {
+        &self.left_screen
+    }
+
+    /// Get the right screen name this view renders to.
+    pub fn right_screen_name(&self) -> &str {
+        &self.right_screen
+    }
+}
+

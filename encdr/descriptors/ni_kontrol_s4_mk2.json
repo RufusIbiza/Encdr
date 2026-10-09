@@ -172,6 +172,7 @@
       "interface": "control",
       "buffer_size": 64,
       "prefix_byte": "0x80",
+      "protocol": "linear_8bit",
       "items": [
         { "type": "rgb",    "name": "left_hotcue_1",   "offsets": {"r": 0,  "g": 1,  "b": 2} },
         { "type": "rgb",    "name": "left_hotcue_2",   "offsets": {"r": 3,  "g": 4,  "b": 5} },
@@ -196,6 +197,7 @@
       "interface": "control",
       "buffer_size": 64,
       "prefix_byte": "0x81",
+      "protocol": "linear_8bit",
       "items": [
         { "type": "single", "name": "mixer_cue_a",     "offset": 0 },
         { "type": "single", "name": "mixer_cue_b",     "offset": 1 },

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 960px;
+    height: 272px;
+    overflow: hidden;
+    background: #0a0a0a;
+    font-family: -apple-system, 'Segoe UI', sans-serif;
+    color: #ccc;
+  }
+</style>
+</head>
+<body>
+<canvas id="c" width="960" height="272"></canvas>
+<script>
+const W = 960, H = 272, HALF = 480;
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+const ACCENT_LEFT = '#00ccff';
+const ACCENT_RIGHT = '#ff6600';
+const DIM = '#1a1a1a';
+const BORDER = '#2a2a2a';
+const TEXT = '#888';
+const TEXT_DIM = '#555';
+
+const state = {
+  // Encoders 1-8
+  screen_encoder_1: 0.5, screen_encoder_2: 0.5, screen_encoder_3: 0.5, screen_encoder_4: 0.5,
+  screen_encoder_5: 0.5, screen_encoder_6: 0.5, screen_encoder_7: 0.5, screen_encoder_8: 0.5,
+  encoder_touch_1: false, encoder_touch_2: false, encoder_touch_3: false, encoder_touch_4: false,
+  encoder_touch_5: false, encoder_touch_6: false, encoder_touch_7: false, encoder_touch_8: false,
+  // Top buttons 1-8
+  top_1: false, top_2: false, top_3: false, top_4: false,
+  top_5: false, top_6: false, top_7: false, top_8: false,
+  // Groups
+  group_a: false, group_b: false, group_c: false, group_d: false,
+  group_e: false, group_f: false, group_g: false, group_h: false,
+  // Transport
+  play: false, rec: false, stop: false,
+  restart: false, erase: false, tap: false, follow: false,
+  touchstrip: 0,
+  event: '',
+};
+
+function drawKnob(cx, cy, r, value, touched, accent) {
+  const startAngle = Math.PI * 0.75;
+  const endAngle = Math.PI * 2.25;
+  const valAngle = startAngle + value * (endAngle - startAngle);
+
+  if (touched) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + 3, 0, Math.PI * 2);
+    ctx.strokeStyle = accent;
+    ctx.globalAlpha = 0.3;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = DIM;
+  ctx.fill();
+  ctx.strokeStyle = BORDER;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 3, startAngle, endAngle);
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 3, startAngle, valAngle);
+  ctx.strokeStyle = touched ? accent : '#555';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  const px = cx + (r - 8) * Math.cos(valAngle);
+  const py = cy + (r - 8) * Math.sin(valAngle);
+  ctx.beginPath();
+  ctx.arc(px, py, 2, 0, Math.PI * 2);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+}
+
+function render() {
+  ctx.fillStyle = '#0a0a0a';
+  ctx.fillRect(0, 0, W, H);
+
+  // Divider between Left and Right screens
+  ctx.fillStyle = '#141414';
+  ctx.fillRect(HALF - 1, 0, 2, H);
+
+  // ── LEFT SCREEN (0..480) ──
+  // Header
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, HALF, 24);
+  ctx.fillStyle = ACCENT_LEFT;
+  ctx.font = 'bold 10px monospace';
+  ctx.fillText('MASCHINE MK3 · LEFT DISPLAY (DUAL VIEW)', 10, 16);
+
+  // Top buttons 1-4
+  for (let i = 0; i < 4; i++) {
+    const x = i * 120 + 4;
+    const pressed = state[`top_${i + 1}`];
+    ctx.fillStyle = pressed ? ACCENT_LEFT : DIM;
+    ctx.fillRect(x, 28, 112, 18);
+    ctx.strokeStyle = pressed ? ACCENT_LEFT : BORDER;
+    ctx.strokeRect(x, 28, 112, 18);
+    ctx.fillStyle = pressed ? '#000' : TEXT;
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`BUTTON ${i + 1}`, x + 56, 40);
+  }
+
+  // Encoders 1-4
+  for (let i = 0; i < 4; i++) {
+    const cx = i * 120 + 60;
+    const cy = 110;
+    const val = state[`screen_encoder_${i + 1}`];
+    const touched = state[`encoder_touch_${i + 1}`];
+    drawKnob(cx, cy, 28, val, touched, ACCENT_LEFT);
+    ctx.fillStyle = touched ? ACCENT_LEFT : TEXT;
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`ENC ${i + 1}`, cx, 155);
+    ctx.fillStyle = '#fff';
+    ctx.font = '9px monospace';
+    ctx.fillText(`${Math.round(val * 100)}%`, cx, 170);
+  }
+
+  // Groups A-D
+  const groupsLeft = ['a', 'b', 'c', 'd'];
+  for (let i = 0; i < 4; i++) {
+    const x = i * 120 + 4;
+    const active = state[`group_${groupsLeft[i]}`];
+    ctx.fillStyle = active ? ACCENT_LEFT : DIM;
+    ctx.fillRect(x, 185, 112, 22);
+    ctx.strokeStyle = active ? ACCENT_LEFT : BORDER;
+    ctx.strokeRect(x, 185, 112, 22);
+    ctx.fillStyle = active ? '#000' : TEXT;
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`GROUP ${groupsLeft[i].toUpperCase()}`, x + 56, 200);
+  }
+
+  // Left status bar
+  ctx.fillStyle = '#0f0f0f';
+  ctx.fillRect(0, H - 24, HALF, 24);
+  ctx.fillStyle = TEXT_DIM;
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(state.event || 'Ready — touch/turn encoders', 10, H - 8);
+
+  // ── RIGHT SCREEN (480..960) ──
+  // Header
+  ctx.fillStyle = '#111';
+  ctx.fillRect(HALF, 0, HALF, 24);
+  ctx.fillStyle = ACCENT_RIGHT;
+  ctx.font = 'bold 10px monospace';
+  ctx.fillText('MASCHINE MK3 · RIGHT DISPLAY (DUAL VIEW)', HALF + 10, 16);
+
+  // Top buttons 5-8
+  for (let i = 0; i < 4; i++) {
+    const x = HALF + i * 120 + 4;
+    const pressed = state[`top_${i + 5}`];
+    ctx.fillStyle = pressed ? ACCENT_RIGHT : DIM;
+    ctx.fillRect(x, 28, 112, 18);
+    ctx.strokeStyle = pressed ? ACCENT_RIGHT : BORDER;
+    ctx.strokeRect(x, 28, 112, 18);
+    ctx.fillStyle = pressed ? '#000' : TEXT;
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`BUTTON ${i + 5}`, x + 56, 40);
+  }
+
+  // Encoders 5-8
+  for (let i = 0; i < 4; i++) {
+    const cx = HALF + i * 120 + 60;
+    const cy = 110;
+    const val = state[`screen_encoder_${i + 5}`];
+    const touched = state[`encoder_touch_${i + 5}`];
+    drawKnob(cx, cy, 28, val, touched, ACCENT_RIGHT);
+    ctx.fillStyle = touched ? ACCENT_RIGHT : TEXT;
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`ENC ${i + 5}`, cx, 155);
+    ctx.fillStyle = '#fff';
+    ctx.font = '9px monospace';
+    ctx.fillText(`${Math.round(val * 100)}%`, cx, 170);
+  }
+
+  // Groups E-H
+  const groupsRight = ['e', 'f', 'g', 'h'];
+  for (let i = 0; i < 4; i++) {
+    const x = HALF + i * 120 + 4;
+    const active = state[`group_${groupsRight[i]}`];
+    ctx.fillStyle = active ? ACCENT_RIGHT : DIM;
+    ctx.fillRect(x, 185, 112, 22);
+    ctx.strokeStyle = active ? ACCENT_RIGHT : BORDER;
+    ctx.strokeRect(x, 185, 112, 22);
+    ctx.fillStyle = active ? '#000' : TEXT;
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`GROUP ${groupsRight[i].toUpperCase()}`, x + 56, 200);
+  }
+
+  // Right status bar
+  ctx.fillStyle = '#0f0f0f';
+  ctx.fillRect(HALF, H - 24, HALF, 24);
+  ctx.fillStyle = TEXT_DIM;
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('Single 960x272 WebView · Zero-overhead hardware split', HALF + 10, H - 8);
+
+  ctx.textAlign = 'left';
+}
+
+render();
+
+window.encdr = window.encdr || {};
+window.encdr.onMessage = function(channel, data) {
+  if (channel === 'state') {
+    Object.assign(state, data);
+    render();
+  }
+};
+</script>
+</body>
+</html>

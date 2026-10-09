@@ -7,33 +7,20 @@ use serde_json::Value;
 /// to that handler, and JS→Rust signals back through `window.ipc.postMessage()`.
 pub const BRIDGE_INIT_JS: &str = r#"
 (function() {
-    // Encdr bridge object — apps override `onMessage` to receive state updates
     if (!window.encdr) {
-        window.encdr = {
-            // Override this in your HTML to receive state pushes from Rust
-            onMessage: function(channel, data) {},
-
-            // Internal: signal Rust that the frame is dirty and ready for capture
-            _dirty: false,
-            _rafId: null,
-
-            // Mark the view as needing a capture on next frame
-            requestCapture: function() {
-                if (!this._dirty) {
-                    this._dirty = true;
-                    if (!this._rafId) {
-                        this._rafId = requestAnimationFrame(function() {
-                            window.encdr._rafId = null;
-                            if (window.encdr._dirty) {
-                                window.encdr._dirty = false;
-                                window.ipc.postMessage('__encdr_frame_ready');
-                            }
-                        });
-                    }
-                }
-            }
-        };
+        window.encdr = {};
     }
+    if (!window.encdr.onMessage) {
+        window.encdr.onMessage = function(channel, data) {};
+    }
+    window.encdr._dirty = false;
+    window.encdr._rafId = null;
+
+    window.encdr.requestCapture = function() {
+        if (window.ipc) {
+            window.ipc.postMessage('__encdr_frame_ready');
+        }
+    };
 })();
 "#;
 
@@ -46,8 +33,10 @@ pub fn build_send_js(channel: &str, data: &Value) -> String {
             if (window.encdr && window.encdr.onMessage) {{
                 window.encdr.onMessage({ch}, {data});
             }}
-            if (window.encdr && window.encdr.requestCapture) {{
+            if (window.encdr && typeof window.encdr.requestCapture === 'function') {{
                 window.encdr.requestCapture();
+            }} else if (window.ipc) {{
+                window.ipc.postMessage('__encdr_frame_ready');
             }}
         }})();"#,
         ch = serde_json::to_string(channel).unwrap_or_else(|_| "\"\"".to_string()),

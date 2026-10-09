@@ -49,7 +49,12 @@ I-1 b28 n2 I-2 b8 WC b10 I-3 b8 W3 W2 B1 I-AA W19 O-80 B2A O-81 B1E O-82 B31 O-A
 
 ### Output Reports (`0x01` OUT)
 
-* **Report `0x80` (`O-80`):** `B2A` (42 bytes): Button and mode indicator LEDs.
+* **Report `0x80` (`O-80`):** `B2A` (42 bytes): Button and mode indicator LEDs. Uses Native Instruments' standard NHL2 4-level discrete duty cycle protocol:
+  * `0x00`: **Off** (`LedValue::Off` / `LedValue::OFF`)
+  * `0xE4` (228): **Dim / Half-brightness** (`LedValue::Dim` / `LedValue::DIM`) — idle / half-brightness
+  * `0x9E` (158): **Bright / Active** (`LedValue::Bright` / `LedValue::BRIGHT`) — active state
+  * `0xFF` (255): **Max drive** (`LedValue::Single(255)` / `LedValue::MAX`)
+  * Arbitrary percentages ($0..100\%$) encode as `0x80 | pct` via `LedValue::single_percent(pct)`.
 * **Report `0x81` (`O-81`):** `B1E` (30 bytes): Secondary button LEDs.
 * **Report `0x82` (`O-82`):** Per-key RGB Light Guide:
   * **S49 Mk3:** `B31` (49 bytes for 49 keys)

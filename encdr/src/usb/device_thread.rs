@@ -71,6 +71,12 @@ pub enum DeviceCmd {
     SetLedStrip { name: String, values: Vec<u8> },
     SetLedStripInGroup { group: String, name: String, values: Vec<u8> },
     SubmitScreen { screen: String, pixels: Vec<u8>, format: PixelFormat },
+    SubmitDualScreen {
+        left_screen: String,
+        right_screen: String,
+        pixels: Vec<u8>,
+        format: PixelFormat,
+    },
     WriteInterface { interface: String, data: Vec<u8> },
     Disconnect,
 }
@@ -168,7 +174,7 @@ impl DeviceHandle {
 
     pub fn send(&self, cmd: DeviceCmd) {
         match &cmd {
-            DeviceCmd::SubmitScreen { .. } => {
+            DeviceCmd::SubmitScreen { .. } | DeviceCmd::SubmitDualScreen { .. } => {
                 if let Some(ref tx) = self.screen_tx {
                     tx.try_send(cmd).ok();
                 }
@@ -278,11 +284,10 @@ fn run_device(
                     claimed_by_num.insert(iface_desc.number, iface);
                 }
                 Err(e) => {
-                    tracing::error!(
-                        "Failed to claim interface {} ({}): {}",
+                    crate::usb::service_detector::diagnose_claim_failure(
                         iface_desc.number,
-                        iface_desc.id,
-                        e
+                        &iface_desc.id,
+                        &e,
                     );
                     return;
                 }
@@ -406,7 +411,7 @@ fn run_device(
 
     // If device has screens, delegate them entirely to a dedicated screen thread
     // so that screen bulk transfers never stall the interrupt input loop.
-    if !descriptor.screens.is_empty() && screen_rx.is_some() {
+    let screen_thread = if !descriptor.screens.is_empty() && screen_rx.is_some() {
         let screen_rx = screen_rx.unwrap();
         let screen_desc = descriptor.clone();
         let mut screen_ifaces = HashMap::new();
@@ -421,26 +426,32 @@ fn run_device(
             screen_managers.insert(s.name.clone(), sm);
         }
 
-        let _ = thread::Builder::new()
+        thread::Builder::new()
             .name(format!("encdr-screen-{}", descriptor.name.replace(' ', "-").to_lowercase()))
             .spawn(move || {
                 run_screens(screen_desc, screen_ifaces, screen_managers, screen_rx);
-            });
-    }
+            })
+            .ok()
+    } else {
+        None
+    };
 
     // Spawn a dedicated LED thread so that interrupt OUT transfers never block the
     // interrupt IN read loop. The LED thread gets its own clone of control_iface
     // (nusb::Interface is Arc-based and supports concurrent transfers).
-    if let Some(led_rx) = led_rx {
+    let led_thread = if let Some(led_rx) = led_rx {
         let led_iface = control_iface.clone();
         let led_builders = led_builders;
         let feature_leds = descriptor.quirks.feature_report_leds.clone();
-        let _ = thread::Builder::new()
+        thread::Builder::new()
             .name(format!("encdr-led-{}", descriptor.name.replace(' ', "-").to_lowercase()))
             .spawn(move || {
                 run_leds(led_iface, led_builders, feature_leds, led_rx);
-            });
-    }
+            })
+            .ok()
+    } else {
+        None
+    };
 
     // Build packet parser
     let mut parser = PacketParser::new(device_id, &descriptor, names);
@@ -599,6 +610,14 @@ fn run_device(
             }
         }
     });
+
+    // Join worker threads to ensure clean exit transfers complete
+    if let Some(th) = screen_thread {
+        th.join().ok();
+    }
+    if let Some(th) = led_thread {
+        th.join().ok();
+    }
 
     tracing::info!("Device thread exiting for {:?}", device_id);
 }
@@ -776,32 +795,154 @@ fn run_screens(
             }
         }
 
-        while let Ok(cmd) = screen_rx.recv().await {
-            let (screen, pixels, format) = match cmd {
-                DeviceCmd::Disconnect => break,
-                DeviceCmd::SubmitScreen { screen, pixels, format } => (screen, pixels, format),
-                _ => continue,
-            };
-            let Some(sm) = screen_managers.get_mut(&screen) else {
+        async fn process_and_send_screen(
+            screen: &str,
+            pixels: &[u8],
+            format: PixelFormat,
+            descriptor: &DeviceDescriptor,
+            screen_managers: &mut HashMap<String, ScreenManager>,
+            screen_to_ep: &HashMap<String, (String, u8)>,
+            endpoints: &mut HashMap<(String, u8), OutEndpoint>,
+        ) {
+            let Some(sm) = screen_managers.get_mut(screen) else {
                 tracing::warn!("ScreenManager for '{}' not found", screen);
-                continue;
+                return;
             };
             let Some(screen_desc) = descriptor.screens.iter().find(|s| s.name == screen) else {
                 tracing::warn!("screen_desc for '{}' not found in descriptor", screen);
-                continue;
+                return;
             };
-            let Some(blit_data) = sm.submit(&pixels, format, screen_desc) else {
-                continue;
+            let Some(blit_data) = sm.submit(pixels, format, screen_desc) else {
+                return;
             };
-            let Some(ep) = screen_to_ep.get(&screen).and_then(|key| endpoints.get_mut(key)) else {
+            let Some(ep) = screen_to_ep.get(screen).and_then(|key| endpoints.get_mut(key)) else {
                 tracing::warn!("Screen endpoint for '{}' not found", screen);
-                continue;
+                return;
             };
             tracing::debug!("Sending {} bytes for screen '{}'...", blit_data.len(), screen);
             if let Err(e) = ep.write_each(protocol::frame_transfers(screen_desc, blit_data)).await {
                 tracing::warn!("Screen transfer for '{}' failed: {}", screen, e);
             }
             tracing::debug!("Bulk out completed for screen '{}'", screen);
+        }
+
+        while let Ok(cmd) = screen_rx.recv().await {
+            match cmd {
+                DeviceCmd::Disconnect => break,
+                DeviceCmd::SubmitScreen { screen, pixels, format } => {
+                    process_and_send_screen(
+                        &screen,
+                        &pixels,
+                        format,
+                        &descriptor,
+                        &mut screen_managers,
+                        &screen_to_ep,
+                        &mut endpoints,
+                    )
+                    .await;
+                }
+                DeviceCmd::SubmitDualScreen {
+                    left_screen,
+                    right_screen,
+                    pixels,
+                    format,
+                } => {
+                    let left_desc = descriptor.screens.iter().find(|s| s.name == left_screen);
+                    let right_desc = descriptor.screens.iter().find(|s| s.name == right_screen);
+                    let (Some(left_desc), Some(right_desc)) = (left_desc, right_desc) else {
+                        tracing::warn!(
+                            "SubmitDualScreen: could not find screens '{}' and/or '{}'",
+                            left_screen,
+                            right_screen
+                        );
+                        continue;
+                    };
+                    if left_desc.height != right_desc.height {
+                        tracing::warn!(
+                            "SubmitDualScreen: left height ({}) != right height ({})",
+                            left_desc.height,
+                            right_desc.height
+                        );
+                        continue;
+                    }
+                    let bpp = format.bytes_per_pixel();
+                    let Some((left_pixels, right_pixels)) = crate::screen::split_horizontal(
+                        &pixels,
+                        left_desc.width as usize,
+                        right_desc.width as usize,
+                        left_desc.height as usize,
+                        bpp,
+                    ) else {
+                        tracing::warn!(
+                            "SubmitDualScreen: pixel buffer size mismatch (expected {} bytes, got {})",
+                            (left_desc.width as usize + right_desc.width as usize)
+                                * left_desc.height as usize
+                                * bpp,
+                            pixels.len()
+                        );
+                        continue;
+                    };
+
+                    process_and_send_screen(
+                        &left_screen,
+                        &left_pixels,
+                        format,
+                        &descriptor,
+                        &mut screen_managers,
+                        &screen_to_ep,
+                        &mut endpoints,
+                    )
+                    .await;
+
+                    process_and_send_screen(
+                        &right_screen,
+                        &right_pixels,
+                        format,
+                        &descriptor,
+                        &mut screen_managers,
+                        &screen_to_ep,
+                        &mut endpoints,
+                    )
+                    .await;
+                }
+                _ => continue,
+            }
+        }
+
+        // Clean exit: render screensaver image to color screens, blank monochrome screens
+        for screen_desc in &descriptor.screens {
+            let Some(ep) = screen_to_ep.get(&screen_desc.name).and_then(|key| endpoints.get_mut(key)) else {
+                continue;
+            };
+
+            let native_pixels = if screen_desc.pixel_format == PixelFormat::Mono
+                || screen_desc.pixel_format == PixelFormat::St7529Gray5
+            {
+                vec![screen_desc.pixel_format.black_fill(); screen_desc.byte_size()]
+            } else {
+                let rgba = crate::screen::screensaver::render_screensaver_frame(
+                    screen_desc.width,
+                    screen_desc.height,
+                );
+                crate::screen::convert_format(
+                    &rgba,
+                    PixelFormat::Rgba8888,
+                    screen_desc.pixel_format,
+                    screen_desc.width,
+                    screen_desc.height,
+                )
+            };
+
+            let blit_buf = protocol::build_full_blit(screen_desc, &native_pixels);
+            let transfers = protocol::frame_transfers(screen_desc, blit_buf);
+            tracing::info!(
+                "Clean exit: sending screensaver to '{}' ({} bytes)",
+                screen_desc.name,
+                transfers.iter().map(Vec::len).sum::<usize>()
+            );
+            if let Err(e) = ep.write_each(transfers).await {
+                tracing::warn!("Screensaver transfer for '{}' failed on clean exit: {}", screen_desc.name, e);
+            }
         }
     });
 }
@@ -846,9 +987,13 @@ fn run_leds(
             // Apply this command, then drain any others already queued so a
             // burst of updates (e.g. all 16 pad LEDs) gets batched into one flush.
             let mut cmd = Some(first_cmd);
+            let mut disconnected = false;
             while let Some(c) = cmd.take() {
                 match c {
-                    DeviceCmd::Disconnect => return,
+                    DeviceCmd::Disconnect => {
+                        disconnected = true;
+                        break;
+                    }
                     DeviceCmd::SetLed { name, value } => {
                         let mut handled = false;
                         if let Some(ref quirk) = feature_report_leds {
@@ -859,6 +1004,8 @@ fn run_leds(
                                 let old_mask = entry.0;
                                 let is_on = match value {
                                     LedValue::Off => false,
+                                    LedValue::Dim => true,
+                                    LedValue::Bright => true,
                                     LedValue::Single(b) => b > 0,
                                     LedValue::Rgb { r, g, b } => (r | g | b) > 0,
                                 };
@@ -891,6 +1038,8 @@ fn run_leds(
                                 let old_mask = entry.0;
                                 let is_on = match value {
                                     LedValue::Off => false,
+                                    LedValue::Dim => true,
+                                    LedValue::Bright => true,
                                     LedValue::Single(b) => b > 0,
                                     LedValue::Rgb { r, g, b } => (r | g | b) > 0,
                                 };
@@ -936,6 +1085,10 @@ fn run_leds(
                     Ok(next) => cmd = Some(next),
                     Err(_) => cmd = None,
                 }
+            }
+
+            if disconnected {
+                break;
             }
 
             // Flush any LED groups that were dirtied by this batch
@@ -1000,25 +1153,27 @@ fn run_leds(
 
         // Cleanup: clear feature report LEDs on shutdown
         if let Some(ref quirk) = feature_report_leds {
-            for (&cmd_byte, entry) in &mut feature_cmd_masks {
-                if entry.0 != 0 {
-                    let mut buf = vec![0u8; quirk.payload_length];
-                    if !buf.is_empty() {
-                        buf[0] = quirk.report_id.0 as u8;
-                    }
-                    if buf.len() > 1 {
-                        buf[1] = cmd_byte;
-                    }
-                    let control = ControlOut {
-                        control_type: ControlType::Class,
-                        recipient: Recipient::Interface,
-                        request: 0x09,
-                        value: (0x03 << 8) | (quirk.report_id.0 as u16),
-                        index: quirk.interface as u16,
-                        data: &buf,
-                    };
-                    let _ = iface.control_out(control, Duration::from_millis(100)).await;
+            let mut all_cmd_bytes: std::collections::HashSet<u8> = feature_cmd_masks.keys().copied().collect();
+            for item in quirk.items.values() {
+                all_cmd_bytes.insert(item.command.0 as u8);
+            }
+            for cmd_byte in all_cmd_bytes {
+                let mut buf = vec![0u8; quirk.payload_length];
+                if !buf.is_empty() {
+                    buf[0] = quirk.report_id.0 as u8;
                 }
+                if buf.len() > 1 {
+                    buf[1] = cmd_byte;
+                }
+                let control = ControlOut {
+                    control_type: ControlType::Class,
+                    recipient: Recipient::Interface,
+                    request: 0x09,
+                    value: (0x03 << 8) | (quirk.report_id.0 as u16),
+                    index: quirk.interface as u16,
+                    data: &buf,
+                };
+                let _ = iface.control_out(control, Duration::from_millis(100)).await;
             }
         }
     });

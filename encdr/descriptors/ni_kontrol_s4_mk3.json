@@ -222,6 +222,7 @@
       "interface": "control",
       "prefix_byte": "0x80",
       "buffer_size": 94,
+      "protocol": "linear_7bit",
       "items": [
         { "type": "indexed","name": "left_pad_1",         "offset": 0 },
         { "type": "indexed","name": "left_pad_2",         "offset": 1 },
@@ -318,6 +319,7 @@
       "interface": "control",
       "prefix_byte": "0x81",
       "buffer_size": 78,
+      "protocol": "linear_7bit",
       "items": [
         { "type": "single", "name": "meter_ch1_level",    "offset": 0 },
         { "type": "single", "name": "meter_ch1_clip",     "offset": 14 },

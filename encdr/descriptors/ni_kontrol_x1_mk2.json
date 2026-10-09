@@ -88,6 +88,7 @@
       "interface": "control",
       "buffer_size": 96,
       "prefix_byte": "0x00",
+      "protocol": "linear_7bit",
       "items": [
         { "type": "single", "name": "fx1_on",        "offset": 1 },
         { "type": "single", "name": "fx1_1",         "offset": 2 },

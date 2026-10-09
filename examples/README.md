@@ -32,8 +32,10 @@ cargo run -p encdr-examples --bin <example_name>
 | [`mikro_mk3_vegas`](#maschine-mikro-mk3-vegas-mode) | NI Maschine Mikro Mk3 | Interactive Vegas Mode | Sweeping RGB rainbow wave across 16 pads, Smart Strip LED wave, and telemetry. |
 | [`mk2_vegas`](#maschine-mk2-vegas-mode) | NI Maschine Mk2 | Interactive Vegas Mode | Sweeping RGB rainbow wave across 16 pads, Group A–H RGB cycling, button chase, and telemetry. |
 | [`mk3_vegas`](#maschine-mk3-vegas-mode) | NI Maschine Mk3 | Interactive Vegas Mode | Sweeping RGB rainbow wave across 16 pads, Group A–H cycling, Smart Strip wave, and telemetry. |
+| [`mk3_button_brightness`](#maschine-mk3-control-button-brightness--dimming-test) | NI Maschine Mk3 | LED Brightness & Dimming | Illuminates all 47 monochrome control buttons at DIM (half-brightness), elevating to BRIGHT on press. |
 | [`plus_vegas`](#maschine-plus-vegas-mode) | NI Maschine Plus | Interactive Vegas Mode | Standalone-ready Vegas mode with 16 RGB pads, Smart Strip animations, and full telemetry. |
 | [`studio_vegas`](#maschine-studio-vegas-mode) | NI Maschine Studio | Interactive Vegas Mode | 32-segment Jogwheel ring spinner, stereo master VU meters, 16 RGB pads, and telemetry. |
+| [`kk_mk1_vegas`](#komplete-kontrol-mk1-vegas-mode) | NI Komplete Kontrol Mk1 | Interactive Vegas Mode | Sweeping Light Guide rainbow wave across the keybed (25/49/61/88 keys), 8 OLED displays, and telemetry. |
 | [`kk_mk2_vegas`](#komplete-kontrol-mk2-vegas-mode) | NI Komplete Kontrol Mk2 | Interactive Vegas Mode | Sweeping Light Guide rainbow wave across the keybed (49/61/88 keys) and button telemetry. |
 | [`kk_mk3_vegas`](#komplete-kontrol-mk3-vegas-mode) | NI Komplete Kontrol Mk3 | Interactive Vegas Mode | Sweeping Light Guide wave across the next-gen keybed (49/61/88 keys) and 4D encoder telemetry. |
 | [`kk_mk3_daw_odr`](#komplete-kontrol-mk3-daw--odr-controller) | NI Komplete Kontrol Mk3 | DAW Remote & On-Device UI | Direct DAW protocol (handshake, track strip, stereo VU meters, 14-bit knob decoding) & On-Device Rendering (parameter pages, dynamic image banners, serial FX chain, and Light Guide). |
@@ -41,6 +43,7 @@ cargo run -p encdr-examples --bin <example_name>
 | [`mk3_pad_rainbow`](#maschine-mk3-pad-rainbow--telemetry) | NI Maschine Mk3 | RGB Pads & Screens | Smooth rainbow pad/group animations, pad strike flashing, and WebKit telemetry screens. |
 | [`mk3_pad_response`](#maschine-mk3-pad-latency--aftertouch) | NI Maschine Mk3 / Plus | Pads & Sensors | Low-latency pad response and continuous polyphonic aftertouch pressure benchmark. |
 | [`mk3_screen_test`](#maschine-mk3-dual-screen-test) | NI Maschine Mk3 | Dual Screen | Basic dual-screen test rendering graphic patterns to left and right 480×272 displays. |
+| [`mk3_dual_screen`](#maschine-mk3-unified-dual-screen-test) | NI Maschine Mk3 | Unified Dual Screen | High-performance single 960×272 WebView with DualScreenView, zero-cost splitting, and telemetry. |
 | [`touchstrip_monitor`](#touchstrip-monitor) | NI Maschine Mk3 | Touch Sensors | Real-time touchstrip capacitive touch and position telemetry monitor. |
 | [`touchstrip_position_test`](#touchstrip-position-test) | NI Kontrol S8 / Mk3 | Touch & LEDs | Tests touch tracking and LED positioning along the touchstrip. |
 | [`d2_screen_test`](#traktor-kontrol-d2-screen-test) | NI Kontrol D2 | Screen & Controls | Renders knob and button positions on the D2's 480×272 display via `encdr-view`. |
@@ -337,6 +340,22 @@ cargo run -p encdr-examples --bin mk3_vegas
 
 ---
 
+### Maschine Mk3 Control Button Brightness & Dimming Test
+* **Binary:** `mk3_button_brightness`
+* **Hardware:** Native Instruments Maschine Mk3 (`0x17cc:0x1600`) / Maschine Plus (`0x17cc:0x1820`)
+* **Path:** [`examples/maschine_mk3/button_brightness.rs`](maschine_mk3/button_brightness.rs)
+
+Tests Native Instruments discrete button brightness levels:
+- Illuminates all 47 monochrome function, transport, edit, and mode buttons at `LedValue::Dim` (`0xE4` / 228, half-brightness).
+- Elevates pressed buttons to `LedValue::Bright` (`0x9E` / 158, active state / both LEDs lit), returning to `Dim` upon release.
+- Keeps RGB pads and Group A–H buttons unlit.
+
+```bash
+cargo run -p encdr-examples --bin mk3_button_brightness
+```
+
+---
+
 ### Maschine Plus Vegas Mode
 * **Binary:** `plus_vegas`
 * **Hardware:** Native Instruments Maschine Plus (`0x17cc:0x1820`)
@@ -361,6 +380,22 @@ Interactive Vegas demo and hardware telemetry:
 
 ```bash
 cargo run -p encdr-examples --bin studio_vegas
+```
+
+---
+
+### Komplete Kontrol Mk1 Vegas Mode
+* **Binary:** `kk_mk1_vegas`
+* **Hardware:** Native Instruments Komplete Kontrol S25 / S49 / S61 / S88 Mk1 (`0x17cc:0x1340` / `0x1350` / `0x1360` / `0x1410`)
+* **Path:** [`examples/komplete_kontrol/kk_mk1_vegas.rs`](komplete_kontrol/kk_mk1_vegas.rs)
+
+Interactive Vegas demo and hardware telemetry:
+- Sweeping Light Guide rainbow wave across the keybed (25/49/61/88 keys).
+- Diagnostic text and status blitted to all 8 monochrome 128×32 OLED displays (`display_1` .. `display_8`).
+- Button LED brightness cycling and full rotary encoder / touchstrip telemetry.
+
+```bash
+cargo run -p encdr-examples --bin kk_mk1_vegas
 ```
 
 ---
@@ -469,6 +504,24 @@ Basic dual-screen test verifying bulk USB screen blits to both 480×272 displays
 
 ```bash
 cargo run -p encdr-examples --bin mk3_screen_test
+```
+
+---
+
+### Maschine Mk3 Unified Dual Screen Test
+* **Binary:** `mk3_dual_screen`
+* **Hardware:** Native Instruments Maschine Mk3 (`0x17cc:0x1600`)
+* **Path:** [`examples/maschine_mk3/mk3_dual_screen.rs`](maschine_mk3/mk3_dual_screen.rs)
+
+High-performance dual-screen demo powered by `DualScreenView` (single 960×272 offscreen WebView):
+- Slashes browser engine RAM/CPU overhead in half by rendering both displays in a single HTML/Canvas document.
+- Zero-cost hardware frame splitting in `encdr`: slices the 960×272 buffer into left and right 480×272 halves row-by-row and runs independent dirty-rect diffing.
+- If only one screen's controls change, zero USB transfers are emitted for the other display.
+- Real-time encoder, touch, button, and slider telemetry.
+
+```bash
+cargo run -p encdr-examples --bin mk3_dual_screen
+cargo run -p encdr-examples --bin mk3_dual_screen -- --visible
 ```
 
 ---

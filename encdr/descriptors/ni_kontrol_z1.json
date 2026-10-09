@@ -51,6 +51,7 @@
       "interface": "control",
       "buffer_size": 32,
       "prefix_byte": "0x00",
+      "protocol": "linear_7bit",
       "items": [
         { "type": "single", "name": "mode_a",      "offset": 1 },
         { "type": "single", "name": "cue_a",       "offset": 2 },

@@ -3,8 +3,9 @@ Cargo.lock
 /docs/reference
 
 # Session state
-session_state.md
-SESSION_STATE.md
+session_state*
+SESSION_STATE*
 
 # Ignored assets
+/git Ignored/
 git Ignored/

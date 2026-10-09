@@ -143,6 +143,10 @@ name = "mk3_screen_test"
 path = "maschine_mk3/mk3_screen_test.rs"
 
 [[bin]]
+name = "mk3_dual_screen"
+path = "maschine_mk3/mk3_dual_screen.rs"
+
+[[bin]]
 name = "mk3_pad_rainbow"
 path = "maschine_mk3/pad_rainbow.rs"
 
@@ -166,6 +170,10 @@ path = "maschine_mk3/touchstrip_position_test.rs"
 name = "mk3_vegas"
 path = "maschine_mk3/mk3_vegas.rs"
 
+[[bin]]
+name = "mk3_button_brightness"
+path = "maschine_mk3/button_brightness.rs"
+
 # ── Maschine Plus & Studio ──
 
 [[bin]]
@@ -177,6 +185,10 @@ name = "studio_vegas"
 path = "maschine_studio/studio_vegas.rs"
 
 # ── Komplete Kontrol ──
+
+[[bin]]
+name = "kk_mk1_vegas"
+path = "komplete_kontrol/kk_mk1_vegas.rs"
 
 [[bin]]
 name = "kk_mk2_vegas"

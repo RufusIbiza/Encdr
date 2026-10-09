@@ -997,6 +997,7 @@
       "interface": "control",
       "buffer_size": 66,
       "prefix_byte": "0x80",
+      "protocol": "linear_7bit",
       "items": [
         {
           "type": "single",
@@ -1600,6 +1601,7 @@
       "interface": "control",
       "buffer_size": 90,
       "prefix_byte": "0x82",
+      "protocol": "linear_7bit",
       "items": [
         {
           "type": "strip",

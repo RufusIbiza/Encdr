@@ -78,6 +78,14 @@ impl DescriptorRegistry {
         self.load_json(mikro_mk2_json)?;
         let mikro_mk3_json = include_str!("../../descriptors/ni_maschine_mikro_mk3.json");
         self.load_json(mikro_mk3_json)?;
+        let s25_mk1_json = include_str!("../../descriptors/ni_komplete_kontrol_s25_mk1.json");
+        self.load_json(s25_mk1_json)?;
+        let s49_mk1_json = include_str!("../../descriptors/ni_komplete_kontrol_s49_mk1.json");
+        self.load_json(s49_mk1_json)?;
+        let s61_mk1_json = include_str!("../../descriptors/ni_komplete_kontrol_s61_mk1.json");
+        self.load_json(s61_mk1_json)?;
+        let s88_mk1_json = include_str!("../../descriptors/ni_komplete_kontrol_s88_mk1.json");
+        self.load_json(s88_mk1_json)?;
         Ok(())
     }
 
@@ -234,6 +242,34 @@ mod tests {
 
         let s88 = reg.find(0x17cc, 0x1630).expect("S88 Mk2 not found");
         assert_eq!(s88.name, "NI Komplete Kontrol S88 Mk2");
+    }
+
+    #[test]
+    fn load_builtin_kk_mk1() {
+        let mut reg = DescriptorRegistry::new();
+        reg.load_builtins().unwrap();
+
+        for (pid, name, keys) in [
+            (0x1340, "NI Komplete Kontrol S25 Mk1", 25),
+            (0x1350, "NI Komplete Kontrol S49 Mk1", 49),
+            (0x1360, "NI Komplete Kontrol S61 Mk1", 61),
+            (0x1410, "NI Komplete Kontrol S88 Mk1", 88),
+        ] {
+            let desc = reg.find(0x17cc, pid).unwrap_or_else(|| panic!("{name} not found"));
+            assert_eq!(desc.name, name);
+            assert_eq!(desc.screens.len(), 8);
+            for (idx, screen) in desc.screens.iter().enumerate() {
+                assert_eq!(screen.name, format!("display_{}", idx + 1));
+                assert_eq!(screen.width, 128);
+                assert_eq!(screen.height, 32);
+            }
+            let light_guide = desc.leds.iter().find(|l| l.id == "light_guide").expect("light_guide missing");
+            if let Some(crate::core::descriptor::LedItemDesc::Strip(s)) = light_guide.items.first() {
+                assert_eq!(s.count, keys);
+            } else {
+                panic!("Expected strip LED item");
+            }
+        }
     }
 
     #[test]
