@@ -158,6 +158,9 @@ fn main() {
 
         // Process incoming events
         while let Ok(event) = events.try_recv() {
+            if event.device_id() != device_id {
+                continue;
+            }
             match event {
                 Event::Button { name, pressed, .. } => {
                     println!("[BUTTON] {} -> {}", name.to_uppercase(), if pressed { "DOWN" } else { "UP" });
