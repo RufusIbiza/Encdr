@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="Encdr Logo" width="500">
+  <img src="assets/header-logo.png" alt="Encdr Logo" width="500">
 </p>
 
 # Encdr
