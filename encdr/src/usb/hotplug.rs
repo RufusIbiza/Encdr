@@ -33,7 +33,9 @@ pub fn scan_devices(registry: &DescriptorRegistry) -> Vec<DetectedDevice> {
         if let Some(desc) = registry.find(vid, pid) {
             #[cfg(target_os = "linux")]
             let bus = info.busnum();
-            #[cfg(not(target_os = "linux"))]
+            #[cfg(target_os = "macos")]
+            let bus = u8::from_str_radix(info.bus_id(), 16).unwrap_or(0);
+            #[cfg(not(any(target_os = "linux", target_os = "macos")))]
             let bus = info.bus_id().parse::<u8>().unwrap_or(0);
 
             let device_id = DeviceId::from_usb(

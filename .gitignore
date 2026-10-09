@@ -5,3 +5,6 @@ Cargo.lock
 # Session state
 session_state.md
 SESSION_STATE.md
+
+# Ignored assets
+git Ignored/

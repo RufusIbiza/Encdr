@@ -6,9 +6,9 @@
 use std::sync::mpsc;
 
 use block2::RcBlock;
-use objc2::rc::Retained;
+use objc2::rc::{autoreleasepool, Retained};
 use objc2::runtime::AnyObject;
-use objc2::{msg_send, msg_send_id};
+use objc2::{msg_send, ClassType};
 use objc2_app_kit::NSBitmapImageRep;
 use objc2_foundation::NSError;
 use wry::WebViewExtMacOS;
@@ -27,7 +27,6 @@ pub fn capture_webview_pixels(
 ) -> Result<(u32, u32, Vec<u8>), String> {
     // Get the underlying WKWebView from wry
     let wk_webview = webview.webview();
-    let wk_ptr: *mut AnyObject = Retained::into_raw(wk_webview).cast();
 
     let (tx, rx) = mpsc::channel::<Result<Retained<AnyObject>, String>>();
 
@@ -51,9 +50,11 @@ pub fn capture_webview_pixels(
 
     // Call takeSnapshotWithConfiguration:nil completionHandler:block
     unsafe {
-        let _: () = msg_send![wk_ptr, takeSnapshotWithConfiguration: std::ptr::null::<AnyObject>() completionHandler: &*block];
-        // Re-wrap the pointer (we didn't actually release it)
-        let _ = Retained::from_raw(wk_ptr.cast());
+        let _: () = msg_send![
+            &*wk_webview,
+            takeSnapshotWithConfiguration: std::ptr::null::<AnyObject>(),
+            completionHandler: &*block
+        ];
     }
 
     // Pump the event loop until the callback fires (same pattern as Linux)
@@ -87,7 +88,7 @@ fn extract_rgba_from_nsimage(
     target_width: u32,
     target_height: u32,
 ) -> Result<(u32, u32, Vec<u8>), String> {
-    unsafe {
+    autoreleasepool(|_| unsafe {
         // Get TIFF representation: NSData *tiff = [image TIFFRepresentation]
         let tiff_data: *mut AnyObject = msg_send![ns_image, TIFFRepresentation];
         if tiff_data.is_null() {
@@ -96,7 +97,7 @@ fn extract_rgba_from_nsimage(
 
         // Create NSBitmapImageRep from TIFF: [[NSBitmapImageRep alloc] initWithData:tiff]
         let bitmap_rep: Option<Retained<NSBitmapImageRep>> =
-            msg_send_id![NSBitmapImageRep::class(), imageRepWithData: tiff_data];
+            msg_send![NSBitmapImageRep::class(), imageRepWithData: tiff_data];
         let bitmap_rep =
             bitmap_rep.ok_or("Failed to create NSBitmapImageRep from TIFF data")?;
 
@@ -150,5 +151,5 @@ fn extract_rgba_from_nsimage(
         }
 
         Ok((w, h, rgba))
-    }
+    })
 }
