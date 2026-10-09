@@ -41,6 +41,16 @@ pub fn detect_active_services() -> Vec<String> {
         }
     }
 
+    if let Ok(output) = std::process::Command::new("tasklist")
+        .args(["/NH", "/FI", "IMAGENAME eq NTKDaemon.exe"])
+        .output()
+    {
+        let text = String::from_utf8_lossy(&output.stdout);
+        if text.contains("NTKDaemon.exe") {
+            found.push("NTKDaemon.exe".to_string());
+        }
+    }
+
     found
 }
 
@@ -48,7 +58,14 @@ pub fn detect_active_services() -> Vec<String> {
 pub fn detect_active_services() -> Vec<String> {
     let mut found = Vec::new();
 
-    for proc in &["NIHardwareAgent", "NIHostIntegrationAgent", "NIHardwareService"] {
+    for proc in &[
+        "NIHardwareConnectionService",
+        "NIHardwareConnectionAgent",
+        "NIHardwareService",
+        "NIHardwareAgent",
+        "NIHostIntegrationAgent",
+        "NTKDaemon",
+    ] {
         if let Ok(output) = std::process::Command::new("pgrep")
             .arg("-x")
             .arg(proc)
@@ -123,7 +140,7 @@ fn emit_service_warning(services: &[String]) {
              If Encdr fails to claim device interfaces, suspend or terminate them:\n  \
              • PowerShell / Command Prompt (Admin):\n    \
                net stop NIHardwareService\n    \
-               taskkill /F /IM NIHostIntegrationAgent.exe\n  \
+               taskkill /F /IM NIHardwareService.exe /IM NIHardwareConnectionService.exe /IM NIHostIntegrationAgent.exe /IM NTKDaemon.exe\n  \
              • Or open services.msc and stop 'Native Instruments Hardware Service'.",
             services.join(", ")
         );
@@ -136,9 +153,9 @@ fn emit_service_warning(services: &[String]) {
              On macOS, these services hold exclusive USB handles on NI controllers. \
              If Encdr fails to claim device interfaces, suspend or unload them:\n  \
              • Terminal:\n    \
-               sudo launchctl unload -w /Library/LaunchDaemons/com.native-instruments.HardwareAgent.plist\n    \
-               launchctl unload -w /Library/LaunchAgents/com.native-instruments.NIHostIntegrationAgent.plist\n  \
-             • Or run: killall NIHardwareAgent NIHostIntegrationAgent",
+               sudo launchctl unload -w /Library/LaunchDaemons/com.native-instruments.Hardware*.plist 2>/dev/null\n    \
+               launchctl unload -w /Library/LaunchAgents/com.native-instruments.*.plist 2>/dev/null\n  \
+             • Or run: killall NIHardwareConnectionService NIHardwareService NIHardwareAgent NIHostIntegrationAgent NTKDaemon",
             services.join(", ")
         );
     }
