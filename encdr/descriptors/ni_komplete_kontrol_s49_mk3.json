@@ -34,7 +34,7 @@
       "number": 0,
       "endpoints": {
         "in": {
-          "address": "0x84",
+          "address": "0x83",
           "type": "bulk"
         },
         "out": {

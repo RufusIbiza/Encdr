@@ -225,6 +225,76 @@ impl Drop for DeviceHandle {
     }
 }
 
+/// Helper to determine the actual USB interface number for an interface descriptor.
+/// If the interface descriptor's configured `number` lacks the required endpoints on
+/// the physical device, this searches the device's USB configurations for an interface
+/// that actually contains those endpoints.
+fn resolve_interface_number(
+    usb_device: &nusb::Device,
+    iface_desc: &crate::core::descriptor::InterfaceDesc,
+) -> u8 {
+    let mut req_eps = Vec::new();
+    if let Some(ref ep) = iface_desc.endpoints.ep_in {
+        req_eps.push(ep.address.0 as u8);
+    }
+    if let Some(ref ep) = iface_desc.endpoints.out {
+        req_eps.push(ep.address.0 as u8);
+    }
+
+    if req_eps.is_empty() {
+        return iface_desc.number;
+    }
+
+    // Build map of interface_number -> list of endpoint addresses
+    let mut iface_eps: HashMap<u8, Vec<u8>> = HashMap::new();
+    for config in usb_device.configurations() {
+        for intf in config.interfaces() {
+            let num = intf.interface_number();
+            let entry = iface_eps.entry(num).or_default();
+            for alt in intf.alt_settings() {
+                for ep in alt.endpoints() {
+                    let addr = ep.address();
+                    if !entry.contains(&addr) {
+                        entry.push(addr);
+                    }
+                }
+            }
+        }
+    }
+
+    // 1. If configured number already has all required endpoints, keep it
+    if let Some(eps) = iface_eps.get(&iface_desc.number) {
+        if req_eps.iter().all(|req| eps.contains(req)) {
+            return iface_desc.number;
+        }
+    }
+
+    // 2. Search for an interface that contains all required endpoints
+    for (&num, eps) in &iface_eps {
+        if req_eps.iter().all(|req| eps.contains(req)) {
+            tracing::info!(
+                "Auto-resolved interface '{}' to USB interface {} (descriptor configured {}, required endpoints: {:02x?})",
+                iface_desc.id, num, iface_desc.number, req_eps
+            );
+            return num;
+        }
+    }
+
+    // 3. Fallback: search for an interface containing any of the required endpoints
+    for (&num, eps) in &iface_eps {
+        if req_eps.iter().any(|req| eps.contains(req)) {
+            tracing::info!(
+                "Partially resolved interface '{}' to USB interface {} (descriptor configured {}, required endpoints: {:02x?})",
+                iface_desc.id, num, iface_desc.number, req_eps
+            );
+            return num;
+        }
+    }
+
+    // 4. Default to descriptor's configured number
+    iface_desc.number
+}
+
 /// Main device I/O loop. Runs on a dedicated thread.
 fn run_device(
     device_id: DeviceId,
@@ -255,12 +325,13 @@ fn run_device(
     let mut interfaces: HashMap<String, nusb::Interface> = HashMap::new();
 
     for iface_desc in &descriptor.interfaces {
-        if !claimed_by_num.contains_key(&iface_desc.number) {
-            match usb_device.detach_and_claim_interface(iface_desc.number).wait() {
+        let target_num = resolve_interface_number(&usb_device, iface_desc);
+        if !claimed_by_num.contains_key(&target_num) {
+            match usb_device.detach_and_claim_interface(target_num).wait() {
                 Ok(iface) => {
                     tracing::info!(
                         "Claimed interface {} ('{}')",
-                        iface_desc.number,
+                        target_num,
                         iface_desc.id
                     );
                     // Several logical interfaces may share one USB interface
@@ -268,24 +339,24 @@ fn run_device(
                     let alt = descriptor
                         .interfaces
                         .iter()
-                        .filter(|i| i.number == iface_desc.number)
-                        .find_map(|i| i.alt_setting);
+                        .find(|i| i.id == iface_desc.id || i.number == target_num)
+                        .and_then(|i| i.alt_setting);
                     if let Some(alt) = alt {
                         if let Err(e) = iface.set_alt_setting(alt).wait() {
                             tracing::error!(
                                 "Failed to select alt setting {} on interface {}: {}",
                                 alt,
-                                iface_desc.number,
+                                target_num,
                                 e
                             );
                             return;
                         }
                     }
-                    claimed_by_num.insert(iface_desc.number, iface);
+                    claimed_by_num.insert(target_num, iface);
                 }
                 Err(e) => {
                     crate::usb::service_detector::diagnose_claim_failure(
-                        iface_desc.number,
+                        target_num,
                         &iface_desc.id,
                         &e,
                     );
@@ -294,7 +365,7 @@ fn run_device(
                 }
             }
         }
-        if let Some(iface) = claimed_by_num.get(&iface_desc.number) {
+        if let Some(iface) = claimed_by_num.get(&target_num) {
             interfaces.insert(iface_desc.id.clone(), iface.clone());
         }
     }
