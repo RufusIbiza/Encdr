@@ -5,6 +5,7 @@ use tao::event::Event;
 use tao::event_loop::{ControlFlow, EventLoop};
 use tao::platform::run_return::EventLoopExtRunReturn;
 use tao::window::WindowBuilder;
+use objc2_core_foundation::{kCFRunLoopDefaultMode, CFRunLoop};
 
 use crate::bridge;
 
@@ -158,4 +159,10 @@ pub fn pump_events() {
             *control_flow = ControlFlow::Exit;
         });
     });
+
+    // WebKit dispatches navigation, JavaScript, and snapshot completion handlers
+    // through the main CoreFoundation run loop rather than Tao's event queue.
+    unsafe {
+        CFRunLoop::run_in_mode(kCFRunLoopDefaultMode, 0.005, false);
+    }
 }
