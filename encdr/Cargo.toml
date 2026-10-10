@@ -47,6 +47,21 @@ async-io = "2"
 # String interning for control names
 once_cell = "1"
 
+hidapi = { version = "2.6", optional = true, default-features = false }
+
 [target.'cfg(target_os = "linux")'.dependencies]
 # Real-time thread scheduling for the USB read path (see device_thread.rs)
 libc = "0.2"
+
+# HID backend (IOHIDManager on macOS, native HID on Windows, hidraw on Linux).
+# Used for HID-class interfaces the OS keeps bound to its own driver, which
+# nusb cannot claim (see usb/hid.rs). Always on for macOS/Windows; opt-in on
+# Linux via the `hid` feature, where nusb can detach usbhid instead.
+[target.'cfg(target_os = "macos")'.dependencies]
+hidapi = { version = "2.6", default-features = false, features = ["macos-shared-device"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+hidapi = { version = "2.6", default-features = false, features = ["windows-native"] }
+
+[features]
+hid = ["dep:hidapi", "hidapi/linux-static-hidraw"]

@@ -55,7 +55,7 @@ cargo add encdr-view
 ```
 > [!NOTE]
 > **Platform Prerequisites**: On Linux, compiling requires `libudev-dev` (plus `libwebkit2gtk-4.1-dev` and `libgtk-3-dev` if using `encdr-view`), and non-root hardware access requires setting up a udev rule ([see here](docs/usage.md#platform-prerequisites)). 
->On **macOS and Windows**, NI background services may need to be stopped if they hold the USB interfaces. 
+>On **macOS and Windows**, the OS keeps its own driver bound to HID-class interfaces (e.g. the Maschine Mk3's control surface), so Encdr opens those through the native HID stack (`hidapi`) automatically; NI background services may still need to be stopped if they hold the remaining USB interfaces (e.g. screens). If an interface can't be opened, Encdr carries on with the ones that can (for example screens without controls) instead of exiting. On Linux the same path can be tested with `--features hid` and `ENCDR_FORCE_HID=1`.
 
 ### How can I support this project? 
 - **By contributing code** - Feel free to open an issue or submit a pull request.

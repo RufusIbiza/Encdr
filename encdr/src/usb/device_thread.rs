@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use async_io::Timer;
 use crossbeam_channel::Sender;
 use futures_lite::future::block_on;
+use futures_lite::Stream;
 use nusb::transfer::{Buffer, Bulk, Completion, ControlOut, ControlType, In, Interrupt, Out, Recipient};
 use nusb::MaybeFuture;
 
@@ -17,6 +18,7 @@ use crate::device::hooks::{NoopHook, PacketHook};
 use crate::device::led_builder::LedBuilder;
 use crate::device::parser::PacketParser;
 use crate::screen::ScreenManager;
+use crate::usb::hid::{HidInterface, HidReader};
 
 /// Modest real-time scheduling priority for USB input threads: below typical
 /// pro-audio engine thread priority (often 60-90), above normal (0) — enough
@@ -152,11 +154,16 @@ impl DeviceHandle {
 
         let desc = descriptor.clone();
         let id = device_id;
+        let hid_target = HidTarget {
+            vid: usb_info.vendor_id(),
+            pid: usb_info.product_id(),
+            serial: usb_info.serial_number().map(str::to_owned),
+        };
 
         let thread = thread::Builder::new()
             .name(format!("encdr-{}", descriptor.name.replace(' ', "-").to_lowercase()))
             .spawn(move || {
-                run_device(id, desc, usb_device, names, cmd_rx, led_rx, screen_rx, event_tx, gpu);
+                run_device(id, desc, usb_device, hid_target, names, cmd_rx, led_rx, screen_rx, event_tx, gpu);
             })
             .map_err(|e| crate::core::error::EncdrError::Io(e))?;
 
@@ -226,6 +233,7 @@ fn run_device(
     device_id: DeviceId,
     descriptor: Arc<DeviceDescriptor>,
     usb_device: nusb::Device,
+    hid_target: HidTarget,
     names: HashMap<String, &'static str>,
     cmd_rx: async_channel::Receiver<DeviceCmd>,
     led_rx: Option<async_channel::Receiver<DeviceCmd>>,
@@ -246,65 +254,59 @@ fn run_device(
         }
     }
 
-    // Claim interfaces
-    let mut claimed_by_num: HashMap<u8, nusb::Interface> = HashMap::new();
-    let mut interfaces: HashMap<String, nusb::Interface> = HashMap::new();
+    // Claim interfaces. A failure here is not fatal: the remaining interfaces
+    // still work (e.g. the Maschine Mk3's screens when macOS keeps the HID
+    // interface for itself), so each logical interface is claimed
+    // independently and anything that can't be claimed is skipped.
+    let force_hid = std::env::var_os("ENCDR_FORCE_HID").is_some();
+    let mut claimed_by_num: HashMap<u8, Iface> = HashMap::new();
+    let mut failed_nums: std::collections::HashSet<u8> = std::collections::HashSet::new();
+    let mut interfaces: HashMap<String, Iface> = HashMap::new();
 
     for iface_desc in &descriptor.interfaces {
-        if !claimed_by_num.contains_key(&iface_desc.number) {
-            match usb_device.detach_and_claim_interface(iface_desc.number).wait() {
+        let num = iface_desc.number;
+        if !claimed_by_num.contains_key(&num) && !failed_nums.contains(&num) {
+            match claim_interface(&usb_device, &hid_target, &descriptor, iface_desc, force_hid) {
                 Ok(iface) => {
-                    tracing::info!(
-                        "Claimed interface {} ('{}')",
-                        iface_desc.number,
-                        iface_desc.id
-                    );
-                    // Several logical interfaces may share one USB interface
-                    // number; any of them may carry the alternate setting.
-                    let alt = descriptor
-                        .interfaces
-                        .iter()
-                        .filter(|i| i.number == iface_desc.number)
-                        .find_map(|i| i.alt_setting);
-                    if let Some(alt) = alt {
-                        if let Err(e) = iface.set_alt_setting(alt).wait() {
-                            tracing::error!(
-                                "Failed to select alt setting {} on interface {}: {}",
-                                alt,
-                                iface_desc.number,
-                                e
-                            );
-                            return;
-                        }
-                    }
-                    claimed_by_num.insert(iface_desc.number, iface);
+                    claimed_by_num.insert(num, iface);
                 }
-                Err(e) => {
-                    crate::usb::service_detector::diagnose_claim_failure(
-                        iface_desc.number,
-                        &iface_desc.id,
-                        &e,
-                    );
-                    return;
+                Err(()) => {
+                    failed_nums.insert(num);
                 }
             }
         }
-        if let Some(iface) = claimed_by_num.get(&iface_desc.number) {
+        if let Some(iface) = claimed_by_num.get(&num) {
             interfaces.insert(iface_desc.id.clone(), iface.clone());
         }
     }
 
-    // Determine the control interface for input reading
+    if interfaces.is_empty() {
+        tracing::error!("No interfaces of '{}' could be claimed; device thread exiting", descriptor.name);
+        return;
+    }
+    let unclaimed: Vec<&str> = descriptor
+        .interfaces
+        .iter()
+        .filter(|i| !interfaces.contains_key(&i.id))
+        .map(|i| i.id.as_str())
+        .collect();
+    if !unclaimed.is_empty() {
+        tracing::warn!(
+            "Continuing without interface(s) {:?}: their inputs, LEDs and screens are unavailable",
+            unclaimed
+        );
+    }
+
+    // Determine the control interface (LED output); inputs are per packet below.
     let control_iface_id = descriptor
         .input_packets
         .first()
         .map(|p| p.interface.clone())
         .unwrap_or_else(|| "control".to_string());
-
-    let Some(control_iface) = interfaces.get(&control_iface_id).cloned() else {
-        tracing::error!("Control interface '{}' not found", control_iface_id);
-        return;
-    };
+    let control_iface = interfaces.get(&control_iface_id).cloned();
+    if control_iface.is_none() {
+        tracing::warn!("Control interface '{}' unavailable: no LED output", control_iface_id);
+    }
 
     // Open one IN endpoint per interface referenced by an input packet and
     // queue reads on all of them before anything else touches the device.
@@ -319,19 +321,45 @@ fn run_device(
             continue;
         }
         let Some(iface) = interfaces.get(&packet.interface) else {
-            tracing::error!("Input interface '{}' not found", packet.interface);
-            return;
+            tracing::warn!("Input interface '{}' unavailable; its input is disabled", packet.interface);
+            continue;
         };
-        let (address, transfer_type) = descriptor
-            .interface_by_id(&packet.interface)
+        let max_report = descriptor
+            .input_packets
+            .iter()
+            .filter(|p| p.interface == packet.interface)
+            .map(|p| p.size)
+            .max()
+            .unwrap_or(64);
+
+        let iface_desc = descriptor.interface_by_id(&packet.interface);
+        let (address, transfer_type) = iface_desc
             .and_then(|i| i.endpoints.ep_in.as_ref())
             .map(|ep| (ep.address.0 as u8, ep.transfer_type))
             .unwrap_or((0x81, TransferType::Interrupt));
-        let mut ep = match InEndpoint::open(iface, address, transfer_type) {
+
+        let usb_iface = match iface {
+            Iface::Hid(hid) => {
+                let name = format!("encdr-hid-{}", descriptor.name.replace(' ', "-").to_lowercase());
+                match hid.spawn_reader(name, max_report) {
+                    Ok(reader) => {
+                        tracing::debug!("HID input reader for '{}' started", packet.interface);
+                        input_sources.push(InputSource {
+                            interface: packet.interface.clone(),
+                            kind: InputKind::Hid(reader),
+                        });
+                    }
+                    Err(e) => tracing::error!("Failed to start HID reader for '{}': {}", packet.interface, e),
+                }
+                continue;
+            }
+            Iface::Usb(i) => i,
+        };
+        let mut ep = match InEndpoint::open(usb_iface, address, transfer_type) {
             Ok(ep) => ep,
             Err(e) => {
                 tracing::error!("Failed to open input endpoint 0x{:02x}: {}", address, e);
-                return;
+                continue;
             }
         };
 
@@ -344,13 +372,6 @@ fn run_device(
         // largest report, rounded up to a whole number of packets, so every
         // report completes its own transfer.
         let mps = ep.max_packet_size().max(1);
-        let max_report = descriptor
-            .input_packets
-            .iter()
-            .filter(|p| p.interface == packet.interface)
-            .map(|p| p.size)
-            .max()
-            .unwrap_or(mps);
         let read_buf_size = max_report.div_ceil(mps) * mps;
         tracing::debug!(
             "Input ep 0x{:02x} ('{}'): max packet {} bytes, read buffer {} bytes",
@@ -361,7 +382,7 @@ fn run_device(
             let buf = ep.allocate(read_buf_size);
             ep.submit(buf);
         }
-        input_sources.push(InputSource { interface: packet.interface.clone(), ep });
+        input_sources.push(InputSource { interface: packet.interface.clone(), kind: InputKind::Usb(ep) });
     }
 
     // One-shot init writes. Reads are already queued, so a device that holds
@@ -375,23 +396,14 @@ fn run_device(
                 .and_then(|i| i.endpoints.out.as_ref()),
         );
         let Some((iface, ep_desc)) = target else {
-            tracing::error!("Init write interface '{}' has no OUT endpoint", write.interface);
+            tracing::warn!("Init write skipped: interface '{}' unavailable or has no OUT endpoint", write.interface);
             continue;
         };
         let data: Vec<u8> = write.data.iter().map(|b| b.0 as u8).collect();
         let address = ep_desc.address.0 as u8;
-        let result = match ep_desc.transfer_type {
-            TransferType::Bulk => iface
-                .endpoint::<Bulk, Out>(address)
-                .map(|mut ep| ep.transfer_blocking(data.clone().into(), INIT_WRITE_TIMEOUT).status),
-            _ => iface
-                .endpoint::<Interrupt, Out>(address)
-                .map(|mut ep| ep.transfer_blocking(data.clone().into(), INIT_WRITE_TIMEOUT).status),
-        };
-        match result {
-            Ok(Ok(())) => tracing::debug!("Init write to ep 0x{:02x}: {:02x?}", address, data),
-            Ok(Err(e)) => tracing::warn!("Init write to ep 0x{:02x} failed: {}", address, e),
-            Err(e) => tracing::warn!("Could not open ep 0x{:02x} for init write: {}", address, e),
+        match iface.write_blocking(address, ep_desc.transfer_type, data.clone(), INIT_WRITE_TIMEOUT) {
+            Ok(()) => tracing::debug!("Init write to ep 0x{:02x}: {:02x?}", address, data),
+            Err(e) => tracing::warn!("Init write to ep 0x{:02x} failed: {}", address, e),
         }
     }
 
@@ -435,8 +447,7 @@ fn run_device(
     // Spawn a dedicated LED thread so that interrupt OUT transfers never block the
     // interrupt IN read loop. The LED thread gets its own clone of control_iface
     // (nusb::Interface is Arc-based and supports concurrent transfers).
-    let led_thread = if let Some(led_rx) = led_rx {
-        let led_iface = control_iface.clone();
+    let led_thread = if let Some((led_rx, led_iface)) = led_rx.zip(control_iface.clone()) {
         let led_builders = led_builders;
         let feature_leds = descriptor.quirks.feature_report_leds.clone();
         thread::Builder::new()
@@ -467,7 +478,7 @@ fn run_device(
     const PAD_TIMEOUT_POLL_INTERVAL: Duration = Duration::from_millis(40);
 
     enum Woken {
-        Read(usize, Completion),
+        Read(usize, Incoming),
         Cmd(DeviceCmd),
         CmdChannelClosed,
         TimeoutTick,
@@ -488,9 +499,9 @@ fn run_device(
                         let count = input_sources.len();
                         for offset in 1..=count {
                             let idx = (last_served + offset) % count;
-                            if let Poll::Ready(completion) = input_sources[idx].ep.poll_next_complete(cx) {
+                            if let Poll::Ready(incoming) = input_sources[idx].kind.poll_next(cx) {
                                 last_served = idx;
-                                return Poll::Ready(Woken::Read(idx, completion));
+                                return Poll::Ready(Woken::Read(idx, incoming));
                             }
                         }
                         Poll::Pending
@@ -524,12 +535,18 @@ fn run_device(
                         break;
                     }
                 }
-                Woken::Read(idx, completion) => {
+                Woken::Read(idx, incoming) => {
                     let source = &mut input_sources[idx];
-                    let buf = completion.buffer;
-                    match completion.status {
-                        Ok(()) => {
-                            let data = &buf[..completion.actual_len];
+                    let outcome: Result<&[u8], String> = match &incoming {
+                        Incoming::Usb(c) => match &c.status {
+                            Ok(()) => Ok(&c.buffer[..c.actual_len]),
+                            Err(e) => Err(e.to_string()),
+                        },
+                        Incoming::Hid(Ok(d)) => Ok(d.as_slice()),
+                        Incoming::Hid(Err(e)) => Err(e.clone()),
+                    };
+                    match outcome {
+                        Ok(data) => {
                             tracing::trace!("USB RECV [len={}] header={:02x?}", data.len(), &data[0..data.len().min(8)]);
 
                             // Parse the packet
@@ -545,19 +562,20 @@ fn run_device(
                                     break;
                                 }
                             }
-
-                            if running {
-                                // Resubmit immediately, recycling the zero-copy buffer,
-                                // to keep the queue at constant depth so the kernel
-                                // always has a read pending.
-                                source.ep.submit(buf);
-                            }
                         }
                         Err(e) => {
                             tracing::warn!("USB read error: {}", e);
                             event_tx.send(Event::DeviceDisconnected { id: device_id }).ok();
                             running = false;
                             break;
+                        }
+                    }
+                    if running {
+                        // Resubmit immediately, recycling the zero-copy buffer,
+                        // to keep the queue at constant depth so the kernel
+                        // always has a read pending.
+                        if let (Incoming::Usb(c), InputKind::Usb(ep)) = (incoming, &mut source.kind) {
+                            ep.submit(c.buffer);
                         }
                     }
                 }
@@ -596,7 +614,177 @@ const INIT_WRITE_TIMEOUT: Duration = Duration::from_millis(500);
 /// An input endpoint plus the descriptor interface id its packets belong to.
 struct InputSource {
     interface: String,
-    ep: InEndpoint,
+    kind: InputKind,
+}
+
+enum InputKind {
+    Usb(InEndpoint),
+    Hid(HidReader),
+}
+
+impl InputKind {
+    fn poll_next(&mut self, cx: &mut Context<'_>) -> Poll<Incoming> {
+        match self {
+            Self::Usb(ep) => ep.poll_next_complete(cx).map(Incoming::Usb),
+            Self::Hid(reader) => match reader.rx.as_mut().poll_next(cx) {
+                Poll::Ready(Some(report)) => Poll::Ready(Incoming::Hid(report)),
+                Poll::Ready(None) => Poll::Ready(Incoming::Hid(Err("HID reader stopped".to_string()))),
+                Poll::Pending => Poll::Pending,
+            },
+        }
+    }
+}
+
+/// One finished read from either backend.
+enum Incoming {
+    Usb(Completion),
+    Hid(Result<Vec<u8>, String>),
+}
+
+/// Identifies the physical device to the HID backend.
+struct HidTarget {
+    vid: u16,
+    pid: u16,
+    serial: Option<String>,
+}
+
+/// A claimed interface, through raw USB (nusb) or the OS HID stack (hidapi).
+#[derive(Clone)]
+enum Iface {
+    Usb(nusb::Interface),
+    Hid(Arc<HidInterface>),
+}
+
+impl Iface {
+    /// Send one OUT transfer and wait for it to finish.
+    fn write_blocking(
+        &self,
+        address: u8,
+        transfer_type: TransferType,
+        data: Vec<u8>,
+        timeout: Duration,
+    ) -> Result<(), String> {
+        match self {
+            Self::Hid(hid) => hid.write(&data),
+            Self::Usb(iface) => match transfer_type {
+                TransferType::Bulk => iface
+                    .endpoint::<Bulk, Out>(address)
+                    .map_err(|e| e.to_string())?
+                    .transfer_blocking(data.into(), timeout)
+                    .status
+                    .map_err(|e| e.to_string()),
+                _ => iface
+                    .endpoint::<Interrupt, Out>(address)
+                    .map_err(|e| e.to_string())?
+                    .transfer_blocking(data.into(), timeout)
+                    .status
+                    .map_err(|e| e.to_string()),
+            },
+        }
+    }
+
+    /// HID SET_REPORT (feature). `buf[0]` is the report ID.
+    async fn send_feature_report(&self, buf: &[u8], interface: usize) -> Result<(), String> {
+        match self {
+            Self::Hid(hid) => hid.send_feature_report(buf),
+            Self::Usb(iface) => iface
+                .control_out(
+                    ControlOut {
+                        control_type: ControlType::Class,
+                        recipient: Recipient::Interface,
+                        request: 0x09, // SET_REPORT
+                        value: (0x03 << 8) | buf.first().copied().unwrap_or(0) as u16,
+                        index: interface as u16,
+                        data: buf,
+                    },
+                    Duration::from_millis(100),
+                )
+                .await
+                .map_err(|e| e.to_string()),
+        }
+    }
+}
+
+/// An interface whose declared endpoints are all interrupt is HID-shaped and
+/// can fall back to the OS HID stack when raw USB claiming fails.
+fn hid_eligible(iface: &InterfaceDesc) -> bool {
+    let eps = [&iface.endpoints.ep_in, &iface.endpoints.out];
+    eps.iter().any(|e| e.is_some())
+        && eps.into_iter().flatten().all(|e| e.transfer_type == TransferType::Interrupt)
+}
+
+/// Claim one USB interface, falling back to the HID backend for HID-shaped
+/// interfaces the OS won't release. Logs and returns `Err(())` on failure.
+fn claim_interface(
+    usb_device: &nusb::Device,
+    hid_target: &HidTarget,
+    descriptor: &DeviceDescriptor,
+    iface_desc: &InterfaceDesc,
+    force_hid: bool,
+) -> Result<Iface, ()> {
+    let open_hid = || {
+        HidInterface::open(hid_target.vid, hid_target.pid, hid_target.serial.as_deref(), iface_desc.number)
+            .map(|h| Iface::Hid(Arc::new(h)))
+    };
+    let eligible = hid_eligible(iface_desc);
+
+    if force_hid && eligible {
+        match open_hid() {
+            Ok(iface) => {
+                tracing::info!("Opened interface {} ('{}') via HID (ENCDR_FORCE_HID)", iface_desc.number, iface_desc.id);
+                return Ok(iface);
+            }
+            Err(e) => tracing::warn!("ENCDR_FORCE_HID: {}; trying raw USB", e),
+        }
+    }
+
+    match usb_device.detach_and_claim_interface(iface_desc.number).wait() {
+        Ok(iface) => {
+            tracing::info!("Claimed interface {} ('{}')", iface_desc.number, iface_desc.id);
+            // Several logical interfaces may share one USB interface
+            // number; any of them may carry the alternate setting.
+            let alt = descriptor
+                .interfaces
+                .iter()
+                .filter(|i| i.number == iface_desc.number)
+                .find_map(|i| i.alt_setting);
+            if let Some(alt) = alt {
+                if let Err(e) = iface.set_alt_setting(alt).wait() {
+                    tracing::error!(
+                        "Failed to select alt setting {} on interface {}: {}",
+                        alt,
+                        iface_desc.number,
+                        e
+                    );
+                    return Err(());
+                }
+            }
+            Ok(Iface::Usb(iface))
+        }
+        Err(usb_err) => {
+            if eligible && crate::usb::hid::AVAILABLE {
+                match open_hid() {
+                    Ok(iface) => {
+                        tracing::info!(
+                            "Interface {} ('{}') is held by the OS ({}); using the OS HID stack instead",
+                            iface_desc.number,
+                            iface_desc.id,
+                            usb_err
+                        );
+                        return Ok(iface);
+                    }
+                    Err(hid_err) => tracing::warn!(
+                        "HID fallback for interface {} ('{}') failed: {}",
+                        iface_desc.number,
+                        iface_desc.id,
+                        hid_err
+                    ),
+                }
+            }
+            crate::usb::service_detector::diagnose_claim_failure(iface_desc.number, &iface_desc.id, &usb_err);
+            Err(())
+        }
+    }
 }
 
 /// IN endpoint of either transfer type (nusb encodes the type statically).
@@ -649,36 +837,42 @@ impl InEndpoint {
     }
 }
 
-/// OUT endpoint of either transfer type, used for screen and LED writes.
+/// OUT endpoint of either transfer type (or an HID interface), used for
+/// screen and LED writes.
 enum OutEndpoint {
     Bulk(nusb::Endpoint<Bulk, Out>),
     Interrupt(nusb::Endpoint<Interrupt, Out>),
+    Hid(Arc<HidInterface>),
 }
 
 impl OutEndpoint {
-    fn open(iface: &nusb::Interface, address: u8, transfer_type: TransferType) -> Result<Self, nusb::Error> {
-        Ok(match transfer_type {
-            TransferType::Bulk => Self::Bulk(iface.endpoint::<Bulk, Out>(address)?),
-            _ => Self::Interrupt(iface.endpoint::<Interrupt, Out>(address)?),
+    fn open(iface: &Iface, address: u8, transfer_type: TransferType) -> Result<Self, String> {
+        Ok(match iface {
+            Iface::Hid(hid) => Self::Hid(hid.clone()),
+            Iface::Usb(iface) => match transfer_type {
+                TransferType::Bulk => Self::Bulk(iface.endpoint::<Bulk, Out>(address).map_err(|e| e.to_string())?),
+                _ => Self::Interrupt(iface.endpoint::<Interrupt, Out>(address).map_err(|e| e.to_string())?),
+            },
         })
     }
 
     /// Submit one transfer and wait for it to complete.
-    async fn write(&mut self, data: Vec<u8>) -> Result<(), nusb::transfer::TransferError> {
+    async fn write(&mut self, data: Vec<u8>) -> Result<(), String> {
         match self {
             Self::Bulk(ep) => {
                 ep.submit(data.into());
-                ep.next_complete().await.status
+                ep.next_complete().await.status.map_err(|e| e.to_string())
             }
             Self::Interrupt(ep) => {
                 ep.submit(data.into());
-                ep.next_complete().await.status
+                ep.next_complete().await.status.map_err(|e| e.to_string())
             }
+            Self::Hid(hid) => hid.write(&data),
         }
     }
 
     /// Send transfers one after another, stopping at the first error.
-    async fn write_each(&mut self, transfers: Vec<Vec<u8>>) -> Result<(), nusb::transfer::TransferError> {
+    async fn write_each(&mut self, transfers: Vec<Vec<u8>>) -> Result<(), String> {
         for data in transfers {
             self.write(data).await?;
         }
@@ -690,7 +884,7 @@ impl OutEndpoint {
 /// so that large bulk pixel transfers never delay button, pad, or encoder events.
 fn run_screens(
     descriptor: Arc<DeviceDescriptor>,
-    screen_ifaces: HashMap<String, nusb::Interface>,
+    screen_ifaces: HashMap<String, Iface>,
     mut screen_managers: HashMap<String, ScreenManager>,
     screen_rx: async_channel::Receiver<DeviceCmd>,
 ) {
@@ -920,7 +1114,7 @@ fn run_screens(
 /// decoupled from the interrupt IN read loop so USB output transfers never stall
 /// input processing.
 fn run_leds(
-    iface: nusb::Interface,
+    iface: Iface,
     mut led_builders: Vec<LedBuilder>,
     feature_report_leds: Option<FeatureReportLedsQuirkDesc>,
     led_rx: async_channel::Receiver<DeviceCmd>,
@@ -1088,15 +1282,7 @@ fn run_leds(
                         if buf.len() > 2 {
                             buf[2] = entry.0;
                         }
-                        let control = ControlOut {
-                            control_type: ControlType::Class,
-                            recipient: Recipient::Interface,
-                            request: 0x09, // SET_REPORT
-                            value: (0x03 << 8) | (quirk.report_id.0 as u16),
-                            index: quirk.interface as u16,
-                            data: &buf,
-                        };
-                        let res = iface.control_out(control, Duration::from_millis(100)).await;
+                        let res = iface.send_feature_report(&buf, quirk.interface).await;
                         if let Err(e) = res {
                             eprintln!(
                                 "[LED-CTRL-ERR] Failed to flush feature LED report 0x{:02x} cmd 0x{:02x}: {}",
@@ -1133,15 +1319,7 @@ fn run_leds(
                 if buf.len() > 1 {
                     buf[1] = cmd_byte;
                 }
-                let control = ControlOut {
-                    control_type: ControlType::Class,
-                    recipient: Recipient::Interface,
-                    request: 0x09,
-                    value: (0x03 << 8) | (quirk.report_id.0 as u16),
-                    index: quirk.interface as u16,
-                    data: &buf,
-                };
-                let _ = iface.control_out(control, Duration::from_millis(100)).await;
+                let _ = iface.send_feature_report(&buf, quirk.interface).await;
             }
         }
     });
