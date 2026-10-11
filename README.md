@@ -335,7 +335,7 @@ encdr/
   - Not yet verified on physical macOS or Windows hardware.
 - **Fault-Tolerant Interface Claiming**:
   - A single interface that cannot be claimed no longer aborts the device. Remaining interfaces keep working (e.g. screens without controls) and Encdr logs which interfaces are unavailable. The device thread only exits if no interface can be claimed.
-- **macOS WebView Fix** (contributed by a macOS tester):
+- **macOS WebView Fix** (contributed by [TVbene](https://github.com/TVBene)): 
   - Fixed `WKWebView snapshot timed out` in `encdr-view` by using the typed `takeSnapshotWithConfiguration:completionHandler:` binding and pumping the CoreFoundation run loop so WebKit can deliver callbacks.
 
 ### v0.7.8
