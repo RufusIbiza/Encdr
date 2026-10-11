@@ -90,6 +90,7 @@ pub struct DeviceHandle {
     cmd_tx: async_channel::Sender<DeviceCmd>,
     led_tx: Option<async_channel::Sender<DeviceCmd>>,
     screen_tx: Option<async_channel::Sender<DeviceCmd>>,
+    write_tx: async_channel::Sender<DeviceCmd>,
     thread: Option<thread::JoinHandle<()>>,
     screen_thread: Option<thread::JoinHandle<()>>,
 }
@@ -122,6 +123,10 @@ impl DeviceHandle {
         } else {
             (None, None)
         };
+
+        // Raw interface writes (e.g. the Komplete Kontrol Mk3 ODR pipes) get their
+        // own channel and thread: a slow bulk upload must never stall input reads.
+        let (write_tx, write_rx) = async_channel::bounded(256);
 
         #[cfg(target_os = "linux")]
         let tids_before = {
@@ -164,7 +169,7 @@ impl DeviceHandle {
         let thread = thread::Builder::new()
             .name(format!("encdr-{}", descriptor.name.replace(' ', "-").to_lowercase()))
             .spawn(move || {
-                run_device(id, desc, usb_device, hid_target, names, cmd_rx, led_rx, screen_rx, event_tx, gpu);
+                run_device(id, desc, usb_device, hid_target, names, cmd_rx, led_rx, screen_rx, write_rx, event_tx, gpu);
             })
             .map_err(|e| crate::core::error::EncdrError::Io(e))?;
 
@@ -174,6 +179,7 @@ impl DeviceHandle {
             cmd_tx,
             led_tx,
             screen_tx,
+            write_tx,
             thread: Some(thread),
             screen_thread: None,
         })
@@ -195,7 +201,7 @@ impl DeviceHandle {
                 }
             }
             DeviceCmd::WriteInterface { .. } => {
-                self.cmd_tx.try_send(cmd).ok();
+                self.write_tx.try_send(cmd).ok();
             }
             DeviceCmd::Disconnect => {
                 self.cmd_tx.try_send(DeviceCmd::Disconnect).ok();
@@ -205,6 +211,7 @@ impl DeviceHandle {
                 if let Some(ref tx) = self.screen_tx {
                     tx.try_send(DeviceCmd::Disconnect).ok();
                 }
+                self.write_tx.try_send(DeviceCmd::Disconnect).ok();
             }
         }
     }
@@ -312,6 +319,7 @@ fn run_device(
     cmd_rx: async_channel::Receiver<DeviceCmd>,
     led_rx: Option<async_channel::Receiver<DeviceCmd>>,
     screen_rx: Option<async_channel::Receiver<DeviceCmd>>,
+    write_rx: async_channel::Receiver<DeviceCmd>,
     event_tx: Sender<Event>,
     gpu: Option<Arc<crate::screen::GpuContext>>,
 ) {
@@ -557,6 +565,17 @@ fn run_device(
         None
     };
 
+    // Dedicated writer for WriteInterface commands (see DeviceHandle::spawn).
+    let write_close = write_rx.clone();
+    let write_thread = {
+        let write_desc = descriptor.clone();
+        let write_ifaces = interfaces.clone();
+        thread::Builder::new()
+            .name(format!("encdr-write-{}", descriptor.name.replace(' ', "-").to_lowercase()))
+            .spawn(move || run_interface_writes(write_desc, write_ifaces, write_rx))
+            .ok()
+    };
+
     // Spawn a dedicated LED thread so that interrupt OUT transfers never block the
     // interrupt IN read loop. The LED thread gets its own clone of control_iface
     // (nusb::Interface is Arc-based and supports concurrent transfers).
@@ -587,9 +606,6 @@ fn run_device(
     // with reads. This guarantees pad events are processed with minimum latency.
     let mut event_buf = Vec::with_capacity(64);
     let mut running = true;
-    // Interfaces already reported as unavailable to WriteInterface, so a
-    // high-rate writer (e.g. 60 FPS light guide) doesn't flood the log.
-    let mut warned_missing: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     const PAD_TIMEOUT_POLL_INTERVAL: Duration = Duration::from_millis(40);
 
@@ -648,30 +664,6 @@ fn run_device(
                         DeviceCmd::Disconnect => {
                             running = false;
                             break;
-                        }
-                        DeviceCmd::WriteInterface { interface, data } => {
-                            let target = interfaces.get(&interface).zip(
-                                descriptor
-                                    .interface_by_id(&interface)
-                                    .and_then(|i| i.endpoints.out.as_ref()),
-                            );
-                            if let Some((iface, ep_desc)) = target {
-                                let address = ep_desc.address.0 as u8;
-                                let len = data.len();
-                                let timeout = Duration::from_millis(1000);
-                                match iface.write_blocking(address, ep_desc.transfer_type, data, timeout) {
-                                    Ok(()) => tracing::trace!("Wrote {} bytes to interface '{}' (ep 0x{:02x})", len, interface, address),
-                                    Err(e) => tracing::warn!("Write to interface '{}' (ep 0x{:02x}) failed: {}", interface, address, e),
-                                }
-                            } else {
-                                if warned_missing.insert(interface.clone()) {
-                                    tracing::warn!(
-                                        "WriteInterface: interface '{}' is unavailable (not claimed, or has no OUT endpoint); \
-                                         writes to it are dropped",
-                                        interface
-                                    );
-                                }
-                            }
                         }
                         _ => {}
                     }
@@ -739,6 +731,10 @@ fn run_device(
     });
 
     // Join worker threads to ensure clean exit transfers complete
+    write_close.close();
+    if let Some(th) = write_thread {
+        th.join().ok();
+    }
     if let Some(th) = screen_thread {
         th.join().ok();
     }
@@ -1015,12 +1011,75 @@ impl OutEndpoint {
         }
     }
 
+    /// Submit one transfer and block until it completes or `timeout` elapses.
+    fn write_blocking(&mut self, data: Vec<u8>, timeout: Duration) -> Result<(), String> {
+        match self {
+            Self::Bulk(ep) => ep.transfer_blocking(data.into(), timeout).status.map_err(|e| e.to_string()),
+            Self::Interrupt(ep) => ep.transfer_blocking(data.into(), timeout).status.map_err(|e| e.to_string()),
+            Self::Hid(hid) => hid.write(&data),
+        }
+    }
+
     /// Send transfers one after another, stopping at the first error.
     async fn write_each(&mut self, transfers: Vec<Vec<u8>>) -> Result<(), String> {
         for data in transfers {
             self.write(data).await?;
         }
         Ok(())
+    }
+}
+
+/// Dedicated writer for `WriteInterface` commands. Keeps each OUT endpoint open
+/// between writes and reports an unavailable interface once rather than per call
+/// (high-rate writers such as a 60 FPS light guide would otherwise flood the log).
+fn run_interface_writes(
+    descriptor: Arc<DeviceDescriptor>,
+    interfaces: HashMap<String, Iface>,
+    rx: async_channel::Receiver<DeviceCmd>,
+) {
+    const WRITE_TIMEOUT: Duration = Duration::from_millis(1000);
+    let mut endpoints: HashMap<String, (u8, OutEndpoint)> = HashMap::new();
+    let mut warned: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    while let Ok(cmd) = rx.recv_blocking() {
+        let (interface, data) = match cmd {
+            DeviceCmd::WriteInterface { interface, data } => (interface, data),
+            DeviceCmd::Disconnect => break,
+            _ => continue,
+        };
+
+        if !endpoints.contains_key(&interface) {
+            let target = interfaces.get(&interface).zip(
+                descriptor.interface_by_id(&interface).and_then(|i| i.endpoints.out.as_ref()),
+            );
+            let opened = match target {
+                None => Err("unavailable (not claimed, or has no OUT endpoint)".to_string()),
+                Some((iface, ep)) => {
+                    let address = ep.address.0 as u8;
+                    OutEndpoint::open(iface, address, ep.transfer_type)
+                        .map(|e| (address, e))
+                        .map_err(|e| format!("could not open ep 0x{address:02x}: {e}"))
+                }
+            };
+            match opened {
+                Ok(entry) => {
+                    endpoints.insert(interface.clone(), entry);
+                }
+                Err(reason) => {
+                    if warned.insert(interface.clone()) {
+                        tracing::warn!("WriteInterface '{}': {}; writes to it are dropped", interface, reason);
+                    }
+                    continue;
+                }
+            }
+        }
+
+        let (address, endpoint) = endpoints.get_mut(&interface).expect("inserted above");
+        let len = data.len();
+        match endpoint.write_blocking(data, WRITE_TIMEOUT) {
+            Ok(()) => tracing::trace!("Wrote {} bytes to interface '{}' (ep 0x{:02x})", len, interface, address),
+            Err(e) => tracing::warn!("Write to interface '{}' (ep 0x{:02x}) failed: {}", interface, address, e),
+        }
     }
 }
 

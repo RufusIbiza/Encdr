@@ -100,7 +100,9 @@ The Mk3 exposes a HID control interface (buttons, encoders, LEDs), a vendor-spec
 
 Things to know when diagnosing:
 - Run with `RUST_LOG=encdr=debug`. Look for `Opened HID interface N via hidapi` (HID fallback working), `Claimed interface N` (raw USB), and `Continuing without interface(s) [...]` (which parts are unavailable).
-- On Windows, HID output reports are padded to the report length the device declares but **truncated** if longer, so oversized writes to the HID interface are silently clipped.
+- On Windows, HID output reports are padded to the report length the device declares but **truncated** if longer. Encdr reads the declared lengths from the device and logs a one-time warning (`HID output report 0x..: writing N payload bytes but the device declares M`) if a write is oversized.
+- `odr_cmd`/`odr_stream` writes run on their own thread, so a slow bulk upload (such as the header PNG) never delays button or encoder events.
+- Without WinUSB, the per-key Light Guide can still be driven through the descriptor's `light_guide` LED group on the HID interface (one byte per key, not 24-bit RGB); `kk_mk3_set_lightguide` needs the bulk `odr_cmd` pipe.
 - If an interface exposes several HID collections (Windows lists each as a separate device), Encdr prefers the vendor-defined one and logs a warning naming the alternatives.
 - Writes to an unavailable interface (e.g. `odr_cmd` without WinUSB) are dropped with a single warning rather than one per call.
 - Set `ENCDR_FORCE_HID=1` (with the `hid` feature on Linux) to force the HID path for testing.
