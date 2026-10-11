@@ -95,6 +95,20 @@ cargo run -p encdr-examples --bin mk3_screen_test
 
 **Quirk: `detach_kernel_driver`** — On Linux, the HID kernel driver must be detached before claiming the interface.
 
+### Windows Driver Architecture (`nimc3usb.sys` Internals)
+
+On Windows systems with Native Instruments software installed, the Maschine Mk3 is bound to NI's proprietary kernel driver stack rather than a generic WinUSB driver:
+
+* **Composite Bus Driver (`nimc3usb.sys`)**: A WDF (Windows Driver Framework) USB composite bus driver that captures the physical device (`0x17cc:0x1600`).
+* **Audio Child PDO (`NIMC3_AUDIO`)**: `nimc3usb.sys` creates a child Physical Device Object (PDO) with hardware ID `NIMC3_AUDIO`, which binds to `nimc3audio.sys` for low-latency ASIO and WDM audio.
+* **MIDI Pipeline**: Sets up continuous readers and start pipes (`MIDIInPipe` and `MIDIOut`) for physical 5-pin DIN and USB MIDI streaming.
+* **Display Pipe & IOCTL (`ioctlWriteBulkData`)**: Claims the screen bulk endpoint (`BulkDisplay` / Interface 5, Endpoint `0x04`). User-space NI software (such as `NIHardwareService.exe` and `Maschine 2.exe`) submits screen frames via a private Device I/O Control code:
+  * **IOCTL Code**: `0x80892004` (represented as `-0x7f76dffc` in signed 32-bit / Ghidra decompile).
+  * **Handler**: `USBDevice::ioctlWriteBulkData`, which invokes `UsbTargetPipeWriteSynchronously()` on the `BulkDisplay` pipe to transmit raw pixel buffers.
+
+> [!NOTE]
+> **Future Interoperability**: While Encdr currently talks directly to the hardware using `nusb` (and `hidapi` on macOS/Windows), documenting this IOCTL allows for an optional future Windows backend where Encdr can communicate with or route screen frames through NI's official kernel driver without requiring WinUSB driver replacement or stopping the NI audio engine.
+
 ---
 
 ## Input Controls
