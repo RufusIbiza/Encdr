@@ -328,6 +328,16 @@ encdr/
 | PNG decode (Windows)    | `png`                      | Decode CapturePreview PNG output to RGBA |
 
 ## Changelog
+### v0.7.9
+- **macOS & Windows HID Control Surfaces**:
+  - macOS (`AppleUserUSBHostHIDDevice`) and Windows (`HidUsb`) keep their own driver bound to HID-class USB interfaces, which `nusb` cannot claim. Encdr now falls back to the native HID stack (`hidapi`: IOHIDManager on macOS, native HID on Windows) for interrupt-only interfaces such as the Maschine Mk3 control surface. Report framing matches the raw endpoints, so existing parsers, LED builders, and feature-report LEDs work unchanged.
+  - On Linux the HID backend is opt-in via the `hid` feature; set `ENCDR_FORCE_HID=1` to force it for testing.
+  - Not yet verified on physical macOS or Windows hardware.
+- **Fault-Tolerant Interface Claiming**:
+  - A single interface that cannot be claimed no longer aborts the device. Remaining interfaces keep working (e.g. screens without controls) and Encdr logs which interfaces are unavailable. The device thread only exits if no interface can be claimed.
+- **macOS WebView Fix** (contributed by a macOS tester):
+  - Fixed `WKWebView snapshot timed out` in `encdr-view` by using the typed `takeSnapshotWithConfiguration:completionHandler:` binding and pumping the CoreFoundation run loop so WebKit can deliver callbacks.
+
 ### v0.7.8
 - **Clean Exit & Screensaver Support**:
   - Implemented automatic clean shutdown handling across all connected controllers via `Encdr::clean_exit()`, `Encdr::shutdown()`, and on `Drop`.
