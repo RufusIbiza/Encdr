@@ -314,6 +314,7 @@ encdr/
 | Purpose                 | Crate                      | Why                                      |
 | ----------------------- | -------------------------- | ---------------------------------------- |
 | USB transport           | `nusb`                     | Pure Rust, async, cross-platform         |
+| HID fallback (macOS/Win)| `hidapi`                   | Fallback for OS-bound HID interfaces     |
 | GPU compute             | `wgpu`                     | Format conversion + frame diff shaders   |
 | Lock-free channel       | `crossbeam-channel`        | SPSC event delivery                      |
 | Descriptor parsing      | `serde` + `serde_json`     | JSON device descriptors                  |
