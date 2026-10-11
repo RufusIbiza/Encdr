@@ -9,7 +9,7 @@ use block2::RcBlock;
 use objc2::rc::{autoreleasepool, Retained};
 use objc2::runtime::AnyObject;
 use objc2::{msg_send, ClassType};
-use objc2_app_kit::NSBitmapImageRep;
+use objc2_app_kit::{NSBitmapImageRep, NSImage};
 use objc2_foundation::NSError;
 use wry::WebViewExtMacOS;
 
@@ -28,18 +28,18 @@ pub fn capture_webview_pixels(
     // Get the underlying WKWebView from wry
     let wk_webview = webview.webview();
 
-    let (tx, rx) = mpsc::channel::<Result<Retained<AnyObject>, String>>();
+    let (tx, rx) = mpsc::channel::<Result<Retained<NSImage>, String>>();
 
     // Create the completion handler block:
     // ^(NSImage *snapshotImage, NSError *error)
-    let block = RcBlock::new(move |image: *mut AnyObject, error: *mut AnyObject| {
+    let block = RcBlock::new(move |image: *mut NSImage, error: *mut NSError| {
         if !image.is_null() {
-            let retained: Retained<AnyObject> = unsafe { Retained::retain(image) }
+            let retained: Retained<NSImage> = unsafe { Retained::retain(image) }
                 .expect("Failed to retain NSImage");
             let _ = tx.send(Ok(retained));
         } else {
             let msg = if !error.is_null() {
-                let err: &NSError = unsafe { &*(error as *const NSError) };
+                let err: &NSError = unsafe { &*error };
                 format!("WKWebView snapshot failed: {:?}", err)
             } else {
                 "WKWebView snapshot failed: unknown error".to_string()
@@ -50,11 +50,7 @@ pub fn capture_webview_pixels(
 
     // Call takeSnapshotWithConfiguration:nil completionHandler:block
     unsafe {
-        let _: () = msg_send![
-            &*wk_webview,
-            takeSnapshotWithConfiguration: std::ptr::null::<AnyObject>(),
-            completionHandler: &*block
-        ];
+        wk_webview.takeSnapshotWithConfiguration_completionHandler(None, &block);
     }
 
     // Pump the event loop until the callback fires (same pattern as Linux)
@@ -84,7 +80,7 @@ pub fn capture_webview_pixels(
 /// Creates an NSBitmapImageRep from the NSImage's TIFF representation,
 /// then reads the raw pixel data. Handles premultiplied alpha conversion.
 fn extract_rgba_from_nsimage(
-    ns_image: &AnyObject,
+    ns_image: &NSImage,
     target_width: u32,
     target_height: u32,
 ) -> Result<(u32, u32, Vec<u8>), String> {

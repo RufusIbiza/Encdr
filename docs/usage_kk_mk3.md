@@ -88,6 +88,26 @@ Understanding the boundaries of the S-Series Mk3 is critical when designing your
 
 ---
 
+## 3a. Platform Notes (macOS & Windows)
+
+The Mk3 exposes a HID control interface (buttons, encoders, LEDs), a vendor-specific bulk interface (ODR pipes, including the Light Guide) and MIDI ports (DAW remote). The OS treats them differently, and Encdr handles each interface independently, so one being unavailable does not stop the others:
+
+| Interface | macOS | Windows |
+|---|---|---|
+| HID control (`control`) | Apple's HID driver owns it; Encdr falls back to IOHIDManager automatically. May need Input Monitoring permission. | `HidUsb` owns it; Encdr falls back to the Windows HID stack automatically. |
+| Bulk ODR (`odr_cmd`, `odr_stream`) | Claimed as raw USB; usually works unless another app holds the device. | Needs the **WinUSB** driver bound to that interface only (e.g. via Zadig). Without it, claiming fails with `incompatible driver` and ODR features (parameter pages, Light Guide, browser, mixer) are unavailable while buttons and LEDs still work. |
+| DAW MIDI port | Opened by your app through CoreMIDI, not Encdr. | Opened by your app through WinMM/WinRT MIDI, not Encdr. Many Windows MIDI drivers allow only one client per port, so close NI software or other DAWs using it. |
+
+Things to know when diagnosing:
+- Run with `RUST_LOG=encdr=debug`. Look for `Opened HID interface N via hidapi` (HID fallback working), `Claimed interface N` (raw USB), and `Continuing without interface(s) [...]` (which parts are unavailable).
+- On Windows, HID output reports are padded to the report length the device declares but **truncated** if longer, so oversized writes to the HID interface are silently clipped.
+- If an interface exposes several HID collections (Windows lists each as a separate device), Encdr prefers the vendor-defined one and logs a warning naming the alternatives.
+- Writes to an unavailable interface (e.g. `odr_cmd` without WinUSB) are dropped with a single warning rather than one per call.
+- Set `ENCDR_FORCE_HID=1` (with the `hid` feature on Linux) to force the HID path for testing.
+- None of this has been verified on physical macOS or Windows Mk3 hardware yet.
+
+---
+
 ## 3. Connecting to the Keyboard
 
 The Komplete Kontrol Mk3 requires two communication handles:

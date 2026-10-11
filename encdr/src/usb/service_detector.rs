@@ -120,6 +120,26 @@ pub fn diagnose_claim_failure(iface_num: u8, iface_id: &str, error: &dyn std::fm
             error
         );
 
+        #[cfg(target_os = "macos")]
+        {
+            tracing::warn!(
+                "On macOS, HID-class interfaces are owned by Apple's HID driver and cannot be claimed as raw USB; \
+                 Encdr opens them through IOHIDManager instead. If that also failed, another process holds the \
+                 device exclusively (NI Native Access / NIHardwareAgent, or a DAW), or this app lacks Input Monitoring \
+                 permission (System Settings > Privacy & Security)."
+            );
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            tracing::warn!(
+                "On Windows, raw USB access needs the WinUSB driver bound to that interface. HID interfaces are \
+                 opened through the HID stack instead; vendor (bulk) interfaces such as the Komplete Kontrol Mk3 \
+                 on-device-rendering pipe need WinUSB, which can be installed for that interface only (not the HID \
+                 or MIDI ones) with a tool such as Zadig. 'incompatible driver' means another driver owns it."
+            );
+        }
+
         #[cfg(target_os = "linux")]
         {
             tracing::warn!(

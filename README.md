@@ -55,7 +55,7 @@ cargo add encdr-view
 ```
 > [!NOTE]
 > **Platform Prerequisites**: On Linux, compiling requires `libudev-dev` (plus `libwebkit2gtk-4.1-dev` and `libgtk-3-dev` if using `encdr-view`), and non-root hardware access requires setting up a udev rule ([see here](docs/usage.md#platform-prerequisites)). 
->On **macOS and Windows**, NI background services may need to be stopped if they hold the USB interfaces. 
+>On **macOS and Windows**, the OS keeps its own driver bound to HID-class interfaces (e.g. the Maschine Mk3's control surface), so Encdr opens those through the native HID stack (`hidapi`) automatically; NI background services may still need to be stopped if they hold the remaining USB interfaces (e.g. screens). If an interface can't be opened, Encdr carries on with the ones that can (for example screens without controls) instead of exiting. On Linux the same path can be tested with `--features hid` and `ENCDR_FORCE_HID=1`.
 
 ### How can I support this project? 
 - **By contributing code** - Feel free to open an issue or submit a pull request.
@@ -346,6 +346,7 @@ encdr/
 | Purpose                 | Crate                      | Why                                      |
 | ----------------------- | -------------------------- | ---------------------------------------- |
 | USB transport           | `nusb`                     | Pure Rust, async, cross-platform         |
+| HID fallback (macOS/Win)| `hidapi`                   | Fallback for OS-bound HID interfaces     |
 | GPU compute             | `wgpu`                     | Format conversion + frame diff shaders   |
 | Lock-free channel       | `crossbeam-channel`        | SPSC event delivery                      |
 | Descriptor parsing      | `serde` + `serde_json`     | JSON device descriptors                  |
@@ -401,6 +402,16 @@ encdr/
   - Authored comprehensive dedicated documentation: [`docs/usage_kk_mk3.md`](docs/usage_kk_mk3.md) covering hardware architecture, what the Mk3 can and cannot do, DAW Remote setup, ODR models, header banners, dynamic `encdr-view` workflow, and complete working code examples.
   - Updated [`docs/api_reference.md`](docs/api_reference.md) with Section 14 and all new facade / `encdr-view` methods.
   - Updated [`examples/README.md`](examples/README.md) and [`README.md`](README.md).
+
+### v0.7.9
+- **macOS & Windows HID Control Surfaces**:
+  - macOS (`AppleUserUSBHostHIDDevice`) and Windows (`HidUsb`) keep their own driver bound to HID-class USB interfaces, which `nusb` cannot claim. Encdr now falls back to the native HID stack (`hidapi`: IOHIDManager on macOS, native HID on Windows) for interrupt-only interfaces such as the Maschine Mk3 control surface. Report framing matches the raw endpoints, so existing parsers, LED builders, and feature-report LEDs work unchanged.
+  - On Linux the HID backend is opt-in via the `hid` feature; set `ENCDR_FORCE_HID=1` to force it for testing.
+  - Not yet verified on physical macOS or Windows hardware.
+- **Fault-Tolerant Interface Claiming**:
+  - A single interface that cannot be claimed no longer aborts the device. Remaining interfaces keep working (e.g. screens without controls) and Encdr logs which interfaces are unavailable. The device thread only exits if no interface can be claimed.
+- **macOS WebView Fix** (contributed by [TVbene](https://github.com/TVBene)): 
+  - Fixed `WKWebView snapshot timed out` in `encdr-view` by using the typed `takeSnapshotWithConfiguration:completionHandler:` binding and pumping the CoreFoundation run loop so WebKit can deliver callbacks.
 
 ### v0.7.8
 - **Clean Exit & Screensaver Support**:
