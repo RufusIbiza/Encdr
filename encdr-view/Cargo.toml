@@ -48,13 +48,14 @@ block2 = "0.6"
 
 # Windows: WebView2 CapturePreview + PNG decode
 [target.'cfg(target_os = "windows")'.dependencies]
-webview2-com = "0.38"
-windows = { version = "0.61", features = [
+webview2-com = "0.39"
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
     "Win32_System_Com",
     "Win32_System_Com_StructuredStorage",
 ] }
 # Required directly (not just transitively via `windows`): the #[implement(...)]
 # macro used in capture_windows.rs expands to code referencing `windows_core` as
 # an absolute crate path, which only resolves if it's a direct dependency here.
-windows-core = "0.61"
+windows-core = "0.62"
 png = "0.17"
