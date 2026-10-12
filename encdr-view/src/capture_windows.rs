@@ -3,16 +3,18 @@
 //! Captures the WebView2 output as a PNG via ICoreWebView2::CapturePreview,
 //! then decodes the PNG to RGBA pixel data using the `png` crate.
 
-use std::io::{Cursor, Read, Seek, SeekFrom};
+use std::io::Cursor;
 use std::sync::mpsc;
 
 use webview2_com::Microsoft::Web::WebView2::Win32::{
     ICoreWebView2, ICoreWebView2CapturePreviewCompletedHandler,
+    ICoreWebView2CapturePreviewCompletedHandler_Impl,
     COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG,
 };
 use windows::core::implement;
+use windows::Win32::Foundation::HGLOBAL;
 use windows::Win32::System::Com::StructuredStorage::CreateStreamOnHGlobal;
-use windows::Win32::System::Com::{IStream, STGC_DEFAULT};
+use windows::Win32::System::Com::{IStream, STREAM_SEEK_SET};
 use wry::WebViewExtWindows;
 
 use super::webview_windows;
@@ -35,19 +37,20 @@ pub fn capture_webview_pixels(
             .map_err(|e| format!("Failed to get CoreWebView2: {}", e))?;
 
         // Create an in-memory IStream for the PNG output
-        let stream: IStream = CreateStreamOnHGlobal(None, true)
+        let stream: IStream = CreateStreamOnHGlobal(HGLOBAL::default(), true)
             .map_err(|e| format!("CreateStreamOnHGlobal failed: {}", e))?;
 
         // Set up completion handler
         let (tx, rx) = mpsc::channel::<Result<(), String>>();
-        let handler = CaptureHandler::new(tx);
+        let handler: ICoreWebView2CapturePreviewCompletedHandler =
+            CaptureHandler::new(tx).into();
 
         // Initiate capture
         core_webview
             .CapturePreview(
                 COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG,
                 &stream,
-                &handler.into(),
+                &handler,
             )
             .map_err(|e| format!("CapturePreview failed: {}", e))?;
 
@@ -82,32 +85,35 @@ pub fn capture_webview_pixels(
 
 /// Read all bytes from an IStream, seeking to the beginning first.
 unsafe fn read_istream(stream: &IStream) -> Result<Vec<u8>, String> {
-    // Seek to start
-    let mut new_pos = 0u64;
-    stream
-        .Seek(0, 0 /* STREAM_SEEK_SET */, Some(&mut new_pos))
-        .map_err(|e| format!("IStream Seek failed: {}", e))?;
-
-    // Read in chunks
-    let mut buf = Vec::new();
-    let mut chunk = [0u8; 8192];
-    loop {
-        let mut bytes_read = 0u32;
+    unsafe {
+        // Seek to start
+        let mut new_pos = 0u64;
         stream
-            .Read(
-                chunk.as_mut_ptr() as *mut _,
-                chunk.len() as u32,
-                Some(&mut bytes_read),
-            )
-            .map_err(|e| format!("IStream Read failed: {}", e))?;
+            .Seek(0, STREAM_SEEK_SET, Some(&mut new_pos))
+            .map_err(|e| format!("IStream Seek failed: {}", e))?;
 
-        if bytes_read == 0 {
-            break;
+        // Read in chunks
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 8192];
+        loop {
+            let mut bytes_read = 0u32;
+            stream
+                .Read(
+                    chunk.as_mut_ptr() as *mut _,
+                    chunk.len() as u32,
+                    Some(&mut bytes_read),
+                )
+                .ok()
+                .map_err(|e| format!("IStream Read failed: {}", e))?;
+
+            if bytes_read == 0 {
+                break;
+            }
+            buf.extend_from_slice(&chunk[..bytes_read as usize]);
         }
-        buf.extend_from_slice(&chunk[..bytes_read as usize]);
-    }
 
-    Ok(buf)
+        Ok(buf)
+    }
 }
 
 /// Decode PNG bytes to RGBA pixel data, scaling to target dimensions if needed.

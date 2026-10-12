@@ -395,6 +395,7 @@ encdr/
   - Added `ScreenView::capture_pixels()` returning raw RGBA buffers.
   - Added `ScreenView::capture_png()` encoding composited web frames into PNG bytes in memory via the `png` crate for direct upload to Mk3 header banners.
   - Updated `device_id` on `ScreenView` to `Option<DeviceId>`.
+  - **Windows WebView2 Capture Fix**: Fixed Windows build failure in `capture_windows.rs` by importing `ICoreWebView2CapturePreviewCompletedHandler_Impl`, aligning `webview2-com` (0.39) and `windows`/`windows-core` (0.62) dependencies with `wry 0.57`, and updating COM stream operations for Windows 0.62 types and Rust 2024 compliance.
 - **Hardware Status Update**:
   - Updated implementation status of both **NI Komplete Kontrol S-Series Mk2** and **NI Komplete Kontrol S-Series Mk3** to **Complete (Untested)**.
 - **New Example & Documentation**:
