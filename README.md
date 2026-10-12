@@ -404,6 +404,10 @@ encdr/
   - Updated [`docs/api_reference.md`](docs/api_reference.md) with Section 14 and all new facade / `encdr-view` methods.
   - Updated [`examples/README.md`](examples/README.md) and [`README.md`](README.md).
 
+### v0.7.10
+- **Windows WebView Fix**:
+  - Fixed Windows build failure in `encdr-view` by importing `ICoreWebView2CapturePreviewCompletedHandler_Impl`, aligning `webview2-com` (0.39) and `windows`/`windows-core` (0.62) dependencies with `wry 0.57`, and updating COM stream operations for Windows 0.62 types and Rust 2024 compliance.
+
 ### v0.7.9
 - **macOS & Windows HID Control Surfaces**:
   - macOS (`AppleUserUSBHostHIDDevice`) and Windows (`HidUsb`) keep their own driver bound to HID-class USB interfaces, which `nusb` cannot claim. Encdr now falls back to the native HID stack (`hidapi`: IOHIDManager on macOS, native HID on Windows) for interrupt-only interfaces such as the Maschine Mk3 control surface. Report framing matches the raw endpoints, so existing parsers, LED builders, and feature-report LEDs work unchanged.
