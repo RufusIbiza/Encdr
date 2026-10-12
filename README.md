@@ -329,6 +329,11 @@ encdr/
 | PNG decode (Windows)    | `png`                      | Decode CapturePreview PNG output to RGBA |
 
 ## Changelog
+
+### v0.7.10
+- **Windows WebView Fix**:
+  - Fixed Windows build failure in `encdr-view` by importing `ICoreWebView2CapturePreviewCompletedHandler_Impl`, aligning `webview2-com` (0.39) and `windows`/`windows-core` (0.62) dependencies with `wry 0.57`, and updating COM stream operations for Windows 0.62 types and Rust 2024 compliance.
+
 ### v0.7.9
 - **macOS & Windows HID Control Surfaces**:
   - macOS (`AppleUserUSBHostHIDDevice`) and Windows (`HidUsb`) keep their own driver bound to HID-class USB interfaces, which `nusb` cannot claim. Encdr now falls back to the native HID stack (`hidapi`: IOHIDManager on macOS, native HID on Windows) for interrupt-only interfaces such as the Maschine Mk3 control surface. Report framing matches the raw endpoints, so existing parsers, LED builders, and feature-report LEDs work unchanged.
@@ -338,8 +343,6 @@ encdr/
   - A single interface that cannot be claimed no longer aborts the device. Remaining interfaces keep working (e.g. screens without controls) and Encdr logs which interfaces are unavailable. The device thread only exits if no interface can be claimed.
 - **macOS WebView Fix** (contributed by [TVbene](https://github.com/TVBene)): 
   - Fixed `WKWebView snapshot timed out` in `encdr-view` by using the typed `takeSnapshotWithConfiguration:completionHandler:` binding and pumping the CoreFoundation run loop so WebKit can deliver callbacks.
-- **Windows WebView Fix**:
-  - Fixed Windows build failure in `encdr-view` by importing `ICoreWebView2CapturePreviewCompletedHandler_Impl`, aligning `webview2-com` (0.39) and `windows`/`windows-core` (0.62) dependencies with `wry 0.57`, and updating COM stream operations for Windows 0.62 types and Rust 2024 compliance.
 
 ### v0.7.8
 - **Clean Exit & Screensaver Support**:
