@@ -7,14 +7,14 @@
   "interfaces": [
     {
       "id": "control",
-      "number": 0,
+      "number": 2,
       "endpoints": {
         "in": {
-          "address": "0x81",
+          "address": "0x82",
           "type": "interrupt"
         },
         "out": {
-          "address": "0x01",
+          "address": "0x02",
           "type": "interrupt"
         }
       }

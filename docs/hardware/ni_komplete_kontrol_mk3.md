@@ -21,11 +21,13 @@ Unlike previous generation hardware (e.g. Maschine Mk3 or Kontrol S4 Mk3) which 
 
 | Interface | Type | Direction | Endpoint | Description |
 |-----------|------|-----------|----------|-------------|
-| 0 | Interrupt | IN | `0x81` | Real-time inputs: buttons, encoders, touchstrip, expression |
-| 0 | Interrupt | OUT | `0x01` | Button LEDs, mode indicators, and per-key RGB Light Guide |
-| 0 | Bulk | OUT | `0x03` | ODR Command / RPC pipe |
-| 0 | Bulk | OUT | `0x04` | ODR Data / Asset stream pipe |
-| 0 | Bulk | IN | `0x84` | ODR Event / Return stream pipe |
+| 1 | Bulk | IN | `0x81` | DAW MIDI In (USB MIDI Streaming Class) |
+| 1 | Bulk | OUT | `0x01` | DAW MIDI Out (USB MIDI Streaming Class) |
+| 2 | Interrupt | IN | `0x82` | Real-time inputs: buttons, encoders, touchstrip, expression (HID) |
+| 2 | Interrupt | OUT | `0x02` | Button LEDs, mode indicators, RGB Light Guide (HID) |
+| 3 | Bulk | OUT | `0x03` | ODR Command / RPC pipe (vendor bulk) |
+| 3 | Bulk | IN | `0x83` | ODR Event / Return stream pipe (vendor bulk) |
+| 3 | Bulk | OUT | `0x04` | ODR Data / Asset stream pipe (vendor bulk) |
 
 ---
 

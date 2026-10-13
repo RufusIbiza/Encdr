@@ -239,6 +239,28 @@ impl Drop for DeviceHandle {
     }
 }
 
+fn matches_transfer_type(
+    nusb_type: nusb::descriptors::TransferType,
+    desc_type: crate::core::descriptor::TransferType,
+) -> bool {
+    matches!(
+        (nusb_type, desc_type),
+        (
+            nusb::descriptors::TransferType::Interrupt,
+            crate::core::descriptor::TransferType::Interrupt
+        ) | (
+            nusb::descriptors::TransferType::Bulk,
+            crate::core::descriptor::TransferType::Bulk
+        ) | (
+            nusb::descriptors::TransferType::Control,
+            crate::core::descriptor::TransferType::Control
+        ) | (
+            nusb::descriptors::TransferType::Isochronous,
+            crate::core::descriptor::TransferType::Isochronous
+        )
+    )
+}
+
 /// Helper to determine the actual USB interface number for an interface descriptor.
 /// If the interface descriptor's configured `number` lacks the required endpoints on
 /// the physical device, this searches the device's USB configurations for an interface
@@ -249,18 +271,19 @@ fn resolve_interface_number(
 ) -> u8 {
     let mut req_eps = Vec::new();
     if let Some(ref ep) = iface_desc.endpoints.ep_in {
-        req_eps.push(ep.address.0 as u8);
+        req_eps.push((ep.address.0 as u8, ep.transfer_type));
     }
     if let Some(ref ep) = iface_desc.endpoints.out {
-        req_eps.push(ep.address.0 as u8);
+        req_eps.push((ep.address.0 as u8, ep.transfer_type));
     }
 
     if req_eps.is_empty() {
         return iface_desc.number;
     }
 
-    // Build map of interface_number -> list of endpoint addresses
-    let mut iface_eps: HashMap<u8, Vec<u8>> = HashMap::new();
+    // Build map of interface_number -> list of (endpoint address, transfer_type)
+    let mut iface_eps: std::collections::BTreeMap<u8, Vec<(u8, nusb::descriptors::TransferType)>> =
+        std::collections::BTreeMap::new();
     for config in usb_device.configurations() {
         for intf in config.interfaces() {
             let num = intf.interface_number();
@@ -268,37 +291,50 @@ fn resolve_interface_number(
             for alt in intf.alt_settings() {
                 for ep in alt.endpoints() {
                     let addr = ep.address();
-                    if !entry.contains(&addr) {
-                        entry.push(addr);
+                    let tt = ep.transfer_type();
+                    if !entry.contains(&(addr, tt)) {
+                        entry.push((addr, tt));
                     }
                 }
             }
         }
     }
 
-    // 1. If configured number already has all required endpoints, keep it
+    let has_all_endpoints = |eps: &[(u8, nusb::descriptors::TransferType)]| {
+        req_eps.iter().all(|&(req_addr, req_tt)| {
+            eps.iter().any(|&(addr, tt)| addr == req_addr && matches_transfer_type(tt, req_tt))
+        })
+    };
+
+    let has_any_endpoint = |eps: &[(u8, nusb::descriptors::TransferType)]| {
+        req_eps.iter().any(|&(req_addr, req_tt)| {
+            eps.iter().any(|&(addr, tt)| addr == req_addr && matches_transfer_type(tt, req_tt))
+        })
+    };
+
+    // 1. If configured number already has all required endpoints with matching transfer types, keep it
     if let Some(eps) = iface_eps.get(&iface_desc.number) {
-        if req_eps.iter().all(|req| eps.contains(req)) {
+        if has_all_endpoints(eps) {
             return iface_desc.number;
         }
     }
 
-    // 2. Search for an interface that contains all required endpoints
+    // 2. Search for an interface that contains all required endpoints with matching transfer types
     for (&num, eps) in &iface_eps {
-        if req_eps.iter().all(|req| eps.contains(req)) {
+        if has_all_endpoints(eps) {
             tracing::info!(
-                "Auto-resolved interface '{}' to USB interface {} (descriptor configured {}, required endpoints: {:02x?})",
+                "Auto-resolved interface '{}' to USB interface {} (descriptor configured {}, required endpoints: {:?})",
                 iface_desc.id, num, iface_desc.number, req_eps
             );
             return num;
         }
     }
 
-    // 3. Fallback: search for an interface containing any of the required endpoints
+    // 3. Fallback: search for an interface containing any of the required endpoints with matching transfer types
     for (&num, eps) in &iface_eps {
-        if req_eps.iter().any(|req| eps.contains(req)) {
+        if has_any_endpoint(eps) {
             tracing::info!(
-                "Partially resolved interface '{}' to USB interface {} (descriptor configured {}, required endpoints: {:02x?})",
+                "Partially resolved interface '{}' to USB interface {} (descriptor configured {}, required endpoints: {:?})",
                 iface_desc.id, num, iface_desc.number, req_eps
             );
             return num;

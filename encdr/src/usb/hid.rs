@@ -87,9 +87,33 @@ mod imp {
             }
             // Some platforms don't report interface numbers (-1). If that's
             // the case and there is exactly one node, it can only be ours.
+            // Likewise, if exact interface number matching fails, but the device
+            // only exposes a single HID node or a unique NI vendor-defined collection
+            // (e.g. Komplete Kontrol Mk3 whose HID interface is 2), fall back to it.
             let info = match exact.as_slice() {
                 [one, ..] => **one,
                 [] if candidates.len() == 1 && candidates[0].interface_number() < 0 => candidates[0],
+                [] if candidates.len() == 1 => {
+                    tracing::warn!(
+                        "No HID node matching interface {}, but found unique HID device node on interface {} (usage {:04x}:{:04x}); using it",
+                        interface_number,
+                        candidates[0].interface_number(),
+                        candidates[0].usage_page(),
+                        candidates[0].usage()
+                    );
+                    candidates[0]
+                }
+                [] if candidates.iter().filter(|d| d.usage_page() >= 0xFF00).count() == 1 => {
+                    let vendor = candidates.iter().find(|d| d.usage_page() >= 0xFF00).unwrap();
+                    tracing::warn!(
+                        "No HID node matching interface {}, but found unique vendor-defined HID collection on interface {} (usage {:04x}:{:04x}); using it",
+                        interface_number,
+                        vendor.interface_number(),
+                        vendor.usage_page(),
+                        vendor.usage()
+                    );
+                    *vendor
+                }
                 [] => {
                     let seen: Vec<String> = candidates
                         .iter()
