@@ -38,7 +38,7 @@ cargo run -p encdr-examples --bin <example_name>
 | [`kk_mk1_vegas`](#komplete-kontrol-mk1-vegas-mode) | NI Komplete Kontrol Mk1 | Interactive Vegas Mode | Sweeping Light Guide rainbow wave across the keybed (25/49/61/88 keys), 8 OLED displays, and telemetry. |
 | [`kk_mk2_vegas`](#komplete-kontrol-mk2-vegas-mode) | NI Komplete Kontrol Mk2 | Interactive Vegas Mode | Sweeping Light Guide rainbow wave across the keybed (49/61/88 keys) and button telemetry. |
 | [`kk_mk3_vegas`](#komplete-kontrol-mk3-vegas-mode) | NI Komplete Kontrol Mk3 | Interactive Vegas Mode | Sweeping Light Guide wave across the next-gen keybed (49/61/88 keys) and 4D encoder telemetry. |
-| [`kk_mk3_daw_odr`](#komplete-kontrol-mk3-daw--odr-controller) | NI Komplete Kontrol Mk3 | DAW Remote & On-Device UI | Direct DAW protocol (handshake, track strip, stereo VU meters, 14-bit knob decoding) & On-Device Rendering (parameter pages, dynamic image banners, serial FX chain, and Light Guide). |
+| [`kk_mk3_daw_odr`](#komplete-kontrol-mk3-daw--odr-controller) | NI Komplete Kontrol Mk3 | DAW Remote & On-Device UI | Direct DAW protocol builders (track strip, VU meters, 14-bit knobs) & On-Device Rendering session (parameter page with live knobs, plugin chain, Light Guide). |
 | [`mk3_reddit`](#maschine-mk3-reddit-browser) | NI Maschine Mk3 | Dual Screen & Media | Reddit browser with HTML/Canvas dual screens, 4D encoder navigation, and touchstrip scrolling. |
 | [`mk3_pad_rainbow`](#maschine-mk3-pad-rainbow--telemetry) | NI Maschine Mk3 | RGB Pads & Screens | Smooth rainbow pad/group animations, pad strike flashing, and WebKit telemetry screens. |
 | [`mk3_pad_response`](#maschine-mk3-pad-latency--aftertouch) | NI Maschine Mk3 / Plus | Pads & Sensors | Low-latency pad response and continuous polyphonic aftertouch pressure benchmark. |
@@ -433,12 +433,13 @@ cargo run -p encdr-examples --bin kk_mk3_vegas
 * **Hardware:** Native Instruments Komplete Kontrol S49 / S61 / S88 Mk3 (`0x17cc:0x2100` / `0x2110` / `0x2120`)
 * **Path:** [`examples/komplete_kontrol/kk_mk3_daw_odr.rs`](komplete_kontrol/kk_mk3_daw_odr.rs)
 
-Comprehensive demonstration of the next-generation Komplete Kontrol S-Series Mk3 architecture:
-- **Direct DAW Remote Control**: Demonstrates handshake greeting, 14-bit high-resolution rotary knob SysEx mode enable, track labeling, RGB track color encoding (`#AARRGGBB`), 8-channel stereo logarithmic dB VU meters, and 14-bit rotary encoder delta parsing.
-- **On-Device Rendering (ODR)**: Constructs an 8-parameter synth model with rotary knobs, continuous ranges, and 2-state toggle switches via MessagePack-RPC over Bulk OUT `0x03`.
-- **Dynamic In-Memory Header Banner**: Generates custom PNG graphical banners dynamically on the host and registers them into the on-device flash cache.
-- **Extended Models**: Demonstrates serial plugin insert chains, multi-track mixer cards, Smart Play scales/arpeggiators, preset sound browser, and display brightness settings.
-- **Light Guide Animation**: Drives smooth 60 FPS RGB sweeps across the polyphonic aftertouch keybed.
+Demonstration of the Komplete Kontrol S-Series Mk3's two host channels:
+- **DAW Remote (MIDI)**: builds and prints the greeting, 14-bit mode enable, track names and colours (`#AARRGGBB`), 8-channel stereo VU meters, and parses 14-bit knob deltas. Your app sends these over the keyboard's DAW MIDI port; Encdr doesn't open MIDI ports.
+- **On-Device Rendering (USB interface 3)**: sends the handshake, waits for the keyboard's reply, then registers a session and shows an 8-knob "Analog Monolith" parameter page with its plugin chain. Turning a knob updates the value on screen live, and every later handshake reply (e.g. after the keyboard asks for a re-handshake) resends the page. Encdr sends the 8-second heartbeat itself.
+- **Light Guide**: colour sweep across the keybed at 10 FPS.
+- The mixer, Smart Play, browser and settings models are built and printed but **not sent**, because their messages aren't verified yet.
+
+Before running, quit Komplete Kontrol and stop NI's background services, which hold interface 3. Run with `RUST_LOG=encdr=debug` for connection diagnostics.
 
 ```bash
 cargo run -p encdr-examples --bin kk_mk3_daw_odr

@@ -7,19 +7,21 @@
 //!    - Track titles & RGB colors
 //!    - Stereo dB VU metering
 //!    - 14-bit rotary encoder delta decoding
-//! 2. On-Device Rendering (ODR) MessagePack-RPC:
-//!    - NKS parameter page modelling with 8 rotary controls
-//!    - Top header banner asset uploading (dynamic PNG generation)
-//!    - Real-time parameter value modulation
-//!    - Keybed Light Guide RGB LED sweeps
+//! 2. On-Device Rendering (ODR) MessagePack-RPC over USB (interface 3):
+//!    - Session handshake; Encdr keeps the heartbeat and re-handshakes itself
+//!    - NKS parameter page with 8 knobs, updated live as they are turned
+//!    - Keybed Light Guide colour sweep
+//!
+//! Close Komplete Kontrol and stop NI's background services first; they hold
+//! USB interface 3.
 //!
 //! Run with:
 //!   cargo run -p encdr-examples --bin kk_mk3_daw_odr
 
 use std::time::{Duration, Instant};
 use encdr::{
-    BrowserFilter, BrowserModel, BrowserSoundItem, DeviceSettings, Encdr, EncdrConfig, Event,
-    KkMk3DawController, MixerModel, MixerTrack, ParameterItem, PluginChainItem, PluginChainModel,
+    BrowserFilter, BrowserModel, BrowserSoundItem, Encdr, EncdrConfig, Event,
+    KkMk3DawController, KkMk3OdrEvent, MixerModel, MixerTrack, ParameterItem, PluginChainItem, PluginChainModel,
     PluginData, RgbColor, SmartPlayData,
 };
 
@@ -62,8 +64,9 @@ fn main() {
     // ── 2. Build NKS Models for ODR ───────────────────────────────────────
     println!("\n─── [2/3] ODR Extended Models (Plugin Chain, Browser, SmartPlay, Mixer) ───");
     let cyan = RgbColor::new(0, 210, 255);
-    let mut plugin = PluginData::new("Analog Monolith", cyan)
-        .with_background("demo_synth_banner");
+    // `background` is an index into the keyboard's own image cache (21 is known
+    // to work); uploading custom images isn't verified yet.
+    let mut plugin = PluginData::new("Analog Monolith", cyan).with_background("21");
 
     plugin.add_parameter(ParameterItem::knob("Cutoff", 0.72, "3.4 kHz", "Filter"));
     plugin.add_parameter(ParameterItem::knob("Resonance", 0.45, "45%", "Filter"));
@@ -130,26 +133,51 @@ fn main() {
     let desc = encdr.device_descriptor(device_id).unwrap().clone();
     println!("✅ Connected to: {} (0x{:04x}:0x{:04x})", desc.name, desc.vendor_id.0, desc.product_id.0);
 
-    // Upload header banner image and activate models on hardware
-    println!("Uploading models and activating ODR parameter page...");
-    let _ = encdr.kk_mk3_set_plugin_chain(device_id, &chain);
-    let _ = encdr.kk_mk3_set_smartplay(device_id, &smartplay);
-    let _ = encdr.kk_mk3_set_browser_model(device_id, &browser);
-    let _ = encdr.kk_mk3_set_mixer_model(device_id, &mixer);
-    let _ = encdr.kk_mk3_set_device_settings(device_id, &DeviceSettings::default());
-    if let Err(e) = encdr.kk_mk3_set_header_image(device_id, "demo_synth_banner", &banner_png, &mut plugin) {
-        eprintln!("Failed to upload header/plugin data: {}", e);
-    }
-
     let key_count = match desc.product_id.0 {
         0x2110 => 61,
         0x2120 => 88,
         _ => 49,
     };
 
+    // Local knob values (0..7), mirrored onto the keyboard's parameter page.
+    let mut knob_values: Vec<f32> = plugin.parameters.iter().map(|p| p.value).collect();
+
+    // Only messages verified on hardware are sent. The SmartPlay / browser /
+    // mixer / settings / asset models above are printed but not sent until
+    // they are verified.
+    let setup = |encdr: &Encdr| {
+        let _ = encdr.kk_mk3_start_session(device_id, "Komplete Kontrol", "Encdr Synth");
+        let _ = encdr.kk_mk3_set_plugin_chain(device_id, &chain);
+        let _ = encdr.kk_mk3_set_plugin_data(device_id, &plugin);
+    };
+
+    // Open the ODR session. Encdr runs the heartbeat itself once the keyboard
+    // replies, and re-handshakes if the keyboard asks; each reply means the
+    // keyboard needs our pages again.
+    println!("Sending ODR handshake (437-symbol registry)...");
+    if let Err(e) = encdr.kk_mk3_handshake(device_id) {
+        eprintln!("Handshake failed: {e}");
+    }
     let events = encdr.events().clone();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let mut replied = false;
+    while !replied && Instant::now() < deadline {
+        if let Ok(ev) = events.recv_timeout(Duration::from_millis(100)) {
+            if let Event::KkMk3Odr { event: KkMk3OdrEvent::HandshakeReply, .. } = ev {
+                replied = true;
+            }
+        }
+    }
+    if replied {
+        println!("Handshake accepted.");
+    } else {
+        println!("No handshake reply within 3 s; continuing anyway (no heartbeat until the keyboard replies).");
+    }
+    println!("Registering instance and sending parameter page...");
+    setup(&encdr);
+
     let start_time = Instant::now();
-    let mut last_lfo_tick = Instant::now();
+    let mut last_lightguide = Instant::now();
 
     println!("\nLive controller active! Rotate knobs or play keys. Press Ctrl+C to quit.\n");
 
@@ -165,12 +193,47 @@ fn main() {
                 Event::Button { name, pressed, .. } => {
                     println!("[BUTTON] {} -> {}", name.to_uppercase(), if pressed { "DOWN" } else { "UP" });
                 }
+                Event::EncoderFine { name, delta, .. } => {
+                    println!("[ENCODER FINE] {} delta: {:+.4}", name.to_uppercase(), delta);
+                    // If one of the 8 knobs was turned, update screen
+                    if let Some(num_str) = name.strip_prefix("encoder_") {
+                        if let Ok(idx) = num_str.parse::<usize>() {
+                            if idx >= 1 && idx <= knob_values.len() {
+                                let k = idx - 1;
+                                knob_values[k] = (knob_values[k] + delta).clamp(0.0, 1.0);
+                                let display = format!("{:.0}%", knob_values[k] * 100.0);
+                                let _ = encdr.kk_mk3_update_parameter_value_with_display(device_id, k as u32, knob_values[k], &display);
+                                println!("      → knob {} = {}", idx, display);
+                            }
+                        }
+                    }
+                }
                 Event::Encoder { name, delta, .. } => {
                     println!("[ENCODER] {} delta: {:+2}", name.to_uppercase(), delta);
+                }
+                Event::Touch { name, touched, .. } => {
+                    println!("[TOUCH] {} -> {}", name.to_uppercase(), if touched { "TOUCHED" } else { "RELEASED" });
                 }
                 Event::Slider { name, value, .. } => {
                     println!("[STRIP] {} = {:.2}", name.to_uppercase(), value);
                 }
+                Event::KkMk3Odr { event, .. } => match event {
+                    KkMk3OdrEvent::HandshakeReply => {
+                        println!("[ODR] Handshake reply — resending session and page");
+                        setup(&encdr);
+                    }
+                    KkMk3OdrEvent::HeartbeatRequestHandshake => {
+                        println!("[ODR] Keyboard requested a new handshake (Encdr is re-handshaking)");
+                    }
+                    KkMk3OdrEvent::ParameterSet { param_index, value } => {
+                        println!("[ODR] Parameter {} set to {:.3}", param_index + 1, value);
+                        if let Some(v) = knob_values.get_mut(param_index as usize) {
+                            *v = value.clamp(0.0, 1.0);
+                        }
+                    }
+                    KkMk3OdrEvent::Other { method, .. } => println!("[ODR] {method}"),
+                    _ => {}
+                },
                 Event::DeviceDisconnected { .. } => {
                     println!("Device disconnected.");
                     return;
@@ -179,13 +242,10 @@ fn main() {
             }
         }
 
-        // Modulate Cutoff knob via LFO and animate Light Guide LEDs at ~30 FPS
-        if last_lfo_tick.elapsed() >= Duration::from_millis(33) {
-            last_lfo_tick = Instant::now();
-
-            // Real-time parameter modulation
-            let lfo_val = (elapsed * 2.0).sin() * 0.4 + 0.5;
-            let _ = encdr.kk_mk3_update_parameter_value(device_id, 0, lfo_val);
+        // Animate Light Guide LEDs at 10 FPS (2 FPS is verified on hardware; the
+        // keyboard's throughput limit is unknown).
+        if last_lightguide.elapsed() >= Duration::from_millis(100) {
+            last_lightguide = Instant::now();
 
             // Light Guide RGB rainbow sweep
             let mut rgb_keys = Vec::with_capacity(key_count);

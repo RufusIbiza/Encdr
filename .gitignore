@@ -9,3 +9,6 @@ SESSION_STATE*
 # Ignored assets
 /git Ignored/
 git Ignored/
+
+/test-feedback/
+test-feedback/

@@ -663,7 +663,7 @@ mod tests {
 
         let s49 = reg.find(0x17cc, 0x2100).expect("S49 Mk3 not found");
         assert_eq!(s49.name, "NI Komplete Kontrol S49 Mk3");
-        assert_eq!(s49.input_packets.len(), 3);
+        assert_eq!(s49.input_packets.len(), 4);
         assert_eq!(s49.leds.len(), 3);
         let s49_lg = s49.leds.iter().find(|l| l.id == "light_guide").expect("S49 Light Guide missing");
         assert_eq!(s49_lg.buffer_size, 49);

@@ -66,6 +66,17 @@ pub enum Event {
         index: u8,
         pressure: f32,
     },
+    /// Komplete Kontrol Mk3 on-device-rendering session message that isn't a
+    /// knob turn or touch (those arrive as `EncoderFine`/`Encoder`/`Touch` on
+    /// `encoder_1`..`encoder_8`).
+    ///
+    /// On every [`KkMk3OdrEvent::HandshakeReply`] — including the one after the
+    /// automatic re-handshake the keyboard can request — the app must (re)send
+    /// its session and page setup (`Encdr::kk_mk3_start_session` etc.).
+    KkMk3Odr {
+        device: DeviceId,
+        event: crate::device::komplete_kontrol::KkMk3OdrEvent,
+    },
 }
 
 impl Event {
@@ -80,6 +91,7 @@ impl Event {
             Event::EncoderFine { device, .. } => *device,
             Event::Touch { device, .. } => *device,
             Event::Grid { device, .. } => *device,
+            Event::KkMk3Odr { device, .. } => *device,
         }
     }
 }

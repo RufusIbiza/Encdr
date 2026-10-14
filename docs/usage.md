@@ -119,6 +119,11 @@ loop {
             Event::Grid { device, name, index, pressure } => {
                 println!("{} pad {}: {:.2}", name, index, pressure);
             }
+            Event::KkMk3Odr { device, event } => {
+                // Komplete Kontrol Mk3 on-device-rendering session messages
+                // (see usage_kk_mk3.md); ignore if you don't use the Mk3's screen.
+                println!("KK Mk3 ODR: {:?}", event);
+            }
         }
     }
     std::thread::sleep(std::time::Duration::from_millis(1));

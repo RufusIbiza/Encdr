@@ -121,5 +121,8 @@ fn print_event(event: &Event) {
                 device, name, index, pressure
             );
         }
+        Event::KkMk3Odr { device, event } => {
+            println!("[KK_ODR]     {} {:?}", device, event);
+        }
     }
 }

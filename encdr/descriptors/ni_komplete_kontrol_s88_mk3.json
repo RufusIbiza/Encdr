@@ -21,7 +21,7 @@
     },
     {
       "id": "odr_cmd",
-      "number": 0,
+      "number": 3,
       "endpoints": {
         "out": {
           "address": "0x03",
@@ -31,7 +31,7 @@
     },
     {
       "id": "odr_stream",
-      "number": 0,
+      "number": 3,
       "endpoints": {
         "in": {
           "address": "0x83",
@@ -73,6 +73,13 @@
       "interface": "control",
       "size": 39,
       "_comment": "NI protocol: I-AA W19 (19 words / 8 touch-sensitive continuous encoders)",
+      "items": []
+    },
+    {
+      "id": "odr_events",
+      "interface": "odr_stream",
+      "size": 512,
+      "_comment": "NI ODR MessagePack event stream (knob deltas, touches, responses)",
       "items": []
     }
   ],

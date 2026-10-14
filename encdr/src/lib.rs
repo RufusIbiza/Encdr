@@ -17,10 +17,11 @@ pub use crate::core::led::LedValue;
 pub use crate::core::seven_segment::SevenSegment;
 pub use crate::device::hooks::PacketHook;
 pub use crate::device::komplete_kontrol::{
-    ArpConfig, BrowserFilter, BrowserModel, BrowserSoundItem, ChordConfig, DeviceSettings,
-    FileAsset, KkMk3DawController, KkMk3DawEvent, KkMk3Page, LayoutMode, MixerModel, MixerTrack,
-    OdrRpcFramer, ParameterItem, PluginChainItem, PluginChainModel, PluginData, RgbColor,
-    ScaleConfig, SmartPlayData, ViewAddress, WidgetDisplayType,
+    sym, sym_name, ArpConfig, BrowserFilter, BrowserModel, BrowserSoundItem, ChordConfig,
+    DeviceSettings, FileAsset, KkMk3DawController, KkMk3DawEvent, KkMk3OdrEvent, KkMk3Page,
+    LayoutMode, MixerModel, MixerTrack, OdrRpcFramer, OdrStreamDecoder, ParameterItem, PluginChainItem,
+    PluginChainModel, PluginData, RgbColor, ScaleConfig, SmartPlayData, ViewAddress,
+    WidgetDisplayType,
 };
 pub use crate::screen::GpuContext;
 
@@ -497,7 +498,60 @@ impl Encdr {
             });
         }
     }
+    /// Open a Komplete Kontrol Mk3 on-device-rendering session: sends the handshake
+    /// (with the 437-entry symbol registry) on `odr_stream` (bulk OUT `0x04`).
+    ///
+    /// The keyboard answers with [`Event::KkMk3Odr`] carrying
+    /// [`KkMk3OdrEvent::HandshakeReply`]. Encdr then sends the heartbeat on
+    /// `odr_cmd` automatically, and re-handshakes by itself if the keyboard asks.
+    /// On **every** `HandshakeReply`, call [`kk_mk3_start_session`](Self::kk_mk3_start_session)
+    /// and resend your pages, since a re-handshake resets the keyboard's state.
+    pub fn kk_mk3_handshake(&self, device_id: DeviceId) -> Result<()> {
+        let bytes = crate::device::komplete_kontrol::OdrRpcFramer::build_handshake();
+        self.write_interface(device_id, "odr_stream", &bytes);
+        Ok(())
+    }
+
+    /// Send one heartbeat on `odr_cmd` (bulk OUT `0x03`).
+    ///
+    /// Not normally needed: Encdr's device thread sends it every 8 s once the
+    /// keyboard has replied to a handshake.
+    pub fn kk_mk3_heartbeat(&self, device_id: DeviceId) -> Result<()> {
+        let bytes = crate::device::komplete_kontrol::OdrRpcFramer::build_heartbeat();
+        self.write_interface(device_id, "odr_cmd", &bytes);
+        Ok(())
+    }
+
+    /// Register the host instance and show the parameter page, after a handshake:
+    /// `client_instance_add` → `client_page_set(parameter)` → `client_focus_acquire`
+    /// → `client_instance_set_host_owned_instance_client_state`.
+    ///
+    /// Call this on each [`KkMk3OdrEvent::HandshakeReply`], then send your
+    /// parameter page with [`kk_mk3_set_plugin_data`](Self::kk_mk3_set_plugin_data).
+    pub fn kk_mk3_start_session(&self, device_id: DeviceId, instance_name: &str, preset_name: &str) -> Result<()> {
+        use crate::device::komplete_kontrol::{KkMk3Page, OdrRpcFramer};
+        self.write_interface(device_id, "odr_stream", &OdrRpcFramer::build_instance_add(instance_name, true));
+        self.write_interface(device_id, "odr_stream", &OdrRpcFramer::new().build_set_page(KkMk3Page::Parameters)?);
+        self.write_interface(device_id, "odr_stream", &OdrRpcFramer::build_focus_acquire());
+        self.write_interface(
+            device_id,
+            "odr_stream",
+            &OdrRpcFramer::build_set_host_instance_state(preset_name, 120.0),
+        );
+        Ok(())
+    }
+
+    /// [`kk_mk3_handshake`](Self::kk_mk3_handshake) followed immediately by
+    /// [`kk_mk3_start_session`](Self::kk_mk3_start_session), without waiting for
+    /// the reply. Prefer the two-step form; this exists for quick tests.
+    pub fn kk_mk3_init_session(&self, device_id: DeviceId, instance_name: &str, preset_name: &str) -> Result<()> {
+        self.kk_mk3_handshake(device_id)?;
+        self.kk_mk3_start_session(device_id, instance_name, preset_name)
+    }
+
     /// Send an active plugin / parameter page model to a Komplete Kontrol S-Series Mk3 keyboard via ODR.
+    ///
+    /// Transmits both parameter definitions and layout sections to bulk OUT `0x04` (`odr_stream`).
     pub fn kk_mk3_set_plugin_data(
         &self,
         device_id: DeviceId,
@@ -505,7 +559,9 @@ impl Encdr {
     ) -> Result<()> {
         let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
         let bytes = framer.build_set_plugin_data(plugin_data)?;
-        self.write_interface(device_id, "odr_cmd", &bytes);
+        self.write_interface(device_id, "odr_stream", &bytes);
+        let layout_bytes = framer.build_set_host_viewstate(plugin_data);
+        self.write_interface(device_id, "odr_stream", &layout_bytes);
         Ok(())
     }
 
@@ -518,13 +574,27 @@ impl Encdr {
     ) -> Result<()> {
         let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
         let bytes = framer.build_update_parameter_value(param_index, value)?;
-        self.write_interface(device_id, "odr_cmd", &bytes);
+        self.write_interface(device_id, "odr_stream", &bytes);
+        Ok(())
+    }
+
+    /// Update a single parameter's value with a custom display string on a Komplete Kontrol S-Series Mk3 keyboard via ODR.
+    pub fn kk_mk3_update_parameter_value_with_display(
+        &self,
+        device_id: DeviceId,
+        param_index: u32,
+        value: f32,
+        display: &str,
+    ) -> Result<()> {
+        let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
+        let bytes = framer.build_update_parameter_value_with_display(param_index, value, display)?;
+        self.write_interface(device_id, "odr_stream", &bytes);
         Ok(())
     }
 
     /// Update the Light Guide LEDs on a Komplete Kontrol S-Series Mk3 keyboard via ODR.
     ///
-    /// Takes a slice of RGB tuples `(r, g, b)` for each key.
+    /// Takes a slice of RGB tuples `(r, g, b)` for each key and maps them to Mk3 Light Guide palette colors.
     pub fn kk_mk3_set_lightguide(
         &self,
         device_id: DeviceId,
@@ -532,11 +602,28 @@ impl Encdr {
     ) -> Result<()> {
         let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
         let bytes = framer.build_set_lightguide(rgb_keys)?;
-        self.write_interface(device_id, "odr_cmd", &bytes);
+        self.write_interface(device_id, "odr_stream", &bytes);
+        Ok(())
+    }
+
+    /// Update the Light Guide LEDs on a Komplete Kontrol S-Series Mk3 keyboard using direct `(midi_note, color_index)` addressing.
+    ///
+    /// Color index is 0..63 (unlit / idle is index 44).
+    pub fn kk_mk3_set_lightguide_indexed(
+        &self,
+        device_id: DeviceId,
+        leds: &[(u8, u8)],
+    ) -> Result<()> {
+        let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
+        let bytes = framer.build_set_lightguide_indexed(leds)?;
+        self.write_interface(device_id, "odr_stream", &bytes);
         Ok(())
     }
 
     /// Register an image asset (PNG or JPEG) into the Komplete Kontrol Mk3 on-device cache.
+    ///
+    /// **Experimental:** this message has not been verified on hardware yet; its
+    /// payload layout is provisional and the keyboard may ignore or reject it.
     pub fn kk_mk3_register_asset(
         &self,
         device_id: DeviceId,
@@ -546,13 +633,16 @@ impl Encdr {
         let mut framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
         let asset = crate::device::komplete_kontrol::FileAsset::new(asset_id, image_data.to_vec());
         let (_msg_id, bytes) = framer.build_register_asset(&asset)?;
-        self.write_interface(device_id, "odr_cmd", &bytes);
+        self.write_interface(device_id, "odr_stream", &bytes);
         Ok(())
     }
 
     /// Set the top header banner image and update the active plugin page on a Komplete Kontrol Mk3 keyboard.
     ///
     /// This registers the image asset in on-device cache and attaches it to the current plugin page model.
+    ///
+    /// **Experimental:** this message has not been verified on hardware yet; its
+    /// payload layout is provisional and the keyboard may ignore or reject it.
     pub fn kk_mk3_set_header_image(
         &self,
         device_id: DeviceId,
@@ -573,11 +663,14 @@ impl Encdr {
     ) -> Result<()> {
         let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
         let bytes = framer.build_set_plugin_chain(chain)?;
-        self.write_interface(device_id, "odr_cmd", &bytes);
+        self.write_interface(device_id, "odr_stream", &bytes);
         Ok(())
     }
 
     /// Set the selected plugin index within the active serial chain on a Komplete Kontrol Mk3 keyboard.
+    ///
+    /// **Experimental:** this message has not been verified on hardware yet; its
+    /// payload layout is provisional and the keyboard may ignore or reject it.
     pub fn kk_mk3_set_plugin_chain_index(
         &self,
         device_id: DeviceId,
@@ -585,11 +678,14 @@ impl Encdr {
     ) -> Result<()> {
         let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
         let bytes = framer.build_set_plugin_chain_index(index)?;
-        self.write_interface(device_id, "odr_cmd", &bytes);
+        self.write_interface(device_id, "odr_stream", &bytes);
         Ok(())
     }
 
     /// Send full ODR mixer state model to a Komplete Kontrol S-Series Mk3 keyboard.
+    ///
+    /// **Experimental:** this message has not been verified on hardware yet; its
+    /// payload layout is provisional and the keyboard may ignore or reject it.
     pub fn kk_mk3_set_mixer_model(
         &self,
         device_id: DeviceId,
@@ -597,11 +693,14 @@ impl Encdr {
     ) -> Result<()> {
         let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
         let bytes = framer.build_set_mixer_track_data(mixer)?;
-        self.write_interface(device_id, "odr_cmd", &bytes);
+        self.write_interface(device_id, "odr_stream", &bytes);
         Ok(())
     }
 
     /// Update stereo VU meters in the ODR mixer view on a Komplete Kontrol Mk3 keyboard.
+    ///
+    /// **Experimental:** this message has not been verified on hardware yet; its
+    /// payload layout is provisional and the keyboard may ignore or reject it.
     pub fn kk_mk3_set_mixer_meters(
         &self,
         device_id: DeviceId,
@@ -610,11 +709,14 @@ impl Encdr {
     ) -> Result<()> {
         let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
         let bytes = framer.build_set_mixer_meters(left, right)?;
-        self.write_interface(device_id, "odr_cmd", &bytes);
+        self.write_interface(device_id, "odr_stream", &bytes);
         Ok(())
     }
 
     /// Send Smart Play configuration (scales, chords, arpeggiator) to a Komplete Kontrol Mk3 keyboard.
+    ///
+    /// **Experimental:** this message has not been verified on hardware yet; its
+    /// payload layout is provisional and the keyboard may ignore or reject it.
     pub fn kk_mk3_set_smartplay(
         &self,
         device_id: DeviceId,
@@ -622,11 +724,14 @@ impl Encdr {
     ) -> Result<()> {
         let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
         let bytes = framer.build_set_smartplay_data(smartplay)?;
-        self.write_interface(device_id, "odr_cmd", &bytes);
+        self.write_interface(device_id, "odr_stream", &bytes);
         Ok(())
     }
 
     /// Populate the on-device Sound / Preset Browser on a Komplete Kontrol Mk3 keyboard.
+    ///
+    /// **Experimental:** this message has not been verified on hardware yet; its
+    /// payload layout is provisional and the keyboard may ignore or reject it.
     pub fn kk_mk3_set_browser_model(
         &self,
         device_id: DeviceId,
@@ -634,11 +739,14 @@ impl Encdr {
     ) -> Result<()> {
         let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
         let bytes = framer.build_set_browser_model(browser)?;
-        self.write_interface(device_id, "odr_cmd", &bytes);
+        self.write_interface(device_id, "odr_stream", &bytes);
         Ok(())
     }
 
     /// Update hardware device settings (backlight brightness, LED brightness, velocity curve).
+    ///
+    /// **Experimental:** this message has not been verified on hardware yet; its
+    /// payload layout is provisional and the keyboard may ignore or reject it.
     pub fn kk_mk3_set_device_settings(
         &self,
         device_id: DeviceId,
@@ -646,11 +754,13 @@ impl Encdr {
     ) -> Result<()> {
         let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
         let bytes = framer.build_set_device_settings(settings)?;
-        self.write_interface(device_id, "odr_cmd", &bytes);
+        self.write_interface(device_id, "odr_stream", &bytes);
         Ok(())
     }
 
     /// Switch the active screen page / view template on a Komplete Kontrol Mk3 keyboard.
+    ///
+    /// Only `KkMk3Page::Parameters` has been verified on hardware.
     pub fn kk_mk3_set_page(
         &self,
         device_id: DeviceId,
@@ -658,7 +768,7 @@ impl Encdr {
     ) -> Result<()> {
         let framer = crate::device::komplete_kontrol::OdrRpcFramer::new();
         let bytes = framer.build_set_page(page)?;
-        self.write_interface(device_id, "odr_cmd", &bytes);
+        self.write_interface(device_id, "odr_stream", &bytes);
         Ok(())
     }
 

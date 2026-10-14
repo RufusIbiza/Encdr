@@ -166,10 +166,16 @@ impl DeviceHandle {
             serial: usb_info.serial_number().map(str::to_owned),
         };
 
+        // The device thread queues its own protocol writes (the Komplete Kontrol
+        // Mk3 heartbeat and re-handshake) on the same writer as the app's.
+        let session_write_tx = write_tx.clone();
         let thread = thread::Builder::new()
             .name(format!("encdr-{}", descriptor.name.replace(' ', "-").to_lowercase()))
             .spawn(move || {
-                run_device(id, desc, usb_device, hid_target, names, cmd_rx, led_rx, screen_rx, write_rx, event_tx, gpu);
+                run_device(
+                    id, desc, usb_device, hid_target, names, cmd_rx, led_rx, screen_rx, write_rx,
+                    session_write_tx, event_tx, gpu,
+                );
             })
             .map_err(|e| crate::core::error::EncdrError::Io(e))?;
 
@@ -356,6 +362,7 @@ fn run_device(
     led_rx: Option<async_channel::Receiver<DeviceCmd>>,
     screen_rx: Option<async_channel::Receiver<DeviceCmd>>,
     write_rx: async_channel::Receiver<DeviceCmd>,
+    session_write_tx: async_channel::Sender<DeviceCmd>,
     event_tx: Sender<Event>,
     gpu: Option<Arc<crate::screen::GpuContext>>,
 ) {
@@ -632,6 +639,10 @@ fn run_device(
     let mut parser = PacketParser::new(device_id, &descriptor, names);
     let mut hook: Box<dyn PacketHook> = Box::new(NoopHook);
 
+    // Komplete Kontrol Mk3 on-device-rendering session (inert on other devices).
+    let mut odr_decoder = crate::device::komplete_kontrol::OdrStreamDecoder::new();
+    let mut odr_session = OdrSession::default();
+
 
     // Main I/O loop — READ-ONLY. This thread now exclusively handles:
     //   1. USB interrupt IN reads (highest priority)
@@ -720,7 +731,11 @@ fn run_device(
 
                             // Parse the packet
                             event_buf.clear();
-                            if !hook.on_packet(device_id, data, &mut event_buf) {
+                            if source.interface == ODR_STREAM {
+                                for ev in odr_decoder.push(data) {
+                                    odr_session.on_event(ev, device_id, &session_write_tx, &mut event_buf);
+                                }
+                            } else if !hook.on_packet(device_id, data, &mut event_buf) {
                                 parser.parse_from(&source.interface, data, &mut event_buf);
                             }
 
@@ -754,6 +769,7 @@ fn run_device(
             // has elapsed, regardless of whether the loop was woken by Read, Cmd, or Timer.
             if running && last_timeout_sweep.elapsed() >= PAD_TIMEOUT_POLL_INTERVAL {
                 last_timeout_sweep = Instant::now();
+                odr_session.tick(&session_write_tx);
                 event_buf.clear();
                 parser.check_pad_timeouts(&mut event_buf);
                 for event in event_buf.drain(..) {
@@ -783,6 +799,91 @@ fn run_device(
 
 /// Upper bound on a single connect-time init write.
 const INIT_WRITE_TIMEOUT: Duration = Duration::from_millis(500);
+
+/// Descriptor interface ids of the Komplete Kontrol Mk3 ODR pipes.
+const ODR_STREAM: &str = "odr_stream";
+const ODR_HEARTBEAT: &str = "odr_cmd";
+
+/// Heartbeat period expected by the keyboard. It validates heartbeats unless
+/// the handshake sets `disable_heartbeat_validation`.
+const ODR_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(8);
+
+const ODR_ENCODER_NAMES: [&str; 8] = [
+    "encoder_1", "encoder_2", "encoder_3", "encoder_4",
+    "encoder_5", "encoder_6", "encoder_7", "encoder_8",
+];
+
+/// Device-side half of the Komplete Kontrol Mk3 ODR session: turns incoming
+/// messages into events, keeps the heartbeat going once the keyboard has
+/// answered a handshake, and re-handshakes when the keyboard asks. The app
+/// sends the first handshake and (re)builds its pages on each `HandshakeReply`.
+#[derive(Default)]
+struct OdrSession {
+    next_heartbeat: Option<Instant>,
+}
+
+impl OdrSession {
+    fn on_event(
+        &mut self,
+        ev: crate::device::komplete_kontrol::KkMk3OdrEvent,
+        device: DeviceId,
+        write_tx: &async_channel::Sender<DeviceCmd>,
+        out: &mut Vec<Event>,
+    ) {
+        use crate::device::komplete_kontrol::{KkMk3OdrEvent as E, OdrRpcFramer};
+        match ev {
+            E::ParameterDelta { param_index, delta } => {
+                if let Some(&name) = ODR_ENCODER_NAMES.get(param_index as usize) {
+                    if delta != 0.0 {
+                        out.push(Event::EncoderFine { device, name, delta });
+                        out.push(Event::Encoder { device, name, delta: if delta > 0.0 { 1 } else { -1 } });
+                    }
+                }
+                return;
+            }
+            E::ParameterTouched { param_index, touched } => {
+                if let Some(&name) = ODR_ENCODER_NAMES.get(param_index as usize) {
+                    out.push(Event::Touch { device, name, touched });
+                }
+                return;
+            }
+            E::HandshakeReply => {
+                tracing::info!("Komplete Kontrol Mk3: handshake accepted; heartbeat started");
+                self.next_heartbeat = Some(Instant::now() + ODR_HEARTBEAT_INTERVAL);
+            }
+            E::HeartbeatRequestHandshake => {
+                tracing::info!("Komplete Kontrol Mk3 requested a new handshake; re-handshaking");
+                self.next_heartbeat = None;
+                Self::write(write_tx, ODR_STREAM, OdrRpcFramer::build_handshake());
+            }
+            E::ParameterSet { .. } => {}
+            E::Other { ref method, .. } => tracing::debug!("ODR message: {method}"),
+        }
+        out.push(Event::KkMk3Odr { device, event: ev });
+    }
+
+    fn tick(&mut self, write_tx: &async_channel::Sender<DeviceCmd>) {
+        if let Some(due) = self.next_heartbeat {
+            if Instant::now() >= due {
+                self.next_heartbeat = Some(Instant::now() + ODR_HEARTBEAT_INTERVAL);
+                Self::write(
+                    write_tx,
+                    ODR_HEARTBEAT,
+                    crate::device::komplete_kontrol::OdrRpcFramer::build_heartbeat(),
+                );
+            }
+        }
+    }
+
+    fn write(write_tx: &async_channel::Sender<DeviceCmd>, interface: &str, data: Vec<u8>) {
+        if write_tx
+            .try_send(DeviceCmd::WriteInterface { interface: interface.to_owned(), data })
+            .is_err()
+        {
+            tracing::warn!("ODR session write to '{interface}' dropped (writer queue full or closed)");
+        }
+    }
+}
 
 /// An input endpoint plus the descriptor interface id its packets belong to.
 struct InputSource {

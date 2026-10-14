@@ -11,23 +11,28 @@ The Komplete Kontrol S-Series Mk3 introduces a fundamentally different architect
 - **Embedded Linux SoC**: The keyboard contains an onboard dual-core ARM System-on-Chip (SoC) executing an embedded Linux operating system and a local Qt Quick / QML rendering engine.
 - **Glass Full-Color Display**: UI rendering occurs locally on the keyboard's embedded GPU.
 - **Dual-Channel Host Communication**:
-  1. **Direct DAW Remote Port** (`"KONTROL S-Series MK3 DAW"`): Standard MIDI Channel 16 Control Changes and SysEx packets for transport, mixer channels, stereo dB VU meters, 14-bit rotary knob resolution, and text readouts.
-  2. **USB Bulk Endpoint (ODR)** (`odr_cmd` on Bulk OUT `0x03`): A high-speed MessagePack-RPC command pipe driving typed UI data models (parameter banks, plugin chains, preset browsers, mixer cards, Smart Play scales/arps, and binary image asset caches).
-- **Physical Controls**: Anodized aluminum touch-sensitive continuous rotary encoders, 4D directional encoder, polyphonic aftertouch keybed, pitch and modulation wheels, multi-touch expression strip, and per-key 24-bit RGB Light Guide LEDs.
+  1. **Direct DAW Remote Port** (`"KONTROL S-Series MK3 DAW"` / `MIDIIN2`): Standard MIDI Channel 16 Control Changes and SysEx packets for transport, mixer channels, stereo dB VU meters, 14-bit rotary knob resolution, and text readouts.
+  2. **USB Bulk Interface (ODR)** (Interface 3):
+     - **`odr_stream` (Bulk OUT `0x04`)**: MessagePack-RPC command pipe driving typed UI data models (parameter pages, plugin chain and Light Guide verified; browser, mixer, Smart Play and settings experimental). Each message is length-prefixed, and method names and keys are sent as indexes into a 437-symbol registry agreed in the handshake.
+     - **`odr_stream` (Bulk IN `0x83`)**: Incoming event stream delivering encoder turns (`Event::Encoder` / `Event::EncoderFine`), capacitive touches (`Event::Touch`), and session handshake replies.
+     - **`odr_cmd` (Bulk OUT `0x03`)**: Heartbeat keep-alive pipe (sent automatically by Encdr every 8 s after a handshake reply).
+- **Physical Controls**: Anodized aluminum touch-sensitive continuous rotary encoders, 4D directional encoder, polyphonic aftertouch keybed, pitch and modulation wheels, multi-touch expression strip, and per-key Light Guide LEDs (a 64-colour palette over ODR).
 
 ```mermaid
 flowchart TD
     subgraph Host["Host Application (Encdr)"]
         App["Application Logic"]
         DawCtrl["KkMk3DawController\n(MIDI Ch 16 / SysEx)"]
-        OdrEngine["ODR Model Framer\n(MsgPack-RPC)"]
+        OdrEngine["ODR Model Framer\n(437-Symbol MsgPack-RPC)"]
         AssetCache["Image Generator\n(PNG / JPEG Assets)"]
     end
 
-    subgraph USB["USB Transport Layer"]
-        MidiPort["DAW MIDI Port\n(/dev/snd/midiC... / CoreMIDI)"]
-        BulkOut["Bulk OUT 0x03\n(odr_cmd)"]
-        IntIn["Interrupt IN 0x81\n(Raw HID Buttons & Encoders)"]
+    subgraph USB["USB Transport Layer (Interface 3 + HID)"]
+        MidiPort["DAW MIDI Port\n(/dev/snd/midiC... / CoreMIDI / WinMM)"]
+        StreamOut["Bulk OUT 0x04\n(odr_stream: Models & Light Guide)"]
+        CmdOut["Bulk OUT 0x03\n(odr_cmd: 8s Heartbeats)"]
+        StreamIn["Bulk IN 0x83\n(odr_stream: Knobs & Touches)"]
+        IntIn["HID Interrupt IN 0x82\n(control, interface 2: 4D Encoder & Buttons)"]
     end
 
     subgraph Keyboard["Komplete Kontrol Mk3 Hardware"]
@@ -42,15 +47,20 @@ flowchart TD
     App --> AssetCache
 
     DawCtrl --> MidiPort
-    OdrEngine --> BulkOut
-    AssetCache --> BulkOut
+    OdrEngine --> StreamOut
+    OdrEngine --> CmdOut
+    AssetCache --> StreamOut
 
     MidiPort --> SoC
-    BulkOut --> SoC
+    StreamOut --> SoC
+    CmdOut --> SoC
+    SoC --> StreamIn
+    StreamIn --> App
     IntIn --> App
 
     SoC --> Screen
     SoC --> LightGuide
+    Surface --> StreamIn
     Surface --> IntIn
 ```
 
@@ -62,22 +72,27 @@ Understanding the boundaries of the S-Series Mk3 is critical when designing your
 
 ### What the Mk3 CAN Do
 
-| Capability | Mechanism | Description |
-| :--- | :--- | :--- |
-| **Direct DAW Remote Control** | MIDI Ch 16 + SysEx | Full bidirectional mixer and transport control without proprietary services. |
-| **High-Res 14-bit Knobs** | SysEx `0x7F` | Smooth, high-precision knob delta tracking decoded with sub-millimeter precision. |
-| **8-Track Stereo VU Meters** | SysEx `0x49` | Logarithmic 7-bit dB meters (`-70.0 dB` to `+6.0 dB`) updating simultaneously for 8 channels. |
-| **On-Device Parameter Pages** | ODR MsgPack-RPC | 8 rotary parameter controls per page with 8 widget styles, labels, formatted readouts, and section groupings. |
-| **Real-Time Value Modulation** | ODR `update_parameter_value` | Zero-overhead scalar updates without resending the entire parameter tree. |
-| **Graphical Header Banners** | ODR `register_asset` | PNG and JPEG images uploaded into onboard flash cache for full-width instrument banners. |
-| **Dynamic Host Image Upload** | ODR `set_header_image` | Host-rendered raster buffers (e.g. waveforms, envelopes, custom badges) pushed into the banner cache. |
-| **Serial Plugin Chains** | ODR `set_plugin_chain` | Multi-plugin insert list with custom slot names, vendor labels, bypass states, and focus selection. |
-| **ODR Mixer Views** | ODR `set_mixer_model` | Onboard mixer cards with volume, pan, mute, solo, arm, and stereo metering. |
-| **Smart Play Scales & Arps** | ODR `set_smartplay` | Scale types, root keys, chord sets, and arpeggiator engine configurations. |
-| **Sound & Preset Browser** | ODR `set_browser_model` | Hierarchical sound browser with multiple category columns and preset selection lists. |
-| **View Page Switching** | ODR `set_page` | Instant navigation between onboard templates (`Parameters`, `Browser`, `Mixer`, `SmartPlay`, `PluginChain`, `Settings`). |
-| **24-bit RGB Light Guide** | ODR `set_lightguide` | Individual 24-bit RGB color control for every key across 49, 61, or 88-key keybeds. |
-| **Hardware Device Settings** | ODR `set_device_settings` | Programmatic display backlight brightness, button LED brightness, and velocity response. |
+Status: **Confirmed on hardware** = the DAW-port messages work on an S49 Mk3 from a standalone test program, but Encdr's `KkMk3DawController` output hasn't been compared against it byte for byte; **Verified** = message format confirmed on an S49 Mk3 with a standalone test program; **Experimental** = method name from the keyboard's symbol registry, payload layout provisional. Nothing below has yet been confirmed end-to-end through Encdr itself on hardware.
+
+| Capability | Mechanism | Status | Description |
+| :--- | :--- | :--- | :--- |
+| **Direct DAW Remote Control** | MIDI Ch 16 + SysEx | Confirmed on hardware | Bidirectional mixer and transport control without proprietary services. |
+| **High-Res 14-bit Knobs** | SysEx `0x7F` | Confirmed on hardware | Fine knob delta tracking on the DAW port. |
+| **8-Track Stereo VU Meters** | SysEx `0x49` | Confirmed on hardware | Logarithmic 7-bit dB meters (`-70.0 dB` to `+6.0 dB`) for 8 channels. |
+| **On-Device Parameter Pages** | ODR `set_plugin_data` | Verified | 8 knobs per page with names, formatted readouts and section headings. Every parameter is drawn as a continuous knob for now. |
+| **Live Knob Input** | ODR bulk IN `0x83` | Verified | Knob turns and touches arrive as `EncoderFine` / `Encoder` / `Touch` on `encoder_1`..`encoder_8`. |
+| **Real-Time Value Updates** | ODR `update_parameter_value` | Verified | Scalar updates without resending the page. |
+| **Serial Plugin Chains** | ODR `set_plugin_chain` | Verified | Plugin list with names and current selection. |
+| **Light Guide** | ODR `client_instance_lightguide_set` | Verified | Per-key colour by MIDI note from a 64-colour palette (`44` = unlit). |
+| **Header Images (keyboard cache)** | `PluginData::background` | Verified | A numeric background selects an image already in the keyboard's cache. |
+| **Uploading Header Images** | ODR `assets_add` | Experimental | PNG/JPEG upload into the keyboard's cache. |
+| **Plugin Chain Selection** | ODR `set_plugin_chain_index` | Experimental | Change the focused plugin. |
+| **ODR Mixer Views** | ODR `set_mixer_model` / `set_mixer_meters` | Experimental | Mixer cards with volume, pan, mute, solo, arm, and metering. |
+| **Smart Play Scales & Arps** | ODR `set_smartplay` | Experimental | Scale, chord, and arpeggiator configuration. |
+| **Sound & Preset Browser** | ODR `set_browser_model` | Experimental | Sound list for the on-device browser. |
+| **View Page Switching** | ODR `set_page` | Parameters verified; others experimental | Switch between `Parameters`, `Browser`, `Mixer`, `SmartPlay`, `PluginChain` and `Settings`. |
+| **Hardware Device Settings** | ODR `set_device_settings` | Experimental (likely wrong method) | Display / LED brightness. The current `device_setting` message is probably not the right method; `set_device_settings` / `get_device_settings` are the likely candidates. |
+| **HID Buttons, Touchstrip, Button LEDs** | HID interface 2 (`control`) | Not mapped yet | The descriptor currently maps only the 4D encoder; other buttons, the touchstrip and the button LEDs still need their report layouts. |
 
 ### What the Mk3 CANNOT Do
 
@@ -94,26 +109,25 @@ The Mk3 exposes a HID control interface (buttons, encoders, LEDs), a vendor-spec
 
 | Interface | macOS | Windows |
 |---|---|---|
-| HID control (`control`) | Apple's HID driver owns it; Encdr falls back to IOHIDManager automatically. May need Input Monitoring permission. | `HidUsb` owns it; Encdr falls back to the Windows HID stack automatically. |
-| Bulk ODR (`odr_cmd`, `odr_stream`) | Claimed as raw USB; usually works unless another app holds the device. | Needs the **WinUSB** driver bound to that interface only (e.g. via Zadig). Without it, claiming fails with `incompatible driver` and ODR features (parameter pages, Light Guide, browser, mixer) are unavailable while buttons and LEDs still work. |
+| HID control (`control`, interface 2) | Apple's HID driver owns it; Encdr falls back to IOHIDManager automatically. May need Input Monitoring permission. | `HidUsb` owns it; Encdr falls back to the Windows HID stack automatically. |
+| Bulk ODR (`odr_cmd`, `odr_stream`, interface 3) | Claimed as raw USB (confirmed on macOS). | Claimed through **WinUSB**, which NI's driver package already binds to this interface (Device Manager shows `KONTROL S49 MK3 ODR` with service `WINUSB`). Only if it shows a different driver, bind WinUSB to this interface alone (e.g. with Zadig); otherwise claiming fails with `incompatible driver` and ODR features are unavailable. |
+| DFU interface | Not used by Encdr. | Bound to NI's `nikksm3dfu` driver; leave it alone. |
 | DAW MIDI port | Opened by your app through CoreMIDI, not Encdr. | Opened by your app through WinMM/WinRT MIDI, not Encdr. Many Windows MIDI drivers allow only one client per port, so close NI software or other DAWs using it. |
 
 Things to know when diagnosing:
 - Run with `RUST_LOG=encdr=debug`. Look for `Opened HID interface N via hidapi` (HID fallback working), `Claimed interface N` (raw USB), and `Continuing without interface(s) [...]` (which parts are unavailable).
 - On Windows, HID output reports are padded to the report length the device declares but **truncated** if longer. Encdr reads the declared lengths from the device and logs a one-time warning (`HID output report 0x..: writing N payload bytes but the device declares M`) if a write is oversized.
 - `odr_cmd`/`odr_stream` writes run on their own thread, so a slow bulk upload (such as the header PNG) never delays button or encoder events.
-- Without WinUSB, the per-key Light Guide can still be driven through the descriptor's `light_guide` LED group on the HID interface (one byte per key, not 24-bit RGB); `kk_mk3_set_lightguide` needs the bulk `odr_cmd` pipe.
-- If an interface exposes several HID collections (Windows lists each as a separate device), Encdr prefers the vendor-defined one and logs a warning naming the alternatives.
-- Writes to an unavailable interface (e.g. `odr_cmd` without WinUSB) are dropped with a single warning rather than one per call.
-- Set `ENCDR_FORCE_HID=1` (with the `hid` feature on Linux) to force the HID path for testing.
-- None of this has been verified on physical macOS or Windows Mk3 hardware yet.
+- `odr_stream` (bulk OUT 0x04) carries all MessagePack-RPC commands and the Light Guide; `odr_cmd` (bulk OUT 0x03) carries the 8-second heartbeat.
+- If NI's background services (`NIHardwareAgent`, `NIHostIntegrationAgent`, NI Hardware Connection Service) or the Komplete Kontrol software are running, they hold interface 3 and the keyboard's session. Quit them before running Encdr ODR apps: on Windows stop the services in `services.msc`; on macOS quit the apps and run `killall NIHardwareAgent NIHostIntegrationAgent`.
+- Interface claiming has been confirmed on Windows 11 and macOS with an S49 Mk3 (`17cc:2100`): HID through the OS fallback, interface 3 as raw USB. The S61 and S88 Mk3 are assumed to share the S49's layout.
 
 ---
 
 ## 3. Connecting to the Keyboard
 
 The Komplete Kontrol Mk3 requires two communication handles:
-1. **USB Interface Claim (Encdr)**: Connects to the raw USB device via `nusb` to send ODR MsgPack-RPC packets over Bulk OUT `0x03` (`odr_cmd`) and receive button/encoder HID reports.
+1. **USB (Encdr)**: Encdr opens HID interface 2 (`control`) for buttons and the 4D encoder, and claims interface 3 for ODR: commands on `odr_stream` (bulk OUT `0x04`), knob events and replies on bulk IN `0x83`, and the heartbeat on `odr_cmd` (bulk OUT `0x03`).
 2. **DAW Remote MIDI Port**: Opens the dedicated MIDI port (`"KONTROL S-Series MK3 DAW"`) for Channel 16 CCs and SysEx.
 
 ```rust
@@ -124,7 +138,7 @@ let devices = encdr.scan()?;
 
 // Find the connected Komplete Kontrol Mk3 device
 let mk3_id = devices.into_iter().find(|id| {
-    if let Some(desc) = encdr.descriptor(*id) {
+    if let Some(desc) = encdr.device_descriptor(*id) {
         desc.name.contains("Komplete Kontrol S") && desc.name.contains("Mk3")
     } else {
         false
@@ -237,13 +251,43 @@ if let Some(event) = daw.parse_incoming(incoming_midi_bytes) {
 
 ## 5. On-Device Rendering (ODR) Guide
 
-ODR communication uses MessagePack-RPC envelopes transmitted over the Mk3's USB Bulk OUT endpoint (`0x03`). High-level helper methods on [`Encdr`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/lib.rs#L44-L50) format, frame, and dispatch these packets automatically.
+ODR communication uses MessagePack-RPC envelopes transmitted over USB Interface 3. High-level helper methods on [`Encdr`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/lib.rs#L44-L50) format, frame (4-byte little-endian length prefix), index symbols through the 437-entry registry, and dispatch packets automatically over `odr_stream` (Bulk OUT `0x04`) and `odr_cmd` (Bulk OUT `0x03`).
+
+### 5.0 Session Handshake & Lifecycle Initialization
+
+Before parameter pages can be displayed, the keyboard needs a session: a handshake (protocol version `2.5.0` plus the 437-symbol registry), then instance registration. The flow is event-driven:
+
+1. **Handshake** — [`kk_mk3_handshake`](../encdr/src/lib.rs) sends it on `odr_stream`.
+2. **Reply** — the keyboard answers with `Event::KkMk3Odr { event: KkMk3OdrEvent::HandshakeReply, .. }`. Encdr's device thread then sends the heartbeat on `odr_cmd` (0x03) every 8 s by itself.
+3. **Session + pages** — on that reply, call [`kk_mk3_start_session`](../encdr/src/lib.rs) (`client_instance_add` → `client_page_set` → `client_focus_acquire` → `client_instance_set_host_owned_instance_client_state`) and send your pages.
+4. **Re-handshake** — if the keyboard sends `agent_heartbeat_request_handshake`, Encdr re-handshakes automatically. The next `HandshakeReply` means the keyboard has forgotten everything, so step 3 runs again. Handling every `HandshakeReply` the same way covers both cases.
+
+```rust
+encdr.kk_mk3_handshake(mk3_id)?;
+
+for event in encdr.events().iter() {
+    match event {
+        Event::KkMk3Odr { event: KkMk3OdrEvent::HandshakeReply, .. } => {
+            encdr.kk_mk3_start_session(mk3_id, "Komplete Kontrol", "Encdr Synth")?;
+            encdr.kk_mk3_set_plugin_data(mk3_id, &plugin)?;
+        }
+        Event::EncoderFine { name, delta, .. } => { /* encoder_1..encoder_8 */ }
+        _ => {}
+    }
+}
+```
+
+Incoming messages on bulk IN `0x83` are reassembled across USB transfers, so long messages (such as the settings the keyboard sends after the handshake reply) arrive intact.
+
+> **Verified vs experimental:** the handshake, session setup, parameter page, parameter value updates, plugin chain and Light Guide messages are verified on an S49 Mk3. Mixer, meters, SmartPlay, browser, device settings, plugin-chain index, asset upload / header image and non-parameter pages are not verified yet; their payloads are provisional and the keyboard may ignore them.
 
 ### 5.1 Designing Parameter Pages
 
 Build an 8-knob parameter page using [`PluginData`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/device/komplete_kontrol/odr/models.rs#L130-L172) and [`ParameterItem`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/device/komplete_kontrol/odr/models.rs#L78-L125).
 
 #### Available Widget Display Types
+
+> `display_type` is stored on each `ParameterItem` but **not sent yet**: every parameter is currently drawn as a continuous knob, the only style verified so far. The table describes the intended mapping.
 
 | Widget Type | Enum Variant | Visual Appearance |
 | :--- | :--- | :--- |
@@ -274,17 +318,22 @@ plugin.add_parameter(ParameterItem::knob("Decay", 0.50, "320 ms", "Envelope"));
 plugin.add_parameter(ParameterItem::knob("Sustain", 0.80, "-2.0 dB", "Envelope"));
 plugin.add_parameter(ParameterItem::knob("Release", 0.35, "180 ms", "Envelope"));
 
-// Dispatch to the keyboard
+// Dispatch parameter model and layout sections to the keyboard
 encdr.kk_mk3_set_plugin_data(mk3_id, &plugin)?;
 ```
 
-### 5.2 Real-Time Parameter Value Updates
+### 5.2 Real-Time Parameter Value Updates & Live Encoder Feedback
 
-When a knob is turned or an LFO modulates a parameter, update the scalar value directly without re-transmitting the entire model tree:
+When a knob is turned, the keyboard sends `plugin_action` messages on Bulk IN `0x83`. Encdr's device thread reassembles them and emits `Event::EncoderFine` (the raw fractional delta, e.g. `+0.012`), `Event::Encoder` (`±1`) and `Event::Touch`, named `encoder_1`..`encoder_8`. The host owns parameter values: add the delta to your value and send the result back, as below. Absolute values set from the keyboard arrive as `Event::KkMk3Odr { event: KkMk3OdrEvent::ParameterSet { .. }, .. }`.
+
+You can update the parameter's displayed value and gauge on screen without re-transmitting the entire model tree:
 
 ```rust
-// Modulate Cutoff (Knob #0) to 0.85
+// Update Cutoff (knob index 0, 0-based) with a scalar
 encdr.kk_mk3_update_parameter_value(mk3_id, 0, 0.85)?;
+
+// Or provide a formatted display string:
+encdr.kk_mk3_update_parameter_value_with_display(mk3_id, 0, 0.85, "4.2 kHz")?;
 ```
 
 ---
@@ -292,6 +341,8 @@ encdr.kk_mk3_update_parameter_value(mk3_id, 0, 0.85)?;
 ## 6. Graphical Header Banners & Image Generation
 
 The top area of the Mk3's glass display renders a full-width header banner. You can display pre-rendered PNG/JPEG images or generate custom graphics on the host.
+
+> **Experimental.** Uploading images (`kk_mk3_register_asset`, `kk_mk3_set_header_image`) is not yet verified. What is verified is selecting an image the keyboard already has cached, by setting a numeric background, e.g. `PluginData::new(..).with_background("21")`.
 
 ### 6.1 Registering and Displaying an Image Asset
 
@@ -438,6 +489,8 @@ if banner_view.is_frame_ready() {
 
 ## 7. Extended ODR Models
 
+> Only `kk_mk3_set_plugin_chain` (7.1) and `KkMk3Page::Parameters` (7.6) are verified. Everything else in this section is **experimental**: the method names are from the keyboard's symbol registry, but the payload layouts are provisional and the keyboard may ignore them until they are verified on hardware.
+
 ### 7.1 Serial Plugin Chain
 
 Display the track's serial insert chain (instruments and audio effects):
@@ -453,7 +506,7 @@ chain.set_current_index(0); // Select first plugin
 
 encdr.kk_mk3_set_plugin_chain(mk3_id, &chain)?;
 
-// Change focused plugin index
+// Change focused plugin index (experimental)
 encdr.kk_mk3_set_plugin_chain_index(mk3_id, 1)?;
 ```
 
@@ -534,7 +587,7 @@ encdr.kk_mk3_set_browser_model(mk3_id, &browser)?;
 
 ### 7.5 Hardware Device Settings
 
-Adjust display backlight brightness, button LED brightness, and velocity response curve:
+Adjust display backlight brightness and button LED brightness. **Experimental and probably wrong:** the `device_setting` message Encdr currently sends is likely not the right method (`set_device_settings` / `get_device_settings` are the likely candidates). `velocity_curve` and `lightguide_enabled` are not sent at all.
 
 ```rust
 use encdr::DeviceSettings;
@@ -572,9 +625,11 @@ encdr.kk_mk3_set_page(mk3_id, KkMk3Page::Settings)?;
 
 ---
 
-## 8. 24-Bit RGB Keybed Light Guide
+## 8. Keybed Light Guide
 
-The per-key Light Guide LEDs are driven by passing a slice of `(r, g, b)` tuples to [`kk_mk3_set_lightguide`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/lib.rs#L487-L496). The key count is 49 for S49, 61 for S61, and 88 for S88:
+The Light Guide is addressed by MIDI note, with a colour index `0..=63` from the keyboard's palette (`44` is unlit). The first key is note 36 on the S49/S61 and note 21 on the S88. 2 updates per second is verified; the demo uses 10, and the keyboard's throughput limit is unknown.
+
+The per-key Light Guide LEDs can be driven either via RGB color tuples with [`kk_mk3_set_lightguide`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/lib.rs) (which Encdr converts to the nearest Mk3 palette colors) or directly by MIDI note and palette color index with [`kk_mk3_set_lightguide_indexed`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/lib.rs):
 
 ```rust
 // Animate a rainbow sweep across 61 keys
@@ -588,7 +643,12 @@ for i in 0..key_count {
     keys.push((r, g, b));
 }
 
+// Drive via RGB
 encdr.kk_mk3_set_lightguide(mk3_id, &keys)?;
+
+// Or drive specific MIDI notes directly by color index (0..63, 44 = idle/off):
+let indexed = vec![(36u8, 12u8), (48u8, 24u8), (60u8, 36u8)];
+encdr.kk_mk3_set_lightguide_indexed(mk3_id, &indexed)?;
 ```
 
 ---
@@ -596,11 +656,11 @@ encdr.kk_mk3_set_lightguide(mk3_id, &keys)?;
 ## 9. Complete Working Example
 
 See [`examples/komplete_kontrol/kk_mk3_daw_odr.rs`](file:///home/rufus/Documents/Projects/Encdr/examples/komplete_kontrol/kk_mk3_daw_odr.rs) for the complete reference application demonstrating:
-- DAW remote greeting, 14-bit SysEx mode enable, track labeling, and VU meters.
-- On-device parameter page construction with 8 widgets.
-- Dynamic in-memory PNG banner generation and cache registration.
-- Continuous 60 FPS Light Guide sweep animation and parameter LFO modulation.
-- Serial plugin chain, browser, mixer, and device settings registration.
+- DAW remote greeting, 14-bit SysEx mode enable, track labeling, and VU meters (built and printed; the app sends these over the DAW MIDI port).
+- Event-driven ODR session: handshake, waiting for `HandshakeReply`, and resending the session and page on every reply (heartbeat and re-handshake are handled by Encdr).
+- On-device parameter page with 8 knobs and section layout, updated live from knob turns (`Event::EncoderFine`).
+- Light Guide colour sweep at 10 FPS.
+- Plugin chain, browser, mixer, SmartPlay and settings models are built but **not sent**, since those messages aren't verified yet.
 
 Run the example with:
 ```bash

@@ -188,7 +188,7 @@ flowchart TD
 - [Quick Start Tutorial](docs/quickstart.md) — step-by-step tutorial with Maschine Mk3 dual-screen walkthrough
 - [API Reference](docs/api_reference.md) — complete programmer reference for all types, functions, and methods
 - [Usage Guide](docs/usage.md) — comprehensive usage guide
-- [Komplete Kontrol Mk3 Guide](docs/usage_kk_mk3.md) — deep-dive guide for Mk3 DAW Remote control, On-Device Rendering (ODR), parameter widgets, and banner caching
+- [Komplete Kontrol Mk3 Guide](docs/usage_kk_mk3.md) — deep-dive guide for Mk3 DAW Remote control, the On-Device Rendering (ODR) session, parameter pages, Light Guide and platform notes
 - [Examples Guide](examples/README.md) — complete directory of hardware examples, screen tests, and diagnostic utilities
 
 ### Hardware Reference
@@ -246,7 +246,7 @@ flowchart TD
 | NI Maschine Studio        | `17cc:1300`       | Implemented | 64 buttons, 5 touches, 10 encoders, 16 pads   | 16 RGB pads, 8 RGB groups, stereo meters, 32-seg ring | 2x 480x272 BGR565 |
 | NI Komplete Kontrol S-Mk1 | `17cc:1340/50/60/1410` | Implemented | 19 buttons, 8 encoders, 8 touch sensors, 2 touchstrips | 14 singles, Light Guide (25/49/61/88 keys) | 8x 128x32 1-bit OLED |
 | NI Komplete Kontrol S-Mk2 | `17cc:1610/20/30` | Complete (Untested) | 28 buttons, 9 encoders, pitch/mod wheels, touchstrip | 20 singles, Light Guide (RGB per-key)       | 2x 480x272 BGR565 |
-| NI Komplete Kontrol S-Mk3 | `17cc:2100/10/20` | Complete (Untested) | Keybed (49/61/88 keys), 4D encoder, touchstrip, high-res encoders | Light Guide RGB strips, RGB button backlights | Full-color wide LCD |
+| NI Komplete Kontrol S-Mk3 | `17cc:2100/10/20` | In Progress (Untested) | Keybed (49/61/88 keys), 4D encoder, touchstrip, high-res encoders | Light Guide RGB strips, RGB button backlights | Full-color wide LCD (ODR) |
 
 ## Workspace Structure
 
@@ -359,7 +359,7 @@ encdr/
 | Obj-C bridge (macOS)    | `objc2` + `block2`         | WKWebView `takeSnapshot` pixel capture   |
 | COM/WebView2 (Windows)      | `webview2-com` + `windows` | WebView2 `CapturePreview` pixel capture  |
 | PNG Codec (Cross-Platform)  | `png`                      | In-memory PNG encoding for offscreen views & Windows `CapturePreview` decode |
-| ODR MsgPack-RPC             | `rmp-serde`                | MessagePack serialization for Komplete Kontrol Mk3 On-Device Rendering |
+| ODR MsgPack-RPC             | `rmpv`                     | MessagePack encoding/decoding for Komplete Kontrol Mk3 On-Device Rendering |
 
 ## Changelog
 
@@ -372,24 +372,17 @@ encdr/
     - Stereo VU meters: 8-channel logarithmic 7-bit dB meters (`build_vu_meters`, `-70 dB` to `+6 dB`).
     - High-resolution 14-bit rotary knob relative adjustments: SysEx `0x7F` packet parser decoding delta adjustments with 14-bit signed resolution.
     - Incoming DAW Remote MIDI parser: `parse_incoming` converting Channel 16 CCs and SysEx into typed [`KkMk3DawEvent`](encdr/src/device/komplete_kontrol/daw.rs) variants (buttons, navigation, 4D encoder relative steps, bank mapping, tempo changes).
-  - **On-Device Rendering (ODR) & MessagePack-RPC Subsystem**:
-    - Added ODR MessagePack-RPC subsystem communicating over USB Bulk OUT `0x03` (`odr_cmd`).
-    - Added typed ODR state models in [`encdr::device::komplete_kontrol`](encdr/src/device/komplete_kontrol/odr/models.rs):
-      - `PluginData` (active instrument/effect page model with background banner, primary and accent colors, and parameter lists).
-      - `ParameterItem` supporting 8 widget styles (`Knob`, `Range`, `Toggle`, `Trigger`, `Increment`, `Relative`, `Text`, `Disabled`), normalized values, formatted readout strings, and section headings.
-      - `LayoutMode` (`Nks1Uniform`, `Nks2Grouped`, `Performance`) and `ViewAddress`.
-      - `FileAsset` and on-device graphics cache registration (`register_asset`).
-      - `PluginChainModel` & `PluginChainItem` (serial insert effect/instrument chain).
-      - `MixerModel` & `MixerTrack` (on-device multi-track mixer cards and live metering).
-      - `SmartPlayData`, `ScaleConfig`, `ArpConfig`, `ChordConfig` (on-device scale, chord, and arpeggiator engine state).
-      - `BrowserModel`, `BrowserFilter`, `BrowserSoundItem` (on-device preset sound browser with multi-column category filters).
-      - `DeviceSettings` (display backlight brightness, LED brightness, Light Guide enable, and velocity curves).
-      - `KkMk3Page` enum for instant screen page switching (`Parameters`, `Browser`, `Mixer`, `SmartPlay`, `PluginChain`, `Settings`).
-      - `RgbColor` palette constants (`RED`, `ORANGE`, `YELLOW`, `GREEN`, `CYAN`, `BLUE`, `PURPLE`, `MAGENTA`, `WHITE`, `OFF`).
-    - Implemented [`OdrRpcFramer`](encdr/src/device/komplete_kontrol/odr/rpc.rs) for building MessagePack-RPC notifications and requests.
+  - **On-Device Rendering (ODR) over USB interface 3** (thanks to our Windows tester for hardware testing on an S49 Mk3):
+    - Wire format: every message is `<u32 LE length><MessagePack [2, method, params]>`, with method names and keys sent as indexes into the 437-entry symbol registry ([`symbols.rs`](encdr/src/device/komplete_kontrol/odr/symbols.rs)) agreed in the handshake. Names missing from the registry fall back to strings instead of panicking.
+    - Endpoints: handshake and all commands on `odr_stream` (bulk OUT `0x04`), replies and events on bulk IN `0x83`, heartbeat on `odr_cmd` (bulk OUT `0x03`). The Mk3 descriptors now put `control` on HID interface 2 (`0x82`/`0x02`) and the ODR pipes on interface 3.
+    - Session handling in the device thread: Encdr reassembles framed messages across bulk transfers (`OdrStreamDecoder`), sends the heartbeat every 8 s once the keyboard answers a handshake, and re-handshakes automatically when the keyboard sends `agent_heartbeat_request_handshake`.
+    - Knob turns and touches from the ODR stream arrive as `Event::EncoderFine` / `Event::Encoder` / `Event::Touch` on `encoder_1`..`encoder_8`. Other session messages arrive as the new `Event::KkMk3Odr { device, event: KkMk3OdrEvent }` (`HandshakeReply`, `HeartbeatRequestHandshake`, `ParameterSet`, `Other`). **Breaking:** a `match` on `Event` with no `_` arm needs this new variant.
+    - New `Encdr` methods: `kk_mk3_handshake()`, `kk_mk3_start_session()` (instance add → parameter page → focus → host state; call on every `HandshakeReply`), `kk_mk3_init_session()` (both, without waiting), `kk_mk3_heartbeat()`, `kk_mk3_update_parameter_value_with_display()` and `kk_mk3_set_lightguide_indexed()` (MIDI note + 64-colour palette index; `kk_mk3_set_lightguide()` maps RGB to the nearest palette colour).
+    - Verified on hardware: handshake, heartbeat, session setup, parameter page and section layout, parameter value updates, plugin chain, Light Guide and incoming knob events. **Experimental** (not yet verified on hardware, marked in the docs): mixer, meters, SmartPlay, browser, device settings, plugin-chain index, image upload / header image, and pages other than Parameters.
+    - Typed ODR models in [`encdr::device::komplete_kontrol`](encdr/src/device/komplete_kontrol/odr/models.rs): `PluginData`, `ParameterItem` / `WidgetDisplayType` (every parameter is currently sent as a continuous knob), `PluginChainModel` / `PluginChainItem`, `MixerModel` / `MixerTrack`, `SmartPlayData` (`ScaleConfig`, `ArpConfig`, `ChordConfig`), `BrowserModel` / `BrowserFilter` / `BrowserSoundItem`, `DeviceSettings`, `KkMk3Page`, `LayoutMode`, `ViewAddress`, `FileAsset` and `RgbColor`.
   - **Core `Encdr` Facade Helpers**:
-    - Added `write_interface()` for direct writes to named USB bulk/interrupt endpoints.
-    - Added high-level typed helper methods on `Encdr`: `kk_mk3_set_plugin_data()`, `kk_mk3_update_parameter_value()` (low-overhead scalar modulation), `kk_mk3_set_lightguide()` (24-bit per-key RGB control across 49/61/88 keys), `kk_mk3_register_asset()`, `kk_mk3_set_header_image()` (asset registration + plugin model attachment), `kk_mk3_set_plugin_chain()`, `kk_mk3_set_plugin_chain_index()`, `kk_mk3_set_mixer_model()`, `kk_mk3_set_mixer_meters()`, `kk_mk3_set_smartplay()`, `kk_mk3_set_browser_model()`, `kk_mk3_set_device_settings()`, and `kk_mk3_set_page()`.
+    - Added `write_interface()` for direct writes to named USB bulk/interrupt endpoints; these run on a dedicated writer thread so bulk uploads never delay input.
+    - Typed `kk_mk3_*` helpers for every ODR model: `kk_mk3_set_plugin_data()`, `kk_mk3_update_parameter_value()`, `kk_mk3_set_lightguide()`, `kk_mk3_register_asset()`, `kk_mk3_set_header_image()`, `kk_mk3_set_plugin_chain()`, `kk_mk3_set_plugin_chain_index()`, `kk_mk3_set_mixer_model()`, `kk_mk3_set_mixer_meters()`, `kk_mk3_set_smartplay()`, `kk_mk3_set_browser_model()`, `kk_mk3_set_device_settings()` and `kk_mk3_set_page()`.
 - **`encdr-view` Offscreen Rendering & In-Memory PNG Pipeline**:
   - Added `ScreenView::new_offscreen(width, height, content, visible)` enabling headless WebViews with arbitrary dimensions without requiring a physical screen descriptor.
   - Added `ScreenView::capture_pixels()` returning raw RGBA buffers.
@@ -397,10 +390,11 @@ encdr/
   - Updated `device_id` on `ScreenView` to `Option<DeviceId>`.
   - **Windows WebView2 Capture Fix**: Fixed Windows build failure in `capture_windows.rs` by importing `ICoreWebView2CapturePreviewCompletedHandler_Impl`, aligning `webview2-com` (0.39) and `windows`/`windows-core` (0.62) dependencies with `wry 0.57`, and updating COM stream operations for Windows 0.62 types and Rust 2024 compliance.
 - **Hardware Status Update**:
-  - Updated implementation status of both **NI Komplete Kontrol S-Series Mk2** and **NI Komplete Kontrol S-Series Mk3** to **Complete (Untested)**.
+  - **NI Komplete Kontrol S-Series Mk2**: Complete (Untested).
+  - **NI Komplete Kontrol S-Series Mk3**: In Progress (Untested). Interface claiming is confirmed on Windows and macOS with an S49 Mk3, and the ODR message formats have been verified on that hardware with a standalone test program. Encdr's own ODR session hasn't been run on hardware yet, and the HID buttons, touchstrip and button LEDs are not mapped yet.
 - **New Example & Documentation**:
-  - Added `kk_mk3_daw_odr` standalone example showcasing DAW remote handshake, track info, VU meters, 14-bit knob decoding, ODR parameter page, dynamic in-memory PNG header generation, 60 FPS Light Guide sweep, and all extended models.
-  - Authored comprehensive dedicated documentation: [`docs/usage_kk_mk3.md`](docs/usage_kk_mk3.md) covering hardware architecture, what the Mk3 can and cannot do, DAW Remote setup, ODR models, header banners, dynamic `encdr-view` workflow, and complete working code examples.
+  - Added `kk_mk3_daw_odr` example: DAW remote message builders (track info, VU meters, 14-bit knob decoding) and a live ODR session (handshake → session → 8-knob parameter page that follows the knobs, plugin chain, 10 FPS Light Guide sweep). The experimental models are built and printed but not sent.
+  - Authored dedicated documentation: [`docs/usage_kk_mk3.md`](docs/usage_kk_mk3.md) covering hardware architecture, what the Mk3 can and cannot do (with verification status), macOS/Windows notes, DAW Remote setup, the ODR session lifecycle, ODR models, header banners, the `encdr-view` workflow, and working code examples. [`docs/hardware/ni_komplete_kontrol_mk3.md`](docs/hardware/ni_komplete_kontrol_mk3.md) now documents the ODR protocol.
   - Updated [`docs/api_reference.md`](docs/api_reference.md) with Section 14 and all new facade / `encdr-view` methods.
   - Updated [`examples/README.md`](examples/README.md) and [`README.md`](README.md).
 

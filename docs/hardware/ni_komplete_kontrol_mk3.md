@@ -25,19 +25,24 @@ Unlike previous generation hardware (e.g. Maschine Mk3 or Kontrol S4 Mk3) which 
 | 1 | Bulk | OUT | `0x01` | DAW MIDI Out (USB MIDI Streaming Class) |
 | 2 | Interrupt | IN | `0x82` | Real-time inputs: buttons, encoders, touchstrip, expression (HID) |
 | 2 | Interrupt | OUT | `0x02` | Button LEDs, mode indicators, RGB Light Guide (HID) |
-| 3 | Bulk | OUT | `0x03` | ODR Command / RPC pipe (vendor bulk) |
-| 3 | Bulk | IN | `0x83` | ODR Event / Return stream pipe (vendor bulk) |
-| 3 | Bulk | OUT | `0x04` | ODR Data / Asset stream pipe (vendor bulk) |
+| 3 | Bulk | OUT | `0x03` | ODR heartbeat only (`odr_cmd`) |
+| 3 | Bulk | OUT | `0x04` | ODR handshake and all RPC commands, incl. Light Guide (`odr_stream`) |
+| 3 | Bulk | IN | `0x83` | ODR replies and events from the keyboard, e.g. knob turns (`odr_stream`) |
+| — | — | — | — | A separate DFU interface (Windows driver `nikksm3dfu`) is used only for firmware updates. |
+
+On Windows, NI's driver package binds WinUSB to interface 3 (Device Manager: `KONTROL S49 MK3 ODR`, service `WINUSB`), so it can be claimed without Zadig. On macOS interface 3 is claimed as raw USB and interface 2 goes through IOHIDManager. NI's background services must be stopped first, since they hold interface 3.
 
 ---
 
 ## Low-Level Hardware Reports (Interrupt Endpoint)
 
+> These HID report layouts come from NI's protocol definitions and are not yet mapped in Encdr's descriptor (only the 4D encoder is). In ODR mode the 8 knobs are read from the ODR stream instead (see below).
+
 ```text
 I-1 b28 n2 I-2 b8 WC b10 I-3 b8 W3 W2 B1 I-AA W19 O-80 B2A O-81 B1E O-82 B31 O-A0 BE O-A1 BC8 W1 B1 O-A2 B2C O-A3 B90 O-A4 B80 O-AF B2 O-F3 B1 O-F4 B20 F-D0 D1 B1C F-D8 D2 W4 B10 F-D9 B20 F-F8 W2 B6
 ```
 
-### Input Reports (`0x81` IN)
+### Input Reports (`0x82` IN, interface 2)
 
 * **Report `0x01` (`I-1`):**
   * `b28` (40 bits = 5 bytes): Button state bitmask.
@@ -49,7 +54,7 @@ I-1 b28 n2 I-2 b8 WC b10 I-3 b8 W3 W2 B1 I-AA W19 O-80 B2A O-81 B1E O-82 B31 O-A
 * **Report `0xAA` (`I-AA`):**
   * `W19` (19 words = 38 bytes): 8 touch-sensitive continuous rotary encoders.
 
-### Output Reports (`0x01` OUT)
+### Output Reports (`0x02` OUT, interface 2)
 
 * **Report `0x80` (`O-80`):** `B2A` (42 bytes): Button and mode indicator LEDs. Uses Native Instruments' standard NHL2 4-level discrete duty cycle protocol:
   * `0x00`: **Off** (`LedValue::Off` / `LedValue::OFF`)
@@ -183,29 +188,61 @@ let delta_float = (signed_diff as f32) / 8192.0;
 
 ## On-Device Rendering (ODR) & MessagePack-RPC Stack
 
-For direct control over embedded UI views (Browser, Scales, Arp, Device Settings, Custom Graphics Cache), the keyboard runs an embedded MessagePack-RPC engine over USB bulk pipes or a local service bridge.
+The keyboard renders its own UI. The host drives it with MessagePack-RPC messages over interface 3. The messages listed as verified below have been confirmed on an S49 Mk3 with a standalone test program.
 
-### Transport
+### Framing
 
-* **Physical USB:** Interface 0, Bulk Out `0x03` (RPC commands), Bulk Out `0x04` (data/assets), Bulk In `0x84` (stream responses).
-* **Local Socket:** Named socket `com.native-instruments.nks-connect` or TCP port `5454` (when TCP bridge is enabled).
+Every message in either direction is `<u32 little-endian length><MessagePack value>`. The value is a MessagePack-RPC notification, `[2, method, params]`. A message can span several USB transfers, and one transfer can hold several messages, so the reader must reassemble frames by length.
 
-### Wire Protocol Framing
+### Symbol registry
 
-Standard MessagePack-RPC framing:
-* **Notification (`0x93`):** `[2, method_name, [params...]]`
-* **Request (`0x94`):** `[0, msg_id, method_name, [params...]]`
-* **Response (`0x94`):** `[1, msg_id, error, result]`
+The session opens with a handshake whose method name is the string `"handshake"`, sent on `0x04`:
 
-### Key Model Methods
+```text
+[2, "handshake", [{ "host_protocol_version": "2.5.0",
+                    "symbol_registry": [ ...437 strings... ],
+                    "agent_version": "2.1.5 (R14)",
+                    "utc_clock": "YYYY-MM-DDTHH:MM:SS+0000",
+                    "disable_heartbeat_validation": false }]]
+```
 
-* `client_lightguide_set_leds`: Direct programmatic control of the entire Light Guide RGB strip.
-* `client_host_set_project_tree`: Hierarchical track and group layout.
-* `client_host_set_selected_track`: Focused track selection for embedded view routing.
-* `client_host_set_track_plugin_chain`: Active plugins on the current channel.
-* `client_instance_mixer_set_meters`: Continuous stereo and multi-bus level metering.
-* `client_instance_mixer_set_track_data`: Track volumes, pans, mutes, solos, and colors.
-* `client_instance_parameter_page_model_set`: Full multi-page parameter definitions and banks.
-* `client_smartplay_set_data`: Scales, key modes, chord sets, and arpeggiator engine configurations.
-* `asset_device_model`: Chunked upload of graphic assets (icons, plug-in artwork) directly into the keyboard's high-speed flash cache.
-* `midi_template_transfer`: Export and import of standalone MIDI templates.
+From then on, method names and most map keys are sent as their index in `symbol_registry`, e.g. `66` = `client_instance_add`, `14` = `instance_00`. Some keys are sent as plain strings (for example the `client_instance_add` fields and the inner `parameter_value` map of a page). The registry is in `encdr/src/device/komplete_kontrol/odr/symbols.rs`.
+
+### Session lifecycle
+
+1. Host → `0x04`: `handshake`. Keyboard → `0x83`: `handshake_reply`, followed by settings messages.
+2. Host → `0x03`: `[2, sym(heartbeat), []]` every **8 s** after that. The keyboard checks heartbeats unless the handshake sets `disable_heartbeat_validation`, and its exact timeout isn't known.
+3. Host → `0x04`, each with `instance_00` as the first parameter:
+   - `client_instance_add {name, version, type: "standalone", is_host: true}`
+   - `client_page_set parameter`
+   - `client_focus_acquire`
+   - `client_instance_set_host_owned_instance_client_state {...}`
+4. Host → `0x04`: page content (below).
+5. If the keyboard sends `agent_heartbeat_request_handshake`, the host repeats from step 1. The keyboard has then lost the session, so steps 3–4 must be sent again.
+
+### Verified messages (host → keyboard, `0x04`)
+
+| Method | Params after `instance_00` |
+|---|---|
+| `client_instance_parameter_page_model_set_plugin_data` | `{name, background: <cache index>, parameters: {1..8: {"continuous_parameter": {"parameter_value": {"value", "display_value"}, "parameter_style": {"knob_parameter_style": nil}}}}, plugin_color: {r,g,b,is_rgb565}, nks_control_color}` |
+| `client_instance_parameter_page_model_set_host_owned_viewstate` | `{nks1_layout: [[{section_name, parameters: [{id, name}]}...]], nks2_layout: nil}` |
+| `client_instance_parameter_page_model_update_parameter_value` | `slot (1..8), {continuous_parameter: {value: f32, display_value}}` |
+| `client_instance_plugin_chain_model_set` | `{plugins: [{name, identifier: bin16, can_bypass, bypass_enabled, ...}], current_plugin_index}` |
+| `client_instance_lightguide_set` | `{client_midi_addressing: [[note, colour_index 0..63], ...]}`, where `44` = unlit |
+
+### Keyboard → host (`0x83`)
+
+* `handshake_reply`, `agent_heartbeat_request_handshake`.
+* `plugin_action [instance, {action: [slot 1..8, value]}]`, where the action is `plugin_parameter_value_change` (relative delta), `plugin_parameter_value_set` (absolute) or `plugin_parameter_erp_touched` (touch). The host owns the value: it adds the delta and sends `update_parameter_value` back.
+
+### Not yet verified
+
+These method names exist in the registry, but their payloads haven't been verified on hardware yet:
+* `client_instance_mixer_set_track_data` / `_set_meters`
+* `client_instance_smartplay_set_data`
+* `client_instance_browser_set_data_model`
+* `client_instance_plugin_chain_model_set_current_index`
+* `assets_add` (image upload)
+* `client_page_set` for pages other than `parameter`
+
+Device settings (`display_brightness`, `led_brightness`, `lightguide_enabled`, `global_led_color`) are not in the registry; `set_device_settings` / `get_device_settings` are the likely methods, with string keys.

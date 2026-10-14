@@ -3,13 +3,16 @@
 //! Provides:
 //! - [`models`]: Typed data structures for plugins, parameters, colors, layouts, and assets.
 //! - [`rpc`]: MessagePack-RPC framer and encoders for hardware bulk transport and TCP sockets.
+//! - [`symbols`]: 437-symbol registry for the on-device RPC protocol.
 
 pub mod models;
 pub mod rpc;
+pub mod symbols;
 
 pub use models::{
     ArpConfig, BrowserFilter, BrowserModel, BrowserSoundItem, ChordConfig, DeviceSettings,
     FileAsset, KkMk3Page, LayoutMode, MixerModel, MixerTrack, ParameterItem, PluginChainItem, PluginChainModel,
     PluginData, RgbColor, ScaleConfig, SmartPlayData, ViewAddress, WidgetDisplayType,
 };
-pub use rpc::OdrRpcFramer;
+pub use rpc::{KkMk3OdrEvent, OdrRpcFramer, OdrStreamDecoder};
+pub use symbols::{sym, sym_name, try_sym, SYMBOLS};

@@ -267,11 +267,41 @@ encdr.submit_dual_screen_with_format(device_id, "left", "right", &dual_bgr, Pixe
 Transmits raw payload bytes directly to a named USB interface's OUT endpoint. Used for vendor-specific bulk pipes (such as Komplete Kontrol Mk3's `odr_cmd`).
 
 ```rust
-encdr.write_interface(device_id, "odr_cmd", &msgpack_bytes);
+encdr.write_interface(device_id, "odr_stream", &msgpack_bytes);
 ```
 
+#### `pub fn kk_mk3_handshake(&self, device_id: DeviceId) -> Result<()>`
+Opens the on-device-rendering session by sending the 437-symbol registry handshake over `odr_stream` (Bulk OUT `0x04`). The keyboard answers with `Event::KkMk3Odr { event: KkMk3OdrEvent::HandshakeReply, .. }`. From then on Encdr sends the heartbeat on `odr_cmd` (Bulk OUT `0x03`) every 8 seconds by itself, and re-handshakes automatically when the keyboard sends `agent_heartbeat_request_handshake`.
+
+**On every `HandshakeReply`** (the first one and any after a re-handshake) the keyboard has no session state, so call `kk_mk3_start_session` and resend your pages:
+
+```rust
+encdr.kk_mk3_handshake(device_id)?;
+// in the event loop:
+if let Event::KkMk3Odr { event: KkMk3OdrEvent::HandshakeReply, .. } = event {
+    encdr.kk_mk3_start_session(device_id, "Komplete Kontrol", "Encdr Synth")?;
+    encdr.kk_mk3_set_plugin_data(device_id, &plugin)?;
+}
+```
+
+#### `pub fn kk_mk3_start_session(&self, device_id: DeviceId, instance_name: &str, preset_name: &str) -> Result<()>`
+Registers the host instance and shows the parameter page: `client_instance_add` → `client_page_set` (parameter) → `client_focus_acquire` → `client_instance_set_host_owned_instance_client_state`.
+
+#### `pub fn kk_mk3_init_session(&self, device_id: DeviceId, instance_name: &str, preset_name: &str) -> Result<()>`
+`kk_mk3_handshake` followed immediately by `kk_mk3_start_session`, without waiting for the reply. Handy for quick tests; prefer the event-driven form above.
+
+#### `pub fn kk_mk3_heartbeat(&self, device_id: DeviceId) -> Result<()>`
+Sends one heartbeat on `odr_cmd` (Bulk OUT `0x03`). Not normally needed, since Encdr sends it automatically after a handshake reply.
+
+#### `Event::KkMk3Odr { device, event: KkMk3OdrEvent }`
+Session messages from the keyboard's bulk IN endpoint `0x83`: `HandshakeReply`, `HeartbeatRequestHandshake`, `ParameterSet` (absolute knob value) and `Other { method, value }`. Knob turns and touches are delivered as `EncoderFine` / `Encoder` / `Touch` events named `encoder_1`..`encoder_8` instead.
+
+> **Verified vs experimental:** the handshake, session setup, parameter page (`kk_mk3_set_plugin_data`, `kk_mk3_update_parameter_value*`), `kk_mk3_set_plugin_chain` and Light Guide messages are verified on hardware. The mixer, meters, SmartPlay, browser, device-settings, plugin-chain-index, asset/header-image calls and non-parameter pages are not yet verified and may be ignored by the keyboard.
+
 #### `pub fn kk_mk3_set_plugin_data(&self, device_id: DeviceId, plugin_data: &PluginData) -> Result<()>`
-Serializes and transmits an active instrument / effect parameter page model to a Komplete Kontrol S-Series Mk3 keyboard via ODR MsgPack-RPC over Bulk OUT `0x03`.
+Sends the parameter page (`client_instance_parameter_page_model_set_plugin_data`, up to 8 parameters) followed by its section layout (`..._set_host_owned_viewstate`: parameters 1–4 and 5–8 grouped under the `section_name` of the first parameter in each half) over `odr_stream` (Bulk OUT `0x04`). Send it after `kk_mk3_start_session`, and again after every `HandshakeReply`.
+
+`PluginData::background` is the header image. A numeric string (e.g. `"21"`) is sent as an index into the keyboard's own image cache, which is the only form verified so far; any other string is sent as an asset name (experimental).
 
 ```rust
 use encdr::{PluginData, RgbColor, ParameterItem};
@@ -282,21 +312,38 @@ encdr.kk_mk3_set_plugin_data(device_id, &plugin)?;
 ```
 
 #### `pub fn kk_mk3_update_parameter_value(&self, device_id: DeviceId, param_index: u32, value: f32) -> Result<()>`
-Updates a single parameter's continuous value (`0.0..1.0` or `-1.0..1.0`) on a Komplete Kontrol S-Series Mk3 keyboard. Eliminates overhead by bypassing full page serialization.
+Updates a single parameter's continuous value (`0.0..1.0` or `-1.0..1.0`) on a Komplete Kontrol S-Series Mk3 keyboard over `odr_stream` (Bulk OUT `0x04`). `param_index` is 0-based (slot `param_index + 1` on the wire); the readout is formatted as a percentage.
 
 ```rust
 encdr.kk_mk3_update_parameter_value(device_id, 0, 0.82)?;
 ```
 
+#### `pub fn kk_mk3_update_parameter_value_with_display(&self, device_id: DeviceId, param_index: u32, value: f32, display: &str) -> Result<()>`
+Updates a single parameter's continuous value with a custom display string readout (e.g. `"3.4 kHz"`, `"-6.0 dB"`) over `odr_stream` (Bulk OUT `0x04`).
+
+```rust
+encdr.kk_mk3_update_parameter_value_with_display(device_id, 0, 0.82, "3.4 kHz")?;
+```
+
 #### `pub fn kk_mk3_set_lightguide(&self, device_id: DeviceId, rgb_keys: &[(u8, u8, u8)]) -> Result<()>`
-Sets the per-key 24-bit RGB Light Guide LEDs across the keyboard keybed via ODR. Accepts a slice of `(r, g, b)` tuples for each key (49, 61, or 88 keys).
+Sets the per-key Light Guide LEDs across the keyboard keybed via ODR over `odr_stream` (Bulk OUT `0x04`). Accepts a slice of RGB `(r, g, b)` tuples for each key (49, 61, or 88 keys) and maps them to nearest Mk3 palette colors.
 
 ```rust
 let keys = vec![(0u8, 210u8, 255u8); 61]; // All keys cyan
 encdr.kk_mk3_set_lightguide(device_id, &keys)?;
 ```
 
+#### `pub fn kk_mk3_set_lightguide_indexed(&self, device_id: DeviceId, leds: &[(u8, u8)]) -> Result<()>`
+Sets specific Light Guide LEDs directly by `(midi_note, color_index)` addressing over `odr_stream` (Bulk OUT `0x04`). Color index is 0..63 (44 is unlit / idle).
+
+```rust
+let leds = vec![(36, 12), (48, 24), (60, 36)];
+encdr.kk_mk3_set_lightguide_indexed(device_id, &leds)?;
+```
+
 #### `pub fn kk_mk3_register_asset(&self, device_id: DeviceId, asset_id: &str, image_data: &[u8]) -> Result<()>`
+*Experimental — not yet verified on hardware.*
+
 Uploads and registers a PNG or JPEG graphic asset into the Komplete Kontrol Mk3 on-device high-speed cache.
 
 ```rust
@@ -305,6 +352,8 @@ encdr.kk_mk3_register_asset(device_id, "my_banner", &png_bytes)?;
 ```
 
 #### `pub fn kk_mk3_set_header_image(&self, device_id: DeviceId, asset_id: &str, image_data: &[u8], plugin_data: &mut PluginData) -> Result<()>`
+*Experimental — not yet verified on hardware.*
+
 Convenience method: registers the image asset in the keyboard cache, sets `plugin_data.background = Some(asset_id)`, and dispatches the updated plugin page to the hardware.
 
 ```rust
@@ -323,6 +372,8 @@ encdr.kk_mk3_set_plugin_chain(device_id, &chain)?;
 ```
 
 #### `pub fn kk_mk3_set_plugin_chain_index(&self, device_id: DeviceId, index: u32) -> Result<()>`
+*Experimental — not yet verified on hardware.*
+
 Selects the focused plugin slot index within the active serial insert chain.
 
 ```rust
@@ -330,6 +381,8 @@ encdr.kk_mk3_set_plugin_chain_index(device_id, 1)?;
 ```
 
 #### `pub fn kk_mk3_set_mixer_model(&self, device_id: DeviceId, mixer: &MixerModel) -> Result<()>`
+*Experimental — not yet verified on hardware.*
+
 Uploads the multi-track mixer state model (track labels, colors, mute, solo, arm, volumes, pans) to the Komplete Kontrol Mk3 display.
 
 ```rust
@@ -341,6 +394,8 @@ encdr.kk_mk3_set_mixer_model(device_id, &mixer)?;
 ```
 
 #### `pub fn kk_mk3_set_mixer_meters(&self, device_id: DeviceId, left: &[f32], right: &[f32]) -> Result<()>`
+*Experimental — not yet verified on hardware.*
+
 Updates stereo VU level meters in the ODR mixer view.
 
 ```rust
@@ -348,6 +403,8 @@ encdr.kk_mk3_set_mixer_meters(device_id, &[0.8, 0.4], &[0.75, 0.45])?;
 ```
 
 #### `pub fn kk_mk3_set_smartplay(&self, device_id: DeviceId, smartplay: &SmartPlayData) -> Result<()>`
+*Experimental — not yet verified on hardware.*
+
 Transmits Smart Play settings (scales, chords, arpeggiator engine) to the keyboard.
 
 ```rust
@@ -359,6 +416,8 @@ encdr.kk_mk3_set_smartplay(device_id, &sp)?;
 ```
 
 #### `pub fn kk_mk3_set_browser_model(&self, device_id: DeviceId, browser: &BrowserModel) -> Result<()>`
+*Experimental — not yet verified on hardware.*
+
 Populates the on-device preset/sound browser columns, category tags, and sound list.
 
 ```rust
@@ -370,6 +429,8 @@ encdr.kk_mk3_set_browser_model(device_id, &browser)?;
 ```
 
 #### `pub fn kk_mk3_set_device_settings(&self, device_id: DeviceId, settings: &DeviceSettings) -> Result<()>`
+*Experimental — not yet verified on hardware.*
+
 Updates hardware preferences: display backlight brightness (0..100), LED brightness (0..100), Light Guide enable, and velocity curve.
 
 ```rust
@@ -381,6 +442,8 @@ encdr.kk_mk3_set_device_settings(device_id, &settings)?;
 ```
 
 #### `pub fn kk_mk3_set_page(&self, device_id: DeviceId, page: KkMk3Page) -> Result<()>`
+*Only `KkMk3Page::Parameters` is verified; the other pages are experimental.*
+
 Switches the active on-device screen template (`Parameters`, `Browser`, `Mixer`, `SmartPlay`, `PluginChain`, or `Settings`).
 
 ```rust
@@ -522,8 +585,14 @@ pub enum Event {
         index: u8,
         pressure: f32,
     },
+    KkMk3Odr {
+        device: DeviceId,
+        event: KkMk3OdrEvent,
+    },
 }
 ```
+
+> Adding `KkMk3Odr` in v0.8.0 means a `match` on `Event` with no `_` arm needs one more arm.
 
 ### Event Variants
 
@@ -535,6 +604,7 @@ pub enum Event {
 - `EncoderFine`: High-resolution endless dial, capacitive knob rotation, or jogwheel. `delta` is a floating-point delta scaled by the descriptor's `scale` factor.
 - `Touch`: Capacitive touch sensor (e.g. knob tops, touchstrip surfaces). `touched` is `true` while contact is maintained.
 - `Grid`: Drum pad or velocity grid event. `index` is pad index (0-based) and `pressure` is normalized pressure (`0.0` to `1.0`).
+- `KkMk3Odr`: Komplete Kontrol Mk3 on-device-rendering session message (see [`KkMk3OdrEvent`](#kkmk3odrevent)). Knob turns and touches from the Mk3's ODR stream are not sent this way; they arrive as `EncoderFine` / `Encoder` / `Touch` named `encoder_1`..`encoder_8`.
 
 ### Helper Methods
 
@@ -1068,7 +1138,9 @@ Returns the right display identifier string.
 
 Defined in [`encdr::device::komplete_kontrol`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/device/komplete_kontrol/mod.rs) and re-exported at the crate root.
 
-Provides typed builders, parsers, and data models for Native Instruments Komplete Kontrol S-Series Mk3 (S49, S61, S88) controllers across both the dedicated DAW Remote MIDI port (`MIDI Channel 16` / SysEx) and the high-speed USB bulk ODR MessagePack-RPC command pipe (`odr_cmd`).
+Provides typed builders, parsers, and data models for Native Instruments Komplete Kontrol S-Series Mk3 (S49, S61, S88) controllers across both the dedicated DAW Remote MIDI port (`MIDI Channel 16` / SysEx) and the USB bulk ODR MessagePack-RPC pipes on interface 3 (`odr_stream`: OUT `0x04` / IN `0x83`; `odr_cmd`: OUT `0x03`, heartbeat only).
+
+**Verification status.** The handshake, heartbeat, session setup, parameter page, parameter value updates, plugin chain and Light Guide messages are verified on an S49 Mk3. Everything marked *Experimental* uses method names from the keyboard's symbol registry, but its payload layout is provisional and the keyboard may ignore it.
 
 ### `KkMk3DawController`
 
@@ -1202,5 +1274,31 @@ Onboard view template selector:
 - `PluginChain`: Insert chain view.
 - `Settings`: Hardware device settings.
 
+#### `KkMk3OdrEvent`
+Message received from the keyboard's bulk IN endpoint `0x83`:
+- `ParameterDelta { param_index: u32, delta: f32 }` — relative knob turn (`param_index` 0..7). Delivered to apps as `EncoderFine`/`Encoder` on `encoder_1`..`encoder_8`.
+- `ParameterSet { param_index: u32, value: f32 }` — absolute value set from the keyboard. Delivered as `Event::KkMk3Odr`.
+- `ParameterTouched { param_index: u32, touched: bool }` — knob touch. Delivered as `Touch` on `encoder_N`.
+- `HandshakeReply` — the keyboard accepted a handshake; (re)send session setup and pages.
+- `HeartbeatRequestHandshake` — the keyboard wants a new handshake; Encdr sends it automatically.
+- `Other { method: String, value: rmpv::Value }` — any other message, with symbol ids resolved to the method name.
+
 #### `OdrRpcFramer`
-MessagePack-RPC packet framer used internally to encode notifications (`[2, method, params]`) and requests (`[0, msg_id, method, params]`) over Bulk OUT `0x03`.
+Builds framed ODR messages: `<u32 little-endian length><MessagePack [2, method, [instance_00, params...]]>`, with method names and most map keys sent as indexes into the symbol registry (names missing from the registry fall back to strings rather than failing). The `Encdr::kk_mk3_*` methods use it internally; use it directly with `write_interface` for messages Encdr doesn't wrap.
+- Session: `build_handshake()`, `build_heartbeat()`, `build_instance_add(name, is_host)`, `build_focus_acquire()`, `build_focus_release()`, `build_set_host_instance_state(preset_name, tempo)`, `build_set_page(page)`.
+- Parameter page: `build_set_plugin_data(&PluginData)`, `build_set_host_viewstate(&PluginData)` (section layout), `build_update_parameter_value(index, value)`, `build_update_parameter_value_with_display(index, value, display)`.
+- Light Guide: `build_set_lightguide_indexed(&[(note, colour_index)])`, `build_set_lightguide(&[(r, g, b)])` (nearest palette colour via `rgb_to_lightguide_color`).
+- Experimental: `build_set_plugin_chain_index`, `build_set_mixer_track_data`, `build_set_mixer_meters`, `build_set_smartplay_data`, `build_set_browser_model`, `build_set_device_settings`, `build_register_asset`.
+- Incoming: `decode_message(body) -> Vec<KkMk3OdrEvent>` for one unframed message; `parse_incoming(packet)` for the first message of a complete framed packet.
+
+#### `OdrStreamDecoder`
+Reassembles framed messages from the bulk IN stream, where one message can span several USB transfers and one transfer can hold several messages. `push(&[u8]) -> Vec<KkMk3OdrEvent>` returns the events of every message completed so far; `clear()` drops a partial message. Encdr's device thread uses it for `odr_stream`; it's public for apps that read the endpoint themselves.
+
+#### Symbol registry
+`SYMBOLS` (the 437 names sent in the session handshake), `sym(name) -> i64` (panics if the name isn't registered), `try_sym(name) -> Option<i64>`, `sym_name(id) -> Option<&str>`.
+
+#### Light Guide colours
+`client_instance_lightguide_set` addresses keys by MIDI note with a colour index `0..=63`. Index `44` is unlit. The first key is note 36 on the S49/S61 and note 21 on the S88.
+
+#### Model fields not yet sent
+`ParameterItem::display_type` (`WidgetDisplayType`) and `LayoutMode` are not encoded yet: every parameter is sent as a continuous knob, the only style verified so far.
