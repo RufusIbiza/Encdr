@@ -285,32 +285,33 @@ Incoming messages on bulk IN `0x83` are reassembled across USB transfers, so lon
 
 Build an 8-knob parameter page using [`PluginData`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/device/komplete_kontrol/odr/models.rs#L130-L172) and [`ParameterItem`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/device/komplete_kontrol/odr/models.rs#L78-L125).
 
-#### Available Widget Display Types
+Build an 8-knob parameter page using [`PluginData`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/device/komplete_kontrol/odr/models.rs#L130-L172) and [`ParameterItem`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/device/komplete_kontrol/odr/models.rs#L78-L125).
 
-> `display_type` is stored on each `ParameterItem` but **not sent yet**: every parameter is currently drawn as a continuous knob, the only style verified so far. The table describes the intended mapping.
+#### Native Parameter Presentation Styles
 
-| Widget Type | Enum Variant | Visual Appearance |
-| :--- | :--- | :--- |
-| **Knob** | [`WidgetDisplayType::Knob`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/device/komplete_kontrol/odr/models.rs#L60) | Radial circular arc gauge. |
-| **Range** | [`WidgetDisplayType::Range`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/device/komplete_kontrol/odr/models.rs#L62) | Linear continuous slider bar. |
-| **Toggle** | [`WidgetDisplayType::Toggle`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/device/komplete_kontrol/odr/models.rs#L64) | 2-state On/Off switch button. |
-| **Trigger** | [`WidgetDisplayType::Trigger`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/device/komplete_kontrol/odr/models.rs#L66) | Momentary action / strike button. |
-| **Increment** | [`WidgetDisplayType::Increment`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/device/komplete_kontrol/odr/models.rs#L68) | Discrete stepped selector (e.g. shapes, octaves). |
-| **Relative** | [`WidgetDisplayType::Relative`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/device/komplete_kontrol/odr/models.rs#L70) | Bipolar center-detented indicator (`-1.0` to `+1.0`). |
-| **Text** | [`WidgetDisplayType::Text`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/device/komplete_kontrol/odr/models.rs#L72) | Static text label readout. |
-| **Disabled** | [`WidgetDisplayType::Disabled`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/device/komplete_kontrol/odr/models.rs#L74) | Empty knob slot. |
+In addition to standard continuous knobs, the Mk3 hardware renders native vector graphics for oscillator waveforms, filter frequency curves, power buttons, and tempo values without needing raster images:
+
+| Parameter Style | Type / Constructor | Wire Symbol | Visual Appearance |
+| :--- | :--- | :--- | :--- |
+| **Knob** | [`ParameterItem::knob`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/device/komplete_kontrol/odr/models.rs) | `knob_parameter_style` | Radial circular arc gauge. |
+| **Power Switch** | [`ParameterItem::toggle`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/device/komplete_kontrol/odr/models.rs) | `power_parameter_style` | 2-state on/off push button. |
+| **Waveform** | [`ParameterItem::waveform`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/device/komplete_kontrol/odr/models.rs) | `waveform_parameter_style` | Native oscillator waveform shape vector (sine, saw, square, pwm, wavetable, complex). |
+| **Filter Curve** | [`ParameterItem::filter`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/device/komplete_kontrol/odr/models.rs) | `filtertype_parameter_style` | Frequency response curve (resonant lowpass, highpass, bandpass, bell, shelf, comb). |
+| **Tempo Sync** | `ParameterStyle::TempoSync` | `tempo_sync_parameter_style` | Beat-synchronized note division readout (e.g. `1/4`, `1/8D`). |
+| **Value Readout** | `ParameterStyle::Value` | `value_parameter_style` | Clean numeric/text readout without a circular arc. |
+| **Menu** | `ParameterStyle::Menu` | `menu_parameter_style` | Stepped dropdown/menu selector. |
 
 #### Building and Sending a Page
 
 ```rust
-use encdr::{ParameterItem, PluginData, RgbColor, WidgetDisplayType};
+use encdr::{FilterType, ParameterItem, PluginData, RgbColor, WaveformType};
 
 let mut plugin = PluginData::new("Analog Monolith", RgbColor::CYAN);
 
-// Add up to 8 parameters mapped to the physical encoders
-plugin.add_parameter(ParameterItem::knob("Cutoff", 0.72, "3.4 kHz", "Filter"));
+// Add parameters with native vector graphics
+plugin.add_parameter(ParameterItem::waveform("Osc 1 Wave", WaveformType::Saw, "Oscillator"));
+plugin.add_parameter(ParameterItem::filter("Cutoff", 0.72, "3.4 kHz", FilterType::ResonantLoPass, "Filter"));
 plugin.add_parameter(ParameterItem::knob("Resonance", 0.45, "45%", "Filter"));
-plugin.add_parameter(ParameterItem::knob("Drive", 0.20, "+3.0 dB", "Filter"));
 plugin.add_parameter(ParameterItem::toggle("Lowpass 24", true, "Filter"));
 
 plugin.add_parameter(ParameterItem::knob("Attack", 0.15, "12 ms", "Envelope"));
@@ -322,11 +323,50 @@ plugin.add_parameter(ParameterItem::knob("Release", 0.35, "180 ms", "Envelope"))
 encdr.kk_mk3_set_plugin_data(mk3_id, &plugin)?;
 ```
 
-### 5.2 Real-Time Parameter Value Updates & Live Encoder Feedback
+### 5.2 Real-Time Parameter Updates & Incoming Event Stream
 
-When a knob is turned, the keyboard sends `plugin_action` messages on Bulk IN `0x83`. Encdr's device thread reassembles them and emits `Event::EncoderFine` (the raw fractional delta, e.g. `+0.012`), `Event::Encoder` (`±1`) and `Event::Touch`, named `encoder_1`..`encoder_8`. The host owns parameter values: add the delta to your value and send the result back, as below. Absolute values set from the keyboard arrive as `Event::KkMk3Odr { event: KkMk3OdrEvent::ParameterSet { .. }, .. }`.
+When encoders are turned or touched, pedals are plugged in, or on-screen controls are pressed, the keyboard sends messages on Bulk IN `0x83`. Encdr reassembles these frames and emits both unified high-level events and typed [`Event::KkMk3Odr`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/core/event.rs) events:
 
-You can update the parameter's displayed value and gauge on screen without re-transmitting the entire model tree:
+| Inbound Event | Payload | Description |
+| :--- | :--- | :--- |
+| **`Event::EncoderFine`** | `name, delta` | Fractional rotary delta (e.g. `+0.012`, `-0.008`) for knobs `encoder_1`..`encoder_8`. |
+| **`Event::Encoder`** | `name, delta` | Discrete step delta (`±1`) for encoders. |
+| **`Event::Touch`** | `name, touched` | Capacitive touch sensor state on knob tops. |
+| **`KkMk3OdrEvent::ParameterDelta`** | `param_index, delta` | Direct 0-indexed parameter delta. |
+| **`KkMk3OdrEvent::ParameterSet`** | `param_index, value` | Absolute parameter jump set by hardware (`0.0..=1.0`). |
+| **`KkMk3OdrEvent::PageIndexChanged`** | `page_index` | Fired when the user switches parameter pages on screen. |
+| **`KkMk3OdrEvent::PedalChanged`** | `pedal, connected` | Hardware pedal connection changed (`PedalType::Sustain`, `Expression`, `Assign1`, `Assign2`). |
+| **`KkMk3OdrEvent::FocusChanged`** | `has_focus` | Hardware focus switched between keyboard standalone and host instance. |
+| **`KkMk3OdrEvent::DawAction`** | `action, value` | On-screen DAW controls pressed (`daw_play`, `daw_stop`, `daw_record`, `daw_tempo`, `daw_select_track`, `daw_mute_track`, etc.). |
+| **`KkMk3OdrEvent::PluginChainAction`** | `action, value` | Insert chain navigation, bypass, or slot change. |
+| **`KkMk3OdrEvent::BrowserAction`** | `action, value` | Sound preset selection or filter navigation. |
+| **`KkMk3OdrEvent::HandshakeReply`** | — | Hardware confirmed connection; Encdr begins the 8-second keepalive heartbeat. |
+| **`KkMk3OdrEvent::HeartbeatRequestHandshake`** | — | Hardware requested a new handshake (Encdr automatically re-handshakes). |
+
+```rust
+// Reacting to Mk3 events in your event loop:
+while let Ok(event) = rx.recv() {
+    match event {
+        Event::EncoderFine { name, delta, .. } => {
+            // Apply fine delta to parameter value
+        }
+        Event::KkMk3Odr { event: KkMk3OdrEvent::PedalChanged { pedal, connected }, .. } => {
+            println!("Pedal {:?} is now {}", pedal, if connected { "plugged in" } else { "unplugged" });
+        }
+        Event::KkMk3Odr { event: KkMk3OdrEvent::DawAction { action, .. }, .. } => {
+            println!("DAW control triggered from Mk3: {action}");
+        }
+        Event::KkMk3Odr { event: KkMk3OdrEvent::HandshakeReply, .. } => {
+            // Resend your plugin data and page state
+            encdr.kk_mk3_start_session(mk3_id, "My DAW", "Init Preset")?;
+            encdr.kk_mk3_set_plugin_data(mk3_id, &plugin)?;
+        }
+        _ => {}
+    }
+}
+```
+
+You can update a parameter's displayed value and gauge on screen without re-transmitting the entire model tree:
 
 ```rust
 // Update Cutoff (knob index 0, 0-based) with a scalar
@@ -621,6 +661,31 @@ encdr.kk_mk3_set_page(mk3_id, KkMk3Page::SmartPlay)?;
 
 // Show device settings
 encdr.kk_mk3_set_page(mk3_id, KkMk3Page::Settings)?;
+```
+
+### 7.7 Diagnostics & Hardware Maintenance Commands
+
+Encdr provides typed facade methods for executing low-level system commands and diagnostics directly on the keyboard without requiring a physical power-cycle:
+
+```rust
+// Restart on-device renderer (recovers from display glitches/freezes)
+encdr.kk_mk3_restart_renderer(mk3_id)?;
+
+// Soft reboot the keyboard
+encdr.kk_mk3_reboot(mk3_id)?;
+
+// Reboot keyboard into Device Firmware Upgrade (DFU) mode
+encdr.kk_mk3_reboot_dfu(mk3_id)?;
+
+// Trigger internal hardware self-test routine
+encdr.kk_mk3_self_test(mk3_id)?;
+
+// Enable serial diagnostic console
+encdr.kk_mk3_enable_serial_console(mk3_id)?;
+
+// Request application logs and crash dumps
+encdr.kk_mk3_request_application_log(mk3_id)?;
+encdr.kk_mk3_request_crashdumps(mk3_id)?;
 ```
 
 ---

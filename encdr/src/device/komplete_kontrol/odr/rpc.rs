@@ -19,8 +19,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rmpv::Value;
 use crate::core::error::{EncdrError, Result};
 use super::models::{
-    BrowserModel, DeviceSettings, FileAsset, KkMk3Page, MixerModel, PluginChainModel, PluginData,
-    SmartPlayData,
+    BrowserModel, DeviceSettings, FileAsset, KkMk3Page, MixerModel, ParameterStyle,
+    PedalType, PluginChainModel, PluginData, SmartPlayData,
 };
 use super::symbols::{sym_name, try_sym, SYMBOLS};
 
@@ -58,6 +58,18 @@ pub enum KkMk3OdrEvent {
     ParameterSet { param_index: u32, value: f32 },
     /// Rotary knob capacitive touch state changed.
     ParameterTouched { param_index: u32, touched: bool },
+    /// Active parameter page index switched on hardware (0-based).
+    PageIndexChanged { page_index: u32 },
+    /// Hardware foot pedal jack connection state changed.
+    PedalChanged { pedal: PedalType, connected: bool },
+    /// UI focus changed between keyboard standalone and host.
+    FocusChanged { has_focus: bool },
+    /// DAW transport, track, or mixing action triggered from hardware.
+    DawAction { action: String, value: Value },
+    /// Plugin chain navigation, bypass, or slot action triggered from hardware.
+    PluginChainAction { action: String, value: Value },
+    /// Preset/sound browser navigation or load action triggered from hardware.
+    BrowserAction { action: String, value: Value },
     /// Device acknowledged handshake.
     HandshakeReply,
     /// Device requested a fresh handshake (e.g. after a reboot or session timeout).
@@ -241,6 +253,15 @@ impl OdrRpcFramer {
             .enumerate()
             .take(8)
             .map(|(i, param)| {
+                let style_val = match param.style {
+                    ParameterStyle::Knob => strmap(vec![("knob_parameter_style", Value::Nil)]),
+                    ParameterStyle::Value => strmap(vec![("value_parameter_style", Value::Nil)]),
+                    ParameterStyle::Power => strmap(vec![("power_parameter_style", Value::Nil)]),
+                    ParameterStyle::TempoSync => strmap(vec![("tempo_sync_parameter_style", Value::Nil)]),
+                    ParameterStyle::Menu => strmap(vec![("menu_parameter_style", Value::Nil)]),
+                    ParameterStyle::Waveform(wf) => smap(vec![("waveform_parameter_style", sym_value(wf.as_sym()))]),
+                    ParameterStyle::Filter(ft) => smap(vec![("filtertype_parameter_style", sym_value(ft.as_sym()))]),
+                };
                 let p = strmap(vec![(
                     "continuous_parameter",
                     strmap(vec![
@@ -251,7 +272,7 @@ impl OdrRpcFramer {
                                 ("display_value", param.display_value.clone().into()),
                             ]),
                         ),
-                        ("parameter_style", strmap(vec![("knob_parameter_style", Value::Nil)])),
+                        ("parameter_style", style_val),
                     ]),
                 )]);
                 (Value::from(i as i64 + 1), p)
@@ -515,6 +536,48 @@ impl OdrRpcFramer {
         Ok((msg_id, bytes))
     }
 
+    // ── Diagnostics & System Commands ────────────────────────────────────
+
+    /// Build a generic system command notification (`[2, sym("system_command"), [sym(command)]]`).
+    pub fn build_system_cmd(command: &str) -> Vec<u8> {
+        frame_notification(sym_value("system_command"), vec![sym_value(command)])
+    }
+
+    /// Build a command to restart the on-device renderer.
+    pub fn build_restart_renderer() -> Vec<u8> {
+        Self::build_system_cmd("restart_renderer")
+    }
+
+    /// Build a command to soft reboot the keyboard hardware.
+    pub fn build_reboot() -> Vec<u8> {
+        Self::build_system_cmd("reboot")
+    }
+
+    /// Build a command to reboot the keyboard into Device Firmware Upgrade (DFU) mode.
+    pub fn build_reboot_dfu() -> Vec<u8> {
+        Self::build_system_cmd("reboot_for_dfu")
+    }
+
+    /// Build a command to trigger the keyboard's internal self-test sequence.
+    pub fn build_self_test() -> Vec<u8> {
+        Self::build_system_cmd("self_test")
+    }
+
+    /// Build a command to enable the serial diagnostic console on the hardware.
+    pub fn build_enable_serial_console() -> Vec<u8> {
+        Self::build_system_cmd("enable_serial_console")
+    }
+
+    /// Build a command requesting the application log from the device.
+    pub fn build_request_application_log() -> Vec<u8> {
+        Self::build_system_cmd("request_application_log")
+    }
+
+    /// Build a command requesting crash dumps from the device.
+    pub fn build_request_crashdumps() -> Vec<u8> {
+        Self::build_system_cmd("request_crashdumps")
+    }
+
     // ── Incoming Packet Parsing ──────────────────────────────────────────
 
     /// Parse the first framed message in `packet` (`<u32 LE length><MessagePack>`).
@@ -556,6 +619,39 @@ impl OdrRpcFramer {
         match method_name.as_str() {
             "handshake_reply" => return Ok(vec![KkMk3OdrEvent::HandshakeReply]),
             "agent_heartbeat_request_handshake" => return Ok(vec![KkMk3OdrEvent::HeartbeatRequestHandshake]),
+            "device_property_changed" | "device_properties" => {
+                let mut events = Vec::new();
+                if let Some(params) = arr.get(2).and_then(|p| p.as_array()) {
+                    for param in params {
+                        if let Some(map) = param.as_map() {
+                            for (k, v) in map {
+                                let key = k
+                                    .as_i64()
+                                    .and_then(sym_name)
+                                    .map(|s| s.to_string())
+                                    .or_else(|| k.as_str().map(|s| s.to_string()))
+                                    .unwrap_or_default();
+                                if let Some(pedal) = PedalType::from_sym(&key) {
+                                    let connected = v.as_bool().unwrap_or(false);
+                                    events.push(KkMk3OdrEvent::PedalChanged { pedal, connected });
+                                }
+                            }
+                        }
+                    }
+                }
+                if !events.is_empty() {
+                    return Ok(events);
+                }
+            }
+            "focus_changed" | "set_focus" => {
+                let has_focus = arr
+                    .get(2)
+                    .and_then(|p| p.as_array())
+                    .and_then(|a| a.first())
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                return Ok(vec![KkMk3OdrEvent::FocusChanged { has_focus }]);
+            }
             _ => {}
         }
 
@@ -575,6 +671,28 @@ impl OdrRpcFramer {
                         .map(|s| s.to_string())
                         .or_else(|| k.as_str().map(|s| s.to_string()))
                         .unwrap_or_default();
+
+                    if action == "plugin_parameter_set_page_index" {
+                        let page_idx = v
+                            .as_i64()
+                            .or_else(|| v.as_array().and_then(|a| a.first()).and_then(|x| x.as_i64()))
+                            .unwrap_or(0);
+                        events.push(KkMk3OdrEvent::PageIndexChanged { page_index: page_idx as u32 });
+                        continue;
+                    }
+                    if action.starts_with("daw_") {
+                        events.push(KkMk3OdrEvent::DawAction { action, value: v.clone() });
+                        continue;
+                    }
+                    if action.starts_with("plugin_chain_") {
+                        events.push(KkMk3OdrEvent::PluginChainAction { action, value: v.clone() });
+                        continue;
+                    }
+                    if action.starts_with("browser_") {
+                        events.push(KkMk3OdrEvent::BrowserAction { action, value: v.clone() });
+                        continue;
+                    }
+
                     // Parameter ids on the wire are 1-based slots (1..=8).
                     let Some([idx, arg]) = v.as_array().map(|a| a.as_slice()) else { continue };
                     let Some(param_index) = idx.as_i64().filter(|i| (1..=8).contains(i)).map(|i| (i - 1) as u32)
@@ -698,6 +816,7 @@ pub fn rgb_to_lightguide_color(r: u8, g: u8, b: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::models::{FilterType, ParameterItem, RgbColor, WaveformType};
     use super::super::symbols::sym;
 
     fn framed(v: &Value) -> Vec<u8> {
@@ -857,6 +976,88 @@ mod tests {
                 param_index: 1,
                 delta: 0.025,
             }
+        );
+    }
+
+    #[test]
+    fn test_parameter_styles_serialization() {
+        let mut plugin = PluginData::new("Synth", RgbColor::CYAN);
+        plugin.add_parameter(
+            ParameterItem::waveform("Osc Wave", WaveformType::Saw, "Oscillator")
+        );
+        plugin.add_parameter(
+            ParameterItem::filter("Cutoff", 0.75, "2.4 kHz", FilterType::ResonantLoPass, "Filter")
+        );
+        plugin.add_parameter(
+            ParameterItem::toggle("Bypass", true, "Master")
+        );
+        let framer = OdrRpcFramer::new();
+        let bytes = framer.build_set_plugin_data(&plugin).unwrap();
+        assert!(bytes.len() > 50);
+        let len = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
+        assert_eq!(len, bytes.len() - 4);
+    }
+
+    #[test]
+    fn test_system_command_wire_format() {
+        let cmd = OdrRpcFramer::build_restart_renderer();
+        assert!(cmd.len() >= 4);
+        let len = u32::from_le_bytes([cmd[0], cmd[1], cmd[2], cmd[3]]) as usize;
+        assert_eq!(len, cmd.len() - 4);
+
+        let reboot = OdrRpcFramer::build_reboot();
+        assert!(reboot.len() >= 4);
+    }
+
+    #[test]
+    fn test_parse_pedal_and_focus_events() {
+        // Pedal connection notification
+        let pedal_msg = Value::Array(vec![
+            2.into(),
+            sym("device_property_changed").into(),
+            Value::Array(vec![
+                Value::Map(vec![
+                    (sym_value("pedal_sustain_connected"), Value::Boolean(true)),
+                    (sym_value("pedal_expression_connected"), Value::Boolean(false)),
+                ]),
+            ]),
+        ]);
+        let mut body = Vec::new();
+        rmpv::encode::write_value(&mut body, &pedal_msg).unwrap();
+        let evs = OdrRpcFramer::decode_message(&body).unwrap();
+        assert_eq!(
+            evs,
+            vec![
+                KkMk3OdrEvent::PedalChanged { pedal: PedalType::Sustain, connected: true },
+                KkMk3OdrEvent::PedalChanged { pedal: PedalType::Expression, connected: false },
+            ]
+        );
+
+        // Focus changed notification
+        let focus_msg = Value::Array(vec![
+            2.into(),
+            sym("focus_changed").into(),
+            Value::Array(vec![Value::Boolean(true)]),
+        ]);
+        let mut body2 = Vec::new();
+        rmpv::encode::write_value(&mut body2, &focus_msg).unwrap();
+        let evs2 = OdrRpcFramer::decode_message(&body2).unwrap();
+        assert_eq!(evs2, vec![KkMk3OdrEvent::FocusChanged { has_focus: true }]);
+    }
+
+    #[test]
+    fn test_parse_daw_and_page_actions() {
+        let action_msg = plugin_action(vec![
+            ("plugin_parameter_set_page_index", Value::Array(vec![2.into()])),
+            ("daw_play", Value::Boolean(true)),
+        ]);
+        let evs = OdrRpcFramer::decode_message(&framed(&action_msg)[4..]).unwrap();
+        assert_eq!(
+            evs,
+            vec![
+                KkMk3OdrEvent::PageIndexChanged { page_index: 2 },
+                KkMk3OdrEvent::DawAction { action: "daw_play".to_string(), value: Value::Boolean(true) },
+            ]
         );
     }
 }

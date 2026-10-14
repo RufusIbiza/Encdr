@@ -52,6 +52,178 @@ pub enum KkMk3Page {
     Settings,
 }
 
+/// Hardware foot pedal jack connection identifier on Komplete Kontrol Mk3.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PedalType {
+    /// Sustain pedal input (Jack 1).
+    Sustain,
+    /// Expression / continuous pedal input (Jack 2).
+    Expression,
+    /// Assignable pedal input 1 (Jack 3).
+    Assign1,
+    /// Assignable pedal input 2 (Jack 4).
+    Assign2,
+}
+
+impl PedalType {
+    pub fn as_sym(&self) -> &'static str {
+        match self {
+            Self::Sustain => "pedal_sustain_connected",
+            Self::Expression => "pedal_expression_connected",
+            Self::Assign1 => "pedal_assign1_connected",
+            Self::Assign2 => "pedal_assign2_connected",
+        }
+    }
+
+    pub fn from_sym(name: &str) -> Option<Self> {
+        match name {
+            "pedal_sustain_connected" => Some(Self::Sustain),
+            "pedal_expression_connected" => Some(Self::Expression),
+            "pedal_assign1_connected" => Some(Self::Assign1),
+            "pedal_assign2_connected" => Some(Self::Assign2),
+            _ => None,
+        }
+    }
+}
+
+/// Native oscillator waveform glyph identifier supported by the Komplete Kontrol Mk3 display.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum WaveformType {
+    #[default]
+    Default,
+    Sine,
+    Square,
+    Square2,
+    Square3,
+    Square4,
+    Triangle,
+    Triangle2,
+    Triangle3,
+    Triangle4,
+    Saw,
+    Saw2,
+    Saw3,
+    Saw4,
+    Noise,
+    Pwm,
+    Wavetable,
+    Wavetable2,
+    Wavetable3,
+    Wavetable4,
+    Complex,
+}
+
+impl WaveformType {
+    pub fn as_sym(&self) -> &'static str {
+        match self {
+            Self::Default => "default_waveform",
+            Self::Sine => "sine",
+            Self::Square => "square",
+            Self::Square2 => "square_2",
+            Self::Square3 => "square_3",
+            Self::Square4 => "square_4",
+            Self::Triangle => "triangle",
+            Self::Triangle2 => "triangle_2",
+            Self::Triangle3 => "triangle_3",
+            Self::Triangle4 => "triangle_4",
+            Self::Saw => "saw",
+            Self::Saw2 => "saw_2",
+            Self::Saw3 => "saw_3",
+            Self::Saw4 => "saw_4",
+            Self::Noise => "noise",
+            Self::Pwm => "pwm",
+            Self::Wavetable => "wavetable",
+            Self::Wavetable2 => "wavetable_2",
+            Self::Wavetable3 => "wavetable_3",
+            Self::Wavetable4 => "wavetable_4",
+            Self::Complex => "complex",
+        }
+    }
+}
+
+/// Native filter frequency response curve identifier supported by the Komplete Kontrol Mk3 display.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum FilterType {
+    #[default]
+    Default,
+    HiPass,
+    ResonantHiPass,
+    LoPass,
+    ResonantLoPass,
+    BandPass,
+    AllPass,
+    Bell,
+    PropQ,
+    BandShelf,
+    AnalogLoShelf,
+    AnalogHiShelf,
+    BaxandallLoShelf,
+    BaxandallHiShelf,
+    Comb,
+    BandReject,
+}
+
+impl FilterType {
+    pub fn as_sym(&self) -> &'static str {
+        match self {
+            Self::Default => "default_filter_type",
+            Self::HiPass => "hi_pass",
+            Self::ResonantHiPass => "resonant_hi_pass",
+            Self::LoPass => "lo_pass",
+            Self::ResonantLoPass => "resonant_lo_pass",
+            Self::BandPass => "band_pass",
+            Self::AllPass => "all_pass",
+            Self::Bell => "bell",
+            Self::PropQ => "prop_q",
+            Self::BandShelf => "band_shelf",
+            Self::AnalogLoShelf => "analog_lo_shelf",
+            Self::AnalogHiShelf => "analog_hi_shelf",
+            Self::BaxandallLoShelf => "baxandall_lo_shelf",
+            Self::BaxandallHiShelf => "baxandall_hi_shelf",
+            Self::Comb => "comb",
+            Self::BandReject => "band_reject",
+        }
+    }
+}
+
+/// Visual parameter presentation style rendered above and below rotary encoders on the Mk3 display.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ParameterStyle {
+    /// Continuous rotary arc gauge.
+    #[default]
+    Knob,
+    /// Numeric or text readout without an arc.
+    Value,
+    /// On/off power push-button indicator.
+    Power,
+    /// Musical beat tempo-synced value (e.g. 1/4, 1/8D).
+    TempoSync,
+    /// Stepped menu or dropdown selection item.
+    Menu,
+    /// Native oscillator waveform shape vector (sine, saw, square, etc.).
+    Waveform(WaveformType),
+    /// Native filter frequency response curve (lowpass, highpass, resonant, etc.).
+    Filter(FilterType),
+}
+
+impl ParameterStyle {
+    pub fn as_sym(&self) -> &'static str {
+        match self {
+            Self::Knob => "knob_parameter_style",
+            Self::Value => "value_parameter_style",
+            Self::Power => "power_parameter_style",
+            Self::TempoSync => "tempo_sync_parameter_style",
+            Self::Menu => "menu_parameter_style",
+            Self::Waveform(_) => "waveform_parameter_style",
+            Self::Filter(_) => "filtertype_parameter_style",
+        }
+    }
+}
+
 /// Visual control widget representation rendered above and below the physical rotary encoders.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -88,6 +260,9 @@ pub struct ParameterItem {
     /// Group / section heading label (e.g. `"Filter"`, `"Amp Env"`).
     #[serde(default)]
     pub section_name: String,
+    /// Native parameter rendering style on the Mk3 display.
+    #[serde(default)]
+    pub style: ParameterStyle,
 }
 
 impl ParameterItem {
@@ -98,13 +273,24 @@ impl ParameterItem {
         display_type: WidgetDisplayType,
         section_name: impl Into<String>,
     ) -> Self {
+        let style = match display_type {
+            WidgetDisplayType::Toggle => ParameterStyle::Power,
+            _ => ParameterStyle::Knob,
+        };
         Self {
             name: name.into(),
             value,
             display_value: display_value.into(),
             display_type,
             section_name: section_name.into(),
+            style,
         }
+    }
+
+    /// Set an explicit visual parameter style (e.g. native waveform or filter graphic).
+    pub fn with_style(mut self, style: ParameterStyle) -> Self {
+        self.style = style;
+        self
     }
 
     /// Convenience builder for a standard rotary knob.
@@ -121,6 +307,24 @@ impl ParameterItem {
             WidgetDisplayType::Toggle,
             section,
         )
+    }
+
+    /// Convenience builder for a parameter rendering a native oscillator waveform shape.
+    pub fn waveform(name: impl Into<String>, waveform: WaveformType, section: impl Into<String>) -> Self {
+        Self::new(name, 0.0, waveform.as_sym(), WidgetDisplayType::Increment, section)
+            .with_style(ParameterStyle::Waveform(waveform))
+    }
+
+    /// Convenience builder for a parameter rendering a native filter response curve.
+    pub fn filter(
+        name: impl Into<String>,
+        cutoff: f32,
+        display_value: impl Into<String>,
+        filter: FilterType,
+        section: impl Into<String>,
+    ) -> Self {
+        Self::new(name, cutoff, display_value, WidgetDisplayType::Knob, section)
+            .with_style(ParameterStyle::Filter(filter))
     }
 }
 

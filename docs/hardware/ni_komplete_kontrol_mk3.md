@@ -224,16 +224,40 @@ From then on, method names and most map keys are sent as their index in `symbol_
 
 | Method | Params after `instance_00` |
 |---|---|
-| `client_instance_parameter_page_model_set_plugin_data` | `{name, background: <cache index>, parameters: {1..8: {"continuous_parameter": {"parameter_value": {"value", "display_value"}, "parameter_style": {"knob_parameter_style": nil}}}}, plugin_color: {r,g,b,is_rgb565}, nks_control_color}` |
+| `client_instance_parameter_page_model_set_plugin_data` | `{name, background: <cache index>, parameters: {1..8: {"continuous_parameter": {"parameter_value": {"value", "display_value"}, "parameter_style": <style map>}}}, plugin_color: {r,g,b,is_rgb565}, nks_control_color}` |
 | `client_instance_parameter_page_model_set_host_owned_viewstate` | `{nks1_layout: [[{section_name, parameters: [{id, name}]}...]], nks2_layout: nil}` |
 | `client_instance_parameter_page_model_update_parameter_value` | `slot (1..8), {continuous_parameter: {value: f32, display_value}}` |
 | `client_instance_plugin_chain_model_set` | `{plugins: [{name, identifier: bin16, can_bypass, bypass_enabled, ...}], current_plugin_index}` |
 | `client_instance_lightguide_set` | `{client_midi_addressing: [[note, colour_index 0..63], ...]}`, where `44` = unlit |
+| `system_command` | `[<command symbol>]`: `restart_renderer`, `reboot`, `reboot_for_dfu`, `self_test`, `enable_serial_console`, `request_application_log`, `request_crashdumps` |
+
+Parameter styles supported natively on the hardware display:
+- `knob_parameter_style`: continuous circular arc gauge
+- `power_parameter_style`: 2-state On/Off push button
+- `waveform_parameter_style`: `{waveform_parameter_style: sym(<waveform>)}` (e.g. `sine`, `saw`, `square`, `pwm`, `wavetable`)
+- `filtertype_parameter_style`: `{filtertype_parameter_style: sym(<filter>)}` (e.g. `resonant_lo_pass`, `hi_pass`, `band_pass`, `bell`)
+- `tempo_sync_parameter_style`: beat-synchronized note value
+- `value_parameter_style`: numerical value without circular arc
+- `menu_parameter_style`: stepped dropdown item
 
 ### Keyboard → host (`0x83`)
 
-* `handshake_reply`, `agent_heartbeat_request_handshake`.
-* `plugin_action [instance, {action: [slot 1..8, value]}]`, where the action is `plugin_parameter_value_change` (relative delta), `plugin_parameter_value_set` (absolute) or `plugin_parameter_erp_touched` (touch). The host owns the value: it adds the delta and sends `update_parameter_value` back.
+* `handshake_reply`: hardware connection acknowledged.
+* `agent_heartbeat_request_handshake`: session watchdog reset; triggers automatic host re-handshake and page restoration.
+* `device_property_changed` / `device_properties`: reports foot pedal connection state:
+  * `pedal_sustain_connected` (Jack 1)
+  * `pedal_expression_connected` (Jack 2)
+  * `pedal_assign1_connected` (Jack 3)
+  * `pedal_assign2_connected` (Jack 4)
+* `focus_changed` / `set_focus`: reports active UI focus between keyboard standalone mode and DAW/host instance.
+* `plugin_action [instance, {action: value}]`:
+  * `plugin_parameter_value_change`: relative encoder delta `[slot 1..8, delta]`
+  * `plugin_parameter_value_set`: absolute encoder value `[slot 1..8, value]`
+  * `plugin_parameter_erp_touched`: capacitive knob touch `[slot 1..8, bool]`
+  * `plugin_parameter_set_page_index`: on-screen parameter page switch `[page_index]`
+  * `daw_*`: on-screen transport and track actions (`daw_play`, `daw_stop`, `daw_record`, `daw_tempo`, `daw_select_track`, `daw_mute_track`, `daw_solo_track`, etc.)
+  * `plugin_chain_*`: plugin insert selection, bypass toggle, move, remove
+  * `browser_*`: preset sound loading, category filtering, favorites toggle
 
 ### Not yet verified
 

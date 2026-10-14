@@ -20,9 +20,9 @@
 
 use std::time::{Duration, Instant};
 use encdr::{
-    BrowserFilter, BrowserModel, BrowserSoundItem, Encdr, EncdrConfig, Event,
-    KkMk3DawController, KkMk3OdrEvent, MixerModel, MixerTrack, ParameterItem, PluginChainItem, PluginChainModel,
-    PluginData, RgbColor, SmartPlayData,
+    BrowserFilter, BrowserModel, BrowserSoundItem, Encdr, EncdrConfig, Event, FilterType,
+    KkMk3DawController, KkMk3OdrEvent, MixerModel, MixerTrack, ParameterItem, PluginChainItem,
+    PluginChainModel, PluginData, RgbColor, SmartPlayData, WaveformType,
 };
 
 fn main() {
@@ -68,9 +68,9 @@ fn main() {
     // to work); uploading custom images isn't verified yet.
     let mut plugin = PluginData::new("Analog Monolith", cyan).with_background("21");
 
-    plugin.add_parameter(ParameterItem::knob("Cutoff", 0.72, "3.4 kHz", "Filter"));
+    plugin.add_parameter(ParameterItem::waveform("Osc 1 Wave", WaveformType::Saw, "Oscillator"));
+    plugin.add_parameter(ParameterItem::filter("Cutoff", 0.72, "3.4 kHz", FilterType::ResonantLoPass, "Filter"));
     plugin.add_parameter(ParameterItem::knob("Resonance", 0.45, "45%", "Filter"));
-    plugin.add_parameter(ParameterItem::knob("Drive", 0.20, "+3.0 dB", "Filter"));
     plugin.add_parameter(ParameterItem::toggle("Lowpass 24", true, "Filter"));
     plugin.add_parameter(ParameterItem::knob("Attack", 0.15, "12 ms", "Envelope"));
     plugin.add_parameter(ParameterItem::knob("Decay", 0.50, "320 ms", "Envelope"));
@@ -230,6 +230,18 @@ fn main() {
                         if let Some(v) = knob_values.get_mut(param_index as usize) {
                             *v = value.clamp(0.0, 1.0);
                         }
+                    }
+                    KkMk3OdrEvent::PedalChanged { pedal, connected } => {
+                        println!("[ODR] Pedal {:?} -> {}", pedal, if connected { "CONNECTED" } else { "DISCONNECTED" });
+                    }
+                    KkMk3OdrEvent::FocusChanged { has_focus } => {
+                        println!("[ODR] Focus changed -> {}", if has_focus { "FOCUSED" } else { "UNFOCUSED" });
+                    }
+                    KkMk3OdrEvent::PageIndexChanged { page_index } => {
+                        println!("[ODR] Page index switched on screen -> page {}", page_index + 1);
+                    }
+                    KkMk3OdrEvent::DawAction { action, value } => {
+                        println!("[ODR] DAW Action '{}': {:?}", action, value);
                     }
                     KkMk3OdrEvent::Other { method, .. } => println!("[ODR] {method}"),
                     _ => {}

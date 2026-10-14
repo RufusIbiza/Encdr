@@ -11,8 +11,9 @@ pub mod symbols;
 
 pub use models::{
     ArpConfig, BrowserFilter, BrowserModel, BrowserSoundItem, ChordConfig, DeviceSettings,
-    FileAsset, KkMk3Page, LayoutMode, MixerModel, MixerTrack, ParameterItem, PluginChainItem, PluginChainModel,
-    PluginData, RgbColor, ScaleConfig, SmartPlayData, ViewAddress, WidgetDisplayType,
+    FileAsset, FilterType, KkMk3Page, LayoutMode, MixerModel, MixerTrack, ParameterItem,
+    ParameterStyle, PedalType, PluginChainItem, PluginChainModel, PluginData, RgbColor,
+    ScaleConfig, SmartPlayData, ViewAddress, WaveformType, WidgetDisplayType,
 };
 pub use rpc::{KkMk3OdrEvent, OdrRpcFramer, OdrStreamDecoder};
 pub use symbols::{sym, sym_name, try_sym, SYMBOLS};

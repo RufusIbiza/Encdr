@@ -831,21 +831,19 @@ impl OdrSession {
         out: &mut Vec<Event>,
     ) {
         use crate::device::komplete_kontrol::{KkMk3OdrEvent as E, OdrRpcFramer};
-        match ev {
+        match &ev {
             E::ParameterDelta { param_index, delta } => {
-                if let Some(&name) = ODR_ENCODER_NAMES.get(param_index as usize) {
-                    if delta != 0.0 {
-                        out.push(Event::EncoderFine { device, name, delta });
-                        out.push(Event::Encoder { device, name, delta: if delta > 0.0 { 1 } else { -1 } });
+                if let Some(&name) = ODR_ENCODER_NAMES.get(*param_index as usize) {
+                    if *delta != 0.0 {
+                        out.push(Event::EncoderFine { device, name, delta: *delta });
+                        out.push(Event::Encoder { device, name, delta: if *delta > 0.0 { 1 } else { -1 } });
                     }
                 }
-                return;
             }
             E::ParameterTouched { param_index, touched } => {
-                if let Some(&name) = ODR_ENCODER_NAMES.get(param_index as usize) {
-                    out.push(Event::Touch { device, name, touched });
+                if let Some(&name) = ODR_ENCODER_NAMES.get(*param_index as usize) {
+                    out.push(Event::Touch { device, name, touched: *touched });
                 }
-                return;
             }
             E::HandshakeReply => {
                 tracing::info!("Komplete Kontrol Mk3: handshake accepted; heartbeat started");
@@ -857,7 +855,8 @@ impl OdrSession {
                 Self::write(write_tx, ODR_STREAM, OdrRpcFramer::build_handshake());
             }
             E::ParameterSet { .. } => {}
-            E::Other { ref method, .. } => tracing::debug!("ODR message: {method}"),
+            E::Other { method, .. } => tracing::debug!("ODR message: {method}"),
+            _ => {}
         }
         out.push(Event::KkMk3Odr { device, event: ev });
     }

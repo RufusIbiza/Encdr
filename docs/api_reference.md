@@ -452,6 +452,30 @@ use encdr::KkMk3Page;
 encdr.kk_mk3_set_page(device_id, KkMk3Page::Mixer)?;
 ```
 
+#### `pub fn kk_mk3_restart_renderer(&self, device_id: DeviceId) -> Result<()>`
+Restarts the on-device renderer on a Komplete Kontrol Mk3 keyboard. Recovers from display freezes without needing a physical power-cycle.
+
+#### `pub fn kk_mk3_reboot(&self, device_id: DeviceId) -> Result<()>`
+Performs a soft reboot of the Komplete Kontrol Mk3 keyboard hardware.
+
+#### `pub fn kk_mk3_reboot_dfu(&self, device_id: DeviceId) -> Result<()>`
+Reboots the Komplete Kontrol Mk3 keyboard into Device Firmware Upgrade (DFU) mode.
+
+#### `pub fn kk_mk3_self_test(&self, device_id: DeviceId) -> Result<()>`
+Triggers the internal hardware self-test routine on a Komplete Kontrol Mk3 keyboard.
+
+#### `pub fn kk_mk3_enable_serial_console(&self, device_id: DeviceId) -> Result<()>`
+Enables the serial diagnostic console on the Komplete Kontrol Mk3 hardware.
+
+#### `pub fn kk_mk3_request_application_log(&self, device_id: DeviceId) -> Result<()>`
+Requests application diagnostic logs from a Komplete Kontrol Mk3 keyboard.
+
+#### `pub fn kk_mk3_request_crashdumps(&self, device_id: DeviceId) -> Result<()>`
+Requests crash dumps from a Komplete Kontrol Mk3 keyboard.
+
+#### `pub fn kk_mk3_system_command(&self, device_id: DeviceId, command: &str) -> Result<()>`
+Sends an arbitrary low-level system or maintenance command string to a Komplete Kontrol Mk3 keyboard.
+
 #### `pub fn load_descriptor_dir(&mut self, path: impl AsRef<Path>) -> Result<()>`
 Loads all JSON device descriptors located in a directory.
 
@@ -1224,9 +1248,34 @@ Single parameter slot (0..7) mapped to a rotary encoder:
 - `pub fn new(name: impl Into<String>, value: f32, display_value: impl Into<String>, display_type: WidgetDisplayType, section_name: impl Into<String>) -> Self`
 - `pub fn knob(name: impl Into<String>, value: f32, display_value: impl Into<String>, section: impl Into<String>) -> Self`
 - `pub fn toggle(name: impl Into<String>, on: bool, section: impl Into<String>) -> Self`
+- `pub fn waveform(name: impl Into<String>, waveform: WaveformType, section: impl Into<String>) -> Self`
+- `pub fn filter(name: impl Into<String>, cutoff: f32, display_value: impl Into<String>, filter: FilterType, section: impl Into<String>) -> Self`
+- `pub fn with_style(self, style: ParameterStyle) -> Self`
+
+#### `ParameterStyle`
+Visual presentation style rendered natively on the Mk3 display:
+- `Knob`: Continuous rotary arc gauge (`knob_parameter_style`).
+- `Value`: Value readout without circular arc (`value_parameter_style`).
+- `Power`: On/off push-button switch (`power_parameter_style`).
+- `TempoSync`: Musical beat tempo-synced value (`tempo_sync_parameter_style`).
+- `Menu`: Stepped dropdown or option selector (`menu_parameter_style`).
+- `Waveform(WaveformType)`: Native vector oscillator waveform display (`waveform_parameter_style`).
+- `Filter(FilterType)`: Native frequency response curve (`filtertype_parameter_style`).
+
+#### `WaveformType`
+Native waveform glyph shapes rendered by the keyboard display engine:
+- `Default`, `Sine`, `Square`, `Square2`, `Square3`, `Square4`, `Triangle`, `Triangle2`, `Triangle3`, `Triangle4`, `Saw`, `Saw2`, `Saw3`, `Saw4`, `Noise`, `Pwm`, `Wavetable`, `Wavetable2`, `Wavetable3`, `Wavetable4`, `Complex`.
+
+#### `FilterType`
+Native filter response curves rendered by the keyboard display engine:
+- `Default`, `HiPass`, `ResonantHiPass`, `LoPass`, `ResonantLoPass`, `BandPass`, `AllPass`, `Bell`, `PropQ`, `BandShelf`, `AnalogLoShelf`, `AnalogHiShelf`, `BaxandallLoShelf`, `BaxandallHiShelf`, `Comb`, `BandReject`.
+
+#### `PedalType`
+Hardware foot pedal input jack identifier:
+- `Sustain` (Jack 1), `Expression` (Jack 2), `Assign1` (Jack 3), `Assign2` (Jack 4).
 
 #### `WidgetDisplayType`
-Visual representation rendered for a parameter control:
+Visual representation template for parameter controls:
 - `Knob`: Radial arc gauge.
 - `Range`: Linear slider bar.
 - `Toggle`: 2-state On/Off switch.
@@ -1276,17 +1325,24 @@ Onboard view template selector:
 
 #### `KkMk3OdrEvent`
 Message received from the keyboard's bulk IN endpoint `0x83`:
-- `ParameterDelta { param_index: u32, delta: f32 }` — relative knob turn (`param_index` 0..7). Delivered to apps as `EncoderFine`/`Encoder` on `encoder_1`..`encoder_8`.
+- `ParameterDelta { param_index: u32, delta: f32 }` — relative knob turn (`param_index` 0..7). Delivered to apps as `EncoderFine`/`Encoder` on `encoder_1`..`encoder_8` and as `Event::KkMk3Odr`.
 - `ParameterSet { param_index: u32, value: f32 }` — absolute value set from the keyboard. Delivered as `Event::KkMk3Odr`.
-- `ParameterTouched { param_index: u32, touched: bool }` — knob touch. Delivered as `Touch` on `encoder_N`.
+- `ParameterTouched { param_index: u32, touched: bool }` — knob touch sensor state. Delivered as `Touch` on `encoder_N` and as `Event::KkMk3Odr`.
+- `PageIndexChanged { page_index: u32 }` — user flipped parameter page on screen.
+- `PedalChanged { pedal: PedalType, connected: bool }` — foot pedal plugged in or unplugged.
+- `FocusChanged { has_focus: bool }` — UI focus shifted between keyboard standalone and host.
+- `DawAction { action: String, value: rmpv::Value }` — on-screen DAW action button pressed (`daw_play`, `daw_stop`, `daw_record`, `daw_tempo`, `daw_select_track`, `daw_mute_track`, etc.).
+- `PluginChainAction { action: String, value: rmpv::Value }` — plugin chain insert selection, move, or bypass toggle.
+- `BrowserAction { action: String, value: rmpv::Value }` — preset sound selection or browser category navigation.
 - `HandshakeReply` — the keyboard accepted a handshake; (re)send session setup and pages.
-- `HeartbeatRequestHandshake` — the keyboard wants a new handshake; Encdr sends it automatically.
+- `HeartbeatRequestHandshake` — the keyboard requested a new handshake; Encdr re-handshakes automatically.
 - `Other { method: String, value: rmpv::Value }` — any other message, with symbol ids resolved to the method name.
 
 #### `OdrRpcFramer`
-Builds framed ODR messages: `<u32 little-endian length><MessagePack [2, method, [instance_00, params...]]>`, with method names and most map keys sent as indexes into the symbol registry (names missing from the registry fall back to strings rather than failing). The `Encdr::kk_mk3_*` methods use it internally; use it directly with `write_interface` for messages Encdr doesn't wrap.
+Builds framed ODR messages: `<u32 little-endian length><MessagePack [2, method, [instance_00, params...]]>`, with method names and map keys sent as indexes into the symbol registry (names missing from the registry fall back to strings rather than failing). The `Encdr::kk_mk3_*` methods use it internally; use it directly with `write_interface` for messages Encdr doesn't wrap.
 - Session: `build_handshake()`, `build_heartbeat()`, `build_instance_add(name, is_host)`, `build_focus_acquire()`, `build_focus_release()`, `build_set_host_instance_state(preset_name, tempo)`, `build_set_page(page)`.
-- Parameter page: `build_set_plugin_data(&PluginData)`, `build_set_host_viewstate(&PluginData)` (section layout), `build_update_parameter_value(index, value)`, `build_update_parameter_value_with_display(index, value, display)`.
+- Parameter page: `build_set_plugin_data(&PluginData)` (encodes continuous parameters with native `ParameterStyle`), `build_set_host_viewstate(&PluginData)` (section layout), `build_update_parameter_value(index, value)`, `build_update_parameter_value_with_display(index, value, display)`.
+- Diagnostics & System: `build_system_cmd(command)`, `build_restart_renderer()`, `build_reboot()`, `build_reboot_dfu()`, `build_self_test()`, `build_enable_serial_console()`, `build_request_application_log()`, `build_request_crashdumps()`.
 - Light Guide: `build_set_lightguide_indexed(&[(note, colour_index)])`, `build_set_lightguide(&[(r, g, b)])` (nearest palette colour via `rgb_to_lightguide_color`).
 - Experimental: `build_set_plugin_chain_index`, `build_set_mixer_track_data`, `build_set_mixer_meters`, `build_set_smartplay_data`, `build_set_browser_model`, `build_set_device_settings`, `build_register_asset`.
 - Incoming: `decode_message(body) -> Vec<KkMk3OdrEvent>` for one unframed message; `parse_incoming(packet)` for the first message of a complete framed packet.
@@ -1299,6 +1355,3 @@ Reassembles framed messages from the bulk IN stream, where one message can span 
 
 #### Light Guide colours
 `client_instance_lightguide_set` addresses keys by MIDI note with a colour index `0..=63`. Index `44` is unlit. The first key is note 36 on the S49/S61 and note 21 on the S88.
-
-#### Model fields not yet sent
-`ParameterItem::display_type` (`WidgetDisplayType`) and `LayoutMode` are not encoded yet: every parameter is sent as a continuous knob, the only style verified so far.
