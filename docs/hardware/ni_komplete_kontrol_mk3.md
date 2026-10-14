@@ -229,35 +229,31 @@ From then on, method names and most map keys are sent as their index in `symbol_
 | `client_instance_parameter_page_model_update_parameter_value` | `slot (1..8), {continuous_parameter: {value: f32, display_value}}` |
 | `client_instance_plugin_chain_model_set` | `{plugins: [{name, identifier: bin16, can_bypass, bypass_enabled, ...}], current_plugin_index}` |
 | `client_instance_lightguide_set` | `{client_midi_addressing: [[note, colour_index 0..63], ...]}`, where `44` = unlit |
-| `system_command` | `[<command symbol>]`: `restart_renderer`, `reboot`, `reboot_for_dfu`, `self_test`, `enable_serial_console`, `request_application_log`, `request_crashdumps` |
+| `system_command` *(unverified)* | `[<command symbol>]`: `restart_renderer`, `request_application_log`, `request_crashdumps` |
 
-Parameter styles supported natively on the hardware display:
-- `knob_parameter_style`: continuous circular arc gauge
-- `power_parameter_style`: 2-state On/Off push button
-- `waveform_parameter_style`: `{waveform_parameter_style: sym(<waveform>)}` (e.g. `sine`, `saw`, `square`, `pwm`, `wavetable`)
-- `filtertype_parameter_style`: `{filtertype_parameter_style: sym(<filter>)}` (e.g. `resonant_lo_pass`, `hi_pass`, `band_pass`, `bell`)
-- `tempo_sync_parameter_style`: beat-synchronized note value
-- `value_parameter_style`: numerical value without circular arc
-- `menu_parameter_style`: stepped dropdown item
+Parameter styles in the symbol registry. Only the knob style is verified on hardware, as `{"knob_parameter_style": nil}` (a string key):
+- `knob_parameter_style`: continuous circular arc gauge — **verified**
+- `power_parameter_style`, `value_parameter_style`, `tempo_sync_parameter_style`, `menu_parameter_style`: the intended meaning is clear from the name, but the payload is unverified (the parameter may need a different wrapper than `continuous_parameter`, e.g. `toggle_parameter` or `discrete_parameter`)
+- `waveform_parameter_style`, `filtertype_parameter_style`: Encdr sends `{"<style>": <symbol>}` with the waveform or filter name as a symbol (e.g. `saw`, `resonant_lo_pass`); unverified
 
 ### Keyboard → host (`0x83`)
 
 * `handshake_reply`: hardware connection acknowledged.
 * `agent_heartbeat_request_handshake`: session watchdog reset; triggers automatic host re-handshake and page restoration.
-* `device_property_changed` / `device_properties`: reports foot pedal connection state:
+* *(unverified)* `device_property_changed` / `device_properties`: reports foot pedal connection state:
   * `pedal_sustain_connected` (Jack 1)
   * `pedal_expression_connected` (Jack 2)
   * `pedal_assign1_connected` (Jack 3)
   * `pedal_assign2_connected` (Jack 4)
-* `focus_changed` / `set_focus`: reports active UI focus between keyboard standalone mode and DAW/host instance.
+* *(unverified)* `focus_changed` / `set_focus`: reports active UI focus between keyboard standalone mode and DAW/host instance.
 * `plugin_action [instance, {action: value}]`:
   * `plugin_parameter_value_change`: relative encoder delta `[slot 1..8, delta]`
   * `plugin_parameter_value_set`: absolute encoder value `[slot 1..8, value]`
-  * `plugin_parameter_erp_touched`: capacitive knob touch `[slot 1..8, bool]`
-  * `plugin_parameter_set_page_index`: on-screen parameter page switch `[page_index]`
-  * `daw_*`: on-screen transport and track actions (`daw_play`, `daw_stop`, `daw_record`, `daw_tempo`, `daw_select_track`, `daw_mute_track`, `daw_solo_track`, etc.)
-  * `plugin_chain_*`: plugin insert selection, bypass toggle, move, remove
-  * `browser_*`: preset sound loading, category filtering, favorites toggle
+  * *(unverified)* `plugin_parameter_erp_touched`: capacitive knob touch `[slot 1..8, bool]`
+  * *(unverified)* `plugin_parameter_set_page_index`: on-screen parameter page switch `[page_index]`
+  * *(unverified)* `daw_*`: on-screen transport and track actions (`daw_play`, `daw_stop`, `daw_record`, `daw_tempo`, `daw_select_track`, `daw_mute_track`, `daw_solo_track`, etc.)
+  * *(unverified)* `plugin_chain_*`: plugin insert selection, bypass toggle, move, remove
+  * *(unverified)* `browser_*`: preset sound loading, category filtering, favorites toggle
 
 ### Not yet verified
 

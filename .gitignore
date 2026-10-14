@@ -12,3 +12,6 @@ git Ignored/
 
 /test-feedback/
 test-feedback/
+
+# Local-only notes
+docs/kkmk3_dangerous_commands.md

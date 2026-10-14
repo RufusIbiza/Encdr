@@ -772,51 +772,18 @@ impl Encdr {
         Ok(())
     }
 
-    /// Send a low-level system or maintenance command to a Komplete Kontrol Mk3 keyboard.
-    pub fn kk_mk3_system_command(&self, device_id: DeviceId, command: &str) -> Result<()> {
-        let bytes = crate::device::komplete_kontrol::OdrRpcFramer::build_system_cmd(command);
-        self.write_interface(device_id, "odr_stream", &bytes);
-        Ok(())
-    }
-
     /// Restart the on-device renderer on a Komplete Kontrol Mk3 keyboard.
     ///
-    /// Useful for recovering from display freezes without having to power-cycle the hardware.
+    /// **Experimental:** this message has not been verified on hardware yet.
     pub fn kk_mk3_restart_renderer(&self, device_id: DeviceId) -> Result<()> {
         let bytes = crate::device::komplete_kontrol::OdrRpcFramer::build_restart_renderer();
         self.write_interface(device_id, "odr_stream", &bytes);
         Ok(())
     }
 
-    /// Perform a soft reboot of the Komplete Kontrol Mk3 hardware.
-    pub fn kk_mk3_reboot(&self, device_id: DeviceId) -> Result<()> {
-        let bytes = crate::device::komplete_kontrol::OdrRpcFramer::build_reboot();
-        self.write_interface(device_id, "odr_stream", &bytes);
-        Ok(())
-    }
-
-    /// Reboot the Komplete Kontrol Mk3 keyboard into Device Firmware Upgrade (DFU) mode.
-    pub fn kk_mk3_reboot_dfu(&self, device_id: DeviceId) -> Result<()> {
-        let bytes = crate::device::komplete_kontrol::OdrRpcFramer::build_reboot_dfu();
-        self.write_interface(device_id, "odr_stream", &bytes);
-        Ok(())
-    }
-
-    /// Run the hardware self-test routine on a Komplete Kontrol Mk3 keyboard.
-    pub fn kk_mk3_self_test(&self, device_id: DeviceId) -> Result<()> {
-        let bytes = crate::device::komplete_kontrol::OdrRpcFramer::build_self_test();
-        self.write_interface(device_id, "odr_stream", &bytes);
-        Ok(())
-    }
-
-    /// Enable serial diagnostic output on the Komplete Kontrol Mk3 hardware.
-    pub fn kk_mk3_enable_serial_console(&self, device_id: DeviceId) -> Result<()> {
-        let bytes = crate::device::komplete_kontrol::OdrRpcFramer::build_enable_serial_console();
-        self.write_interface(device_id, "odr_stream", &bytes);
-        Ok(())
-    }
-
-    /// Request application diagnostic logs from a Komplete Kontrol Mk3 keyboard.
+    /// Request the application log from a Komplete Kontrol Mk3 keyboard.
+    ///
+    /// **Experimental:** this message has not been verified on hardware yet.
     pub fn kk_mk3_request_application_log(&self, device_id: DeviceId) -> Result<()> {
         let bytes = crate::device::komplete_kontrol::OdrRpcFramer::build_request_application_log();
         self.write_interface(device_id, "odr_stream", &bytes);
@@ -824,6 +791,8 @@ impl Encdr {
     }
 
     /// Request crash dumps from a Komplete Kontrol Mk3 keyboard.
+    ///
+    /// **Experimental:** this message has not been verified on hardware yet.
     pub fn kk_mk3_request_crashdumps(&self, device_id: DeviceId) -> Result<()> {
         let bytes = crate::device::komplete_kontrol::OdrRpcFramer::build_request_crashdumps();
         self.write_interface(device_id, "odr_stream", &bytes);

@@ -839,11 +839,14 @@ impl OdrSession {
                         out.push(Event::Encoder { device, name, delta: if *delta > 0.0 { 1 } else { -1 } });
                     }
                 }
+                // Delivered as encoder events only, not also as KkMk3Odr.
+                return;
             }
             E::ParameterTouched { param_index, touched } => {
                 if let Some(&name) = ODR_ENCODER_NAMES.get(*param_index as usize) {
                     out.push(Event::Touch { device, name, touched: *touched });
                 }
+                return;
             }
             E::HandshakeReply => {
                 tracing::info!("Komplete Kontrol Mk3: handshake accepted; heartbeat started");

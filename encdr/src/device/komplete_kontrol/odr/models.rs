@@ -273,10 +273,9 @@ impl ParameterItem {
         display_type: WidgetDisplayType,
         section_name: impl Into<String>,
     ) -> Self {
-        let style = match display_type {
-            WidgetDisplayType::Toggle => ParameterStyle::Power,
-            _ => ParameterStyle::Knob,
-        };
+        // Every parameter is a knob unless a style is set explicitly with
+        // `with_style`: that is the only style verified on hardware.
+        let style = ParameterStyle::Knob;
         Self {
             name: name.into(),
             value,
@@ -288,6 +287,8 @@ impl ParameterItem {
     }
 
     /// Set an explicit visual parameter style (e.g. native waveform or filter graphic).
+    ///
+    /// **Experimental:** only `ParameterStyle::Knob` is verified on hardware.
     pub fn with_style(mut self, style: ParameterStyle) -> Self {
         self.style = style;
         self
@@ -310,12 +311,16 @@ impl ParameterItem {
     }
 
     /// Convenience builder for a parameter rendering a native oscillator waveform shape.
+    ///
+    /// **Experimental:** not verified on hardware yet.
     pub fn waveform(name: impl Into<String>, waveform: WaveformType, section: impl Into<String>) -> Self {
         Self::new(name, 0.0, waveform.as_sym(), WidgetDisplayType::Increment, section)
             .with_style(ParameterStyle::Waveform(waveform))
     }
 
     /// Convenience builder for a parameter rendering a native filter response curve.
+    ///
+    /// **Experimental:** not verified on hardware yet.
     pub fn filter(
         name: impl Into<String>,
         cutoff: f32,

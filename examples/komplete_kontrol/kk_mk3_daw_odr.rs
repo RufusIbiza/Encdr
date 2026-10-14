@@ -17,6 +17,7 @@
 //!
 //! Run with:
 //!   cargo run -p encdr-examples --bin kk_mk3_daw_odr
+//!   cargo run -p encdr-examples --bin kk_mk3_daw_odr -- --styles   (experimental graphics)
 
 use std::time::{Duration, Instant};
 use encdr::{
@@ -68,10 +69,19 @@ fn main() {
     // to work); uploading custom images isn't verified yet.
     let mut plugin = PluginData::new("Analog Monolith", cyan).with_background("21");
 
-    plugin.add_parameter(ParameterItem::waveform("Osc 1 Wave", WaveformType::Saw, "Oscillator"));
-    plugin.add_parameter(ParameterItem::filter("Cutoff", 0.72, "3.4 kHz", FilterType::ResonantLoPass, "Filter"));
-    plugin.add_parameter(ParameterItem::knob("Resonance", 0.45, "45%", "Filter"));
-    plugin.add_parameter(ParameterItem::toggle("Lowpass 24", true, "Filter"));
+    // The default page is all continuous knobs, the only style verified on
+    // hardware. Pass `--styles` to try the experimental native waveform and
+    // filter graphics instead of two of the knobs.
+    let try_styles = std::env::args().any(|a| a == "--styles");
+    if try_styles {
+        plugin.add_parameter(ParameterItem::waveform("Osc 1 Wave", WaveformType::Saw, "Oscillator"));
+        plugin.add_parameter(ParameterItem::filter("Cutoff", 0.72, "3.4 kHz", FilterType::ResonantLoPass, "Filter"));
+    } else {
+        plugin.add_parameter(ParameterItem::knob("Cutoff", 0.72, "3.4 kHz", "Filter"));
+        plugin.add_parameter(ParameterItem::knob("Resonance", 0.45, "45%", "Filter"));
+    }
+    plugin.add_parameter(ParameterItem::knob("Drive", 0.20, "+3.0 dB", "Filter"));
+    plugin.add_parameter(ParameterItem::knob("Mix", 1.00, "100%", "Filter"));
     plugin.add_parameter(ParameterItem::knob("Attack", 0.15, "12 ms", "Envelope"));
     plugin.add_parameter(ParameterItem::knob("Decay", 0.50, "320 ms", "Envelope"));
     plugin.add_parameter(ParameterItem::knob("Sustain", 0.80, "-2.0 dB", "Envelope"));

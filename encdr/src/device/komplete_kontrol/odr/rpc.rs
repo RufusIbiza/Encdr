@@ -253,14 +253,12 @@ impl OdrRpcFramer {
             .enumerate()
             .take(8)
             .map(|(i, param)| {
+                // Same shape as the verified knob style: a string-keyed map. The
+                // other styles are experimental (value encoding unverified).
                 let style_val = match param.style {
-                    ParameterStyle::Knob => strmap(vec![("knob_parameter_style", Value::Nil)]),
-                    ParameterStyle::Value => strmap(vec![("value_parameter_style", Value::Nil)]),
-                    ParameterStyle::Power => strmap(vec![("power_parameter_style", Value::Nil)]),
-                    ParameterStyle::TempoSync => strmap(vec![("tempo_sync_parameter_style", Value::Nil)]),
-                    ParameterStyle::Menu => strmap(vec![("menu_parameter_style", Value::Nil)]),
-                    ParameterStyle::Waveform(wf) => smap(vec![("waveform_parameter_style", sym_value(wf.as_sym()))]),
-                    ParameterStyle::Filter(ft) => smap(vec![("filtertype_parameter_style", sym_value(ft.as_sym()))]),
+                    ParameterStyle::Waveform(wf) => strmap(vec![(param.style.as_sym(), sym_value(wf.as_sym()))]),
+                    ParameterStyle::Filter(ft) => strmap(vec![(param.style.as_sym(), sym_value(ft.as_sym()))]),
+                    other => strmap(vec![(other.as_sym(), Value::Nil)]),
                 };
                 let p = strmap(vec![(
                     "continuous_parameter",
@@ -536,46 +534,27 @@ impl OdrRpcFramer {
         Ok((msg_id, bytes))
     }
 
-    // ── Diagnostics & System Commands ────────────────────────────────────
+    // ── Diagnostics ──────────────────────────────────────────────────────
 
-    /// Build a generic system command notification (`[2, sym("system_command"), [sym(command)]]`).
-    pub fn build_system_cmd(command: &str) -> Vec<u8> {
-        frame_notification(sym_value("system_command"), vec![sym_value(command)])
-    }
-
-    /// Build a command to restart the on-device renderer.
+    /// Build a request to restart the on-device renderer.
+    ///
+    /// **Experimental:** the payload is not verified on hardware yet.
     pub fn build_restart_renderer() -> Vec<u8> {
-        Self::build_system_cmd("restart_renderer")
+        frame_notification(sym_value("system_command"), vec![sym_value("restart_renderer")])
     }
 
-    /// Build a command to soft reboot the keyboard hardware.
-    pub fn build_reboot() -> Vec<u8> {
-        Self::build_system_cmd("reboot")
-    }
-
-    /// Build a command to reboot the keyboard into Device Firmware Upgrade (DFU) mode.
-    pub fn build_reboot_dfu() -> Vec<u8> {
-        Self::build_system_cmd("reboot_for_dfu")
-    }
-
-    /// Build a command to trigger the keyboard's internal self-test sequence.
-    pub fn build_self_test() -> Vec<u8> {
-        Self::build_system_cmd("self_test")
-    }
-
-    /// Build a command to enable the serial diagnostic console on the hardware.
-    pub fn build_enable_serial_console() -> Vec<u8> {
-        Self::build_system_cmd("enable_serial_console")
-    }
-
-    /// Build a command requesting the application log from the device.
+    /// Build a request for the device's application log.
+    ///
+    /// **Experimental:** the payload is not verified on hardware yet.
     pub fn build_request_application_log() -> Vec<u8> {
-        Self::build_system_cmd("request_application_log")
+        frame_notification(sym_value("system_command"), vec![sym_value("request_application_log")])
     }
 
-    /// Build a command requesting crash dumps from the device.
+    /// Build a request for the device's crash dumps.
+    ///
+    /// **Experimental:** the payload is not verified on hardware yet.
     pub fn build_request_crashdumps() -> Vec<u8> {
-        Self::build_system_cmd("request_crashdumps")
+        frame_notification(sym_value("system_command"), vec![sym_value("request_crashdumps")])
     }
 
     // ── Incoming Packet Parsing ──────────────────────────────────────────
@@ -631,8 +610,7 @@ impl OdrRpcFramer {
                                     .map(|s| s.to_string())
                                     .or_else(|| k.as_str().map(|s| s.to_string()))
                                     .unwrap_or_default();
-                                if let Some(pedal) = PedalType::from_sym(&key) {
-                                    let connected = v.as_bool().unwrap_or(false);
+                                if let (Some(pedal), Some(connected)) = (PedalType::from_sym(&key), v.as_bool()) {
                                     events.push(KkMk3OdrEvent::PedalChanged { pedal, connected });
                                 }
                             }
@@ -648,9 +626,11 @@ impl OdrRpcFramer {
                     .get(2)
                     .and_then(|p| p.as_array())
                     .and_then(|a| a.first())
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(true);
-                return Ok(vec![KkMk3OdrEvent::FocusChanged { has_focus }]);
+                    .and_then(|v| v.as_bool());
+                // Unexpected payload: fall through to `Other` rather than guess.
+                if let Some(has_focus) = has_focus {
+                    return Ok(vec![KkMk3OdrEvent::FocusChanged { has_focus }]);
+                }
             }
             _ => {}
         }
@@ -676,8 +656,10 @@ impl OdrRpcFramer {
                         let page_idx = v
                             .as_i64()
                             .or_else(|| v.as_array().and_then(|a| a.first()).and_then(|x| x.as_i64()))
-                            .unwrap_or(0);
-                        events.push(KkMk3OdrEvent::PageIndexChanged { page_index: page_idx as u32 });
+                            .filter(|i| *i >= 0);
+                        if let Some(page_idx) = page_idx {
+                            events.push(KkMk3OdrEvent::PageIndexChanged { page_index: page_idx as u32 });
+                        }
                         continue;
                     }
                     if action.starts_with("daw_") {
@@ -979,34 +961,71 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_parameter_styles_serialization() {
-        let mut plugin = PluginData::new("Synth", RgbColor::CYAN);
-        plugin.add_parameter(
-            ParameterItem::waveform("Osc Wave", WaveformType::Saw, "Oscillator")
-        );
-        plugin.add_parameter(
-            ParameterItem::filter("Cutoff", 0.75, "2.4 kHz", FilterType::ResonantLoPass, "Filter")
-        );
-        plugin.add_parameter(
-            ParameterItem::toggle("Bypass", true, "Master")
-        );
-        let framer = OdrRpcFramer::new();
-        let bytes = framer.build_set_plugin_data(&plugin).unwrap();
-        assert!(bytes.len() > 50);
-        let len = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
-        assert_eq!(len, bytes.len() - 4);
+    fn plugin_data_bytes(plugin: &PluginData) -> Value {
+        let bytes = OdrRpcFramer::new().build_set_plugin_data(plugin).unwrap();
+        rmpv::decode::read_value(&mut &bytes[4..]).unwrap()
+    }
+
+    /// Finds the `parameter_style` map of slot `slot` (1-based) in a decoded page.
+    fn style_of(page: &Value, slot: i64) -> Value {
+        // [2, method, [instance, {name, background, parameters: {slot: {...}}, ...}]]
+        let payload = &page.as_array().unwrap()[2].as_array().unwrap()[1];
+        let params_key = Value::from(sym("parameters"));
+        let (_, params) = payload.as_map().unwrap().iter().find(|(k, _)| *k == params_key).unwrap();
+        let (_, p) = params.as_map().unwrap().iter().find(|(k, _)| k.as_i64() == Some(slot)).unwrap();
+        let cont = &p.as_map().unwrap()[0].1;
+        cont.as_map().unwrap().iter().find(|(k, _)| k.as_str() == Some("parameter_style")).unwrap().1.clone()
     }
 
     #[test]
-    fn test_system_command_wire_format() {
+    fn default_parameters_keep_the_verified_knob_style() {
+        let mut plugin = PluginData::new("Synth", RgbColor::CYAN);
+        plugin.add_parameter(ParameterItem::knob("A", 0.5, "50%", "S"));
+        // Toggles stay knobs until the power style is verified.
+        plugin.add_parameter(ParameterItem::toggle("B", true, "S"));
+        let page = plugin_data_bytes(&plugin);
+        let knob = Value::Map(vec![(Value::from("knob_parameter_style"), Value::Nil)]);
+        assert_eq!(style_of(&page, 1), knob);
+        assert_eq!(style_of(&page, 2), knob);
+    }
+
+    #[test]
+    fn explicit_styles_use_string_keys_like_the_knob_style() {
+        let mut plugin = PluginData::new("Synth", RgbColor::CYAN);
+        plugin.add_parameter(ParameterItem::waveform("Osc", WaveformType::Saw, "O"));
+        plugin.add_parameter(ParameterItem::filter("Cut", 0.7, "2 kHz", FilterType::LoPass, "F"));
+        let page = plugin_data_bytes(&plugin);
+        assert_eq!(
+            style_of(&page, 1),
+            Value::Map(vec![(Value::from("waveform_parameter_style"), Value::from(sym("saw")))])
+        );
+        assert_eq!(
+            style_of(&page, 2),
+            Value::Map(vec![(Value::from("filtertype_parameter_style"), Value::from(sym("lo_pass")))])
+        );
+    }
+
+    #[test]
+    fn restart_renderer_is_a_framed_notification() {
         let cmd = OdrRpcFramer::build_restart_renderer();
-        assert!(cmd.len() >= 4);
         let len = u32::from_le_bytes([cmd[0], cmd[1], cmd[2], cmd[3]]) as usize;
         assert_eq!(len, cmd.len() - 4);
+        let v = rmpv::decode::read_value(&mut &cmd[4..]).unwrap();
+        let a = v.as_array().unwrap();
+        assert_eq!(a[0].as_i64(), Some(2));
+        assert_eq!(a[1].as_i64(), Some(sym("system_command")));
+    }
 
-        let reboot = OdrRpcFramer::build_reboot();
-        assert!(reboot.len() >= 4);
+    #[test]
+    fn malformed_focus_and_page_messages_do_not_invent_values() {
+        // Focus message with no boolean: reported as Other, not as focus gained.
+        let focus = Value::Array(vec![2.into(), sym("focus_changed").into(), Value::Array(vec![])]);
+        let evs = OdrRpcFramer::decode_message(&framed(&focus)[4..]).unwrap();
+        assert!(matches!(evs[..], [KkMk3OdrEvent::Other { .. }]));
+        // Page index with no value is dropped rather than reported as page 0.
+        let page = plugin_action(vec![("plugin_parameter_set_page_index", Value::Array(vec![]))]);
+        let evs = OdrRpcFramer::decode_message(&framed(&page)[4..]).unwrap();
+        assert!(!evs.iter().any(|e| matches!(e, KkMk3OdrEvent::PageIndexChanged { .. })));
     }
 
     #[test]
