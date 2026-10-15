@@ -62,6 +62,14 @@ hidapi = { version = "2.6", default-features = false, features = ["macos-shared-
 
 [target.'cfg(target_os = "windows")'.dependencies]
 hidapi = { version = "2.6", default-features = false, features = ["windows-native"] }
+# Named pipes, for the NI hardware service route (see usb/ni_service).
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Pipes",
+] }
 
 [features]
 hid = ["dep:hidapi", "hidapi/linux-static-hidraw"]

@@ -19,6 +19,7 @@ use crate::device::led_builder::LedBuilder;
 use crate::device::parser::PacketParser;
 use crate::screen::ScreenManager;
 use crate::usb::hid::{HidInterface, HidReader};
+use crate::usb::ni_service::ServiceSession;
 
 /// Modest real-time scheduling priority for USB input threads: below typical
 /// pro-audio engine thread priority (often 60-90), above normal (0) — enough
@@ -259,12 +260,18 @@ fn run_device(
     // interface for itself), so each logical interface is claimed
     // independently and anything that can't be claimed is skipped.
     let force_hid = std::env::var_os("ENCDR_FORCE_HID").is_some();
+    // ENCDR_FORCE_SERVICE skips raw USB for screens the NI service can draw.
+    let force_service = std::env::var_os("ENCDR_FORCE_SERVICE").is_some();
+    let service_screen_iface = descriptor.quirks.ni_service.as_ref().map(|q| q.screen_interface.as_str());
     let mut claimed_by_num: HashMap<u8, Iface> = HashMap::new();
     let mut failed_nums: std::collections::HashSet<u8> = std::collections::HashSet::new();
     let mut interfaces: HashMap<String, Iface> = HashMap::new();
 
     for iface_desc in &descriptor.interfaces {
         let num = iface_desc.number;
+        if force_service && service_screen_iface == Some(iface_desc.id.as_str()) {
+            failed_nums.insert(num);
+        }
         if !claimed_by_num.contains_key(&num) && !failed_nums.contains(&num) {
             match claim_interface(&usb_device, &hid_target, &descriptor, iface_desc, force_hid) {
                 Ok(iface) => {
@@ -288,6 +295,7 @@ fn run_device(
         .interfaces
         .iter()
         .filter(|i| !interfaces.contains_key(&i.id))
+        .filter(|i| service_screen_iface != Some(i.id.as_str()))
         .map(|i| i.id.as_str())
         .collect();
     if !unclaimed.is_empty() {
@@ -354,6 +362,7 @@ fn run_device(
                 continue;
             }
             Iface::Usb(i) => i,
+            Iface::Service(_) => continue,
         };
         let mut ep = match InEndpoint::open(usb_iface, address, transfer_type) {
             Ok(ep) => ep,
@@ -416,6 +425,27 @@ fn run_device(
             Some(LedBuilder::new(led_desc, iface))
         })
         .collect();
+
+    // Screens whose USB interface couldn't be claimed (Windows keeps NI's driver
+    // on it) can still be drawn by the NI hardware service.
+    if let Some(quirk) = &descriptor.quirks.ni_service {
+        if !interfaces.contains_key(&quirk.screen_interface) {
+            match ServiceSession::connect(quirk.product_id.0, hid_target.serial.as_deref(), Duration::from_secs(5)) {
+                Ok(session) => {
+                    tracing::info!(
+                        "Drawing the '{}' screens through the NI hardware service instead of USB",
+                        quirk.screen_interface
+                    );
+                    interfaces.insert(quirk.screen_interface.clone(), Iface::Service(Arc::new(session)));
+                }
+                Err(e) => tracing::warn!(
+                    "Interface '{}' is unavailable over USB and the NI hardware service route failed: {}; its screens are unavailable",
+                    quirk.screen_interface,
+                    e
+                ),
+            }
+        }
+    }
 
     // If device has screens, delegate them entirely to a dedicated screen thread
     // so that screen bulk transfers never stall the interrupt input loop.
@@ -653,6 +683,8 @@ struct HidTarget {
 enum Iface {
     Usb(nusb::Interface),
     Hid(Arc<HidInterface>),
+    /// Screens drawn by the NI hardware service rather than over USB.
+    Service(Arc<ServiceSession>),
 }
 
 impl Iface {
@@ -666,6 +698,7 @@ impl Iface {
     ) -> Result<(), String> {
         match self {
             Self::Hid(hid) => hid.write(&data),
+            Self::Service(_) => Err("the NI service route has no raw USB endpoints".to_string()),
             Self::Usb(iface) => match transfer_type {
                 TransferType::Bulk => iface
                     .endpoint::<Bulk, Out>(address)
@@ -687,6 +720,7 @@ impl Iface {
     async fn send_feature_report(&self, buf: &[u8], interface: usize) -> Result<(), String> {
         match self {
             Self::Hid(hid) => hid.send_feature_report(buf),
+            Self::Service(_) => Err("the NI service route does not support feature reports".to_string()),
             Self::Usb(iface) => iface
                 .control_out(
                     ControlOut {
@@ -843,12 +877,15 @@ enum OutEndpoint {
     Bulk(nusb::Endpoint<Bulk, Out>),
     Interrupt(nusb::Endpoint<Interrupt, Out>),
     Hid(Arc<HidInterface>),
+    /// One screen drawn through the NI hardware service.
+    Service { session: Arc<ServiceSession>, display: u8, width: u16, height: u16 },
 }
 
 impl OutEndpoint {
     fn open(iface: &Iface, address: u8, transfer_type: TransferType) -> Result<Self, String> {
         Ok(match iface {
             Iface::Hid(hid) => Self::Hid(hid.clone()),
+            Iface::Service(_) => return Err("the NI service route has no raw USB endpoints".to_string()),
             Iface::Usb(iface) => match transfer_type {
                 TransferType::Bulk => Self::Bulk(iface.endpoint::<Bulk, Out>(address).map_err(|e| e.to_string())?),
                 _ => Self::Interrupt(iface.endpoint::<Interrupt, Out>(address).map_err(|e| e.to_string())?),
@@ -868,11 +905,16 @@ impl OutEndpoint {
                 ep.next_complete().await.status.map_err(|e| e.to_string())
             }
             Self::Hid(hid) => hid.write(&data),
+            Self::Service { session, display, width, height } => session.send_display(*display, *width, *height, &data),
         }
     }
 
     /// Send transfers one after another, stopping at the first error.
     async fn write_each(&mut self, transfers: Vec<Vec<u8>>) -> Result<(), String> {
+        // The service takes a frame as one message, not as USB-sized pieces.
+        if matches!(self, Self::Service { .. }) {
+            return self.write(transfers.concat()).await;
+        }
         for data in transfers {
             self.write(data).await?;
         }
@@ -895,6 +937,23 @@ fn run_screens(
         let mut screen_to_ep: HashMap<String, (String, u8)> = HashMap::new();
 
         for s in &descriptor.screens {
+            if let Some(Iface::Service(session)) = screen_ifaces.get(&s.interface) {
+                // Each screen is its own display on the service, numbered in
+                // descriptor order among the screens of that interface.
+                let display = descriptor
+                    .screens
+                    .iter()
+                    .filter(|o| o.interface == s.interface)
+                    .position(|o| o.name == s.name)
+                    .unwrap_or(0) as u8;
+                let key = (format!("{}#{}", s.interface, s.name), 0);
+                screen_to_ep.insert(s.name.clone(), key.clone());
+                endpoints.insert(
+                    key,
+                    OutEndpoint::Service { session: session.clone(), display, width: s.width, height: s.height },
+                );
+                continue;
+            }
             if let Some(iface) = screen_ifaces.get(&s.interface) {
                 let ep_desc = descriptor
                     .interface_by_id(&s.interface)

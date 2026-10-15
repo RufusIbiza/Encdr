@@ -1,0 +1,269 @@
+//! Named-pipe client for the NI hardware service (Windows).
+
+use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
+use std::sync::Mutex;
+use std::thread;
+use std::time::{Duration, Instant};
+
+use windows_sys::Win32::Foundation::{
+    CloseHandle, GetLastError, ERROR_PIPE_BUSY, ERROR_PIPE_CONNECTED, GENERIC_READ, GENERIC_WRITE, HANDLE,
+    INVALID_HANDLE_VALUE,
+};
+use windows_sys::Win32::Storage::FileSystem::{
+    CreateFileW, ReadFile, WriteFile, OPEN_EXISTING, PIPE_ACCESS_DUPLEX,
+};
+use windows_sys::Win32::System::Pipes::{
+    ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, PeekNamedPipe, SetNamedPipeHandleState,
+    WaitNamedPipeW, PIPE_READMODE_MESSAGE, PIPE_TYPE_MESSAGE, PIPE_WAIT,
+};
+
+use super::protocol::{self, TRUE_WORD};
+
+fn wide(s: &str) -> Vec<u16> {
+    s.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+fn pipe_path(name: &str) -> Vec<u16> {
+    wide(&format!(r"\\.\pipe\{name}"))
+}
+
+/// Client end of a pipe the service created.
+struct ClientPipe(HANDLE);
+
+// SAFETY: a pipe HANDLE can be used from any thread; access is serialised by
+// the callers (a `Mutex` around the only shared instance).
+unsafe impl Send for ClientPipe {}
+
+impl Drop for ClientPipe {
+    fn drop(&mut self) {
+        unsafe { CloseHandle(self.0) };
+    }
+}
+
+impl ClientPipe {
+    fn open(name: &str, attempts: u32) -> Result<Self, String> {
+        let path = pipe_path(name);
+        let mut last = 0;
+        for attempt in 0..attempts.max(1) {
+            let h = unsafe {
+                CreateFileW(
+                    path.as_ptr(),
+                    GENERIC_READ | GENERIC_WRITE,
+                    0,
+                    std::ptr::null(),
+                    OPEN_EXISTING,
+                    0,
+                    std::ptr::null_mut(),
+                )
+            };
+            if h != INVALID_HANDLE_VALUE {
+                let mode = PIPE_READMODE_MESSAGE;
+                if unsafe { SetNamedPipeHandleState(h, &mode, std::ptr::null(), std::ptr::null()) } == 0 {
+                    tracing::debug!("SetNamedPipeHandleState failed for '{name}' ({})", unsafe { GetLastError() });
+                }
+                return Ok(Self(h));
+            }
+            last = unsafe { GetLastError() };
+            if last == ERROR_PIPE_BUSY {
+                unsafe { WaitNamedPipeW(path.as_ptr(), 500) };
+            } else if attempt + 1 < attempts {
+                thread::sleep(Duration::from_millis(200));
+            }
+        }
+        Err(format!(r"could not open \\.\pipe\{name} (Windows error {last})"))
+    }
+
+    fn write(&self, data: &[u8]) -> Result<(), String> {
+        let mut written: u32 = 0;
+        let ok = unsafe { WriteFile(self.0, data.as_ptr().cast(), data.len() as u32, &mut written, std::ptr::null_mut()) };
+        if ok == 0 {
+            return Err(format!("writing to the NI service failed (Windows error {})", unsafe { GetLastError() }));
+        }
+        Ok(())
+    }
+
+    /// Wait up to `timeout` for a reply message. `Ok(None)` means none came.
+    fn read_reply(&self, timeout: Duration) -> Result<Option<Vec<u8>>, String> {
+        let start = Instant::now();
+        loop {
+            let mut avail: u32 = 0;
+            let peeked = unsafe {
+                PeekNamedPipe(self.0, std::ptr::null_mut(), 0, std::ptr::null_mut(), &mut avail, std::ptr::null_mut())
+            };
+            if peeked == 0 {
+                return Err(format!("the NI service closed the pipe (Windows error {})", unsafe { GetLastError() }));
+            }
+            if avail > 0 {
+                let mut buf = vec![0u8; avail.max(4096) as usize];
+                let mut read: u32 = 0;
+                let ok = unsafe { ReadFile(self.0, buf.as_mut_ptr().cast(), buf.len() as u32, &mut read, std::ptr::null_mut()) };
+                if ok != 0 {
+                    buf.truncate(read as usize);
+                    return Ok(Some(buf));
+                }
+            }
+            let waited = start.elapsed();
+            if waited >= timeout {
+                return Ok(None);
+            }
+            // Spin briefly for low latency, then back off.
+            if waited < Duration::from_millis(20) {
+                thread::yield_now();
+            } else {
+                thread::sleep(Duration::from_millis(1));
+            }
+        }
+    }
+
+    /// Write and read the reply in one step; for the bootstrap pipe, where
+    /// every request is answered.
+    fn transact(&self, request: &[u8]) -> Result<Vec<u8>, String> {
+        self.write(request)?;
+        self.read_reply(Duration::from_secs(2))?
+            .ok_or_else(|| "the NI service did not answer".to_string())
+    }
+}
+
+/// Serve a notification pipe the service connects back to. Messages are
+/// forwarded to `events`; each is acknowledged with an empty reply.
+fn serve_notifications(name: String, events: Sender<Vec<u8>>) -> Result<(), String> {
+    let path = pipe_path(&name);
+    let h = unsafe {
+        CreateNamedPipeW(
+            path.as_ptr(),
+            PIPE_ACCESS_DUPLEX,
+            PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
+            1,
+            65536,
+            65536,
+            5000,
+            std::ptr::null(),
+        )
+    };
+    if h == INVALID_HANDLE_VALUE {
+        return Err(format!(r"could not create \\.\pipe\{name} (Windows error {})", unsafe { GetLastError() }));
+    }
+    let h = h as isize;
+    thread::Builder::new()
+        .name("encdr-ni-notify".to_string())
+        .spawn(move || {
+            let h = h as HANDLE;
+            loop {
+                let connected = unsafe { ConnectNamedPipe(h, std::ptr::null_mut()) };
+                if connected == 0 && unsafe { GetLastError() } != ERROR_PIPE_CONNECTED {
+                    break;
+                }
+                loop {
+                    let mut buf = vec![0u8; 65536];
+                    let mut read: u32 = 0;
+                    let ok = unsafe { ReadFile(h, buf.as_mut_ptr().cast(), buf.len() as u32, &mut read, std::ptr::null_mut()) };
+                    if ok == 0 || read == 0 {
+                        break;
+                    }
+                    buf.truncate(read as usize);
+                    tracing::trace!("NI service notification on '{name}': {} bytes", buf.len());
+                    let _ = events.send(buf);
+                    let mut written: u32 = 0;
+                    let acked = unsafe { WriteFile(h, [0u8; 1].as_ptr().cast(), 0, &mut written, std::ptr::null_mut()) };
+                    if acked == 0 {
+                        break;
+                    }
+                }
+                unsafe { DisconnectNamedPipe(h) };
+            }
+            unsafe { CloseHandle(h) };
+        })
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Register with the service for the bootstrap step shared by device and
+/// instance connects, returning the request pipe.
+fn register(request: &[u8], events: &Sender<Vec<u8>>) -> Result<ClientPipe, String> {
+    let bootstrap = ClientPipe::open(protocol::BOOTSTRAP_PIPE, 10)?;
+    let reply = bootstrap.transact(request)?;
+    drop(bootstrap);
+    let ports = protocol::parse_connect_reply(&reply)?;
+    serve_notifications(ports.notification.clone(), events.clone())?;
+    let request_pipe = ClientPipe::open(&ports.request, 10)?;
+    request_pipe.write(&protocol::ack_notification_port(&ports.notification))?;
+    request_pipe.read_reply(Duration::from_millis(500))?;
+    Ok(request_pipe)
+}
+
+/// A registered client session for one physical device.
+pub struct ServiceSession {
+    /// Held open so the service keeps the device-level registration.
+    _device: Mutex<ClientPipe>,
+    instance: Mutex<ClientPipe>,
+}
+
+impl ServiceSession {
+    /// Connect to the service and register for the unit with the given
+    /// serial number (or the first one it reports when `serial` is `None` or
+    /// not found).
+    pub fn connect(product_id: u16, serial: Option<&str>, timeout: Duration) -> Result<Self, String> {
+        if ClientPipe::open(protocol::BOOTSTRAP_PIPE, 1).is_err() {
+            return Err("the NI hardware service is not running".to_string());
+        }
+
+        let (tx, rx) = channel::<Vec<u8>>();
+        let device = register(&protocol::device_connect(product_id), &tx)?;
+        device.write(&protocol::device_state_request())?;
+
+        // The USB serial number may not be spelled the way the service reports
+        // it. Prefer an exact match, but once any unit has reported, don't wait
+        // longer than a short grace period for a better one.
+        const GRACE: Duration = Duration::from_millis(1500);
+        let mut deadline = Instant::now() + timeout;
+        let mut serials: Vec<String> = Vec::new();
+        let mut chosen: Option<String> = None;
+        while chosen.is_none() {
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                break;
+            }
+            match rx.recv_timeout(left.min(Duration::from_millis(200))) {
+                Ok(data) => {
+                    if let Some(state) = protocol::parse_device_state(&data) {
+                        if state.present {
+                            if serial.is_some_and(|s| s.eq_ignore_ascii_case(&state.serial)) {
+                                chosen = Some(state.serial);
+                            } else if !serials.contains(&state.serial) {
+                                serials.push(state.serial);
+                                deadline = deadline.min(Instant::now() + GRACE);
+                            }
+                        }
+                    }
+                }
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => break,
+            }
+        }
+        let serial = chosen
+            .or_else(|| serials.into_iter().next())
+            .ok_or_else(|| "the NI service did not report a connected device".to_string())?;
+        tracing::info!("NI service reports device {serial}; registering for its screens");
+
+        let instance = register(&protocol::instance_connect(product_id, &serial), &tx)?;
+        for message in protocol::instance_setup(product_id) {
+            instance.write(&message)?;
+            instance.read_reply(Duration::from_millis(40))?;
+        }
+
+        Ok(Self { _device: Mutex::new(device), instance: Mutex::new(instance) })
+    }
+
+    /// Draw a screen command stream (the bytes a USB bulk transfer would
+    /// carry) on display `display`, waiting for the service to accept it.
+    pub fn send_display(&self, display: u8, width: u16, height: u16, commands: &[u8]) -> Result<(), String> {
+        let message = protocol::display_message(display, width, height, commands);
+        let pipe = self.instance.lock().map_err(|_| "NI service session poisoned".to_string())?;
+        pipe.write(&message)?;
+        match pipe.read_reply(protocol::DISPLAY_REPLY_TIMEOUT)? {
+            Some(reply) if reply.get(..4).is_some_and(|w| w == TRUE_WORD.to_le_bytes()) => Ok(()),
+            Some(reply) => Err(format!("the NI service rejected a frame (reply {:02x?})", &reply[..reply.len().min(8)])),
+            None => Err("the NI service did not acknowledge a frame in time".to_string()),
+        }
+    }
+}

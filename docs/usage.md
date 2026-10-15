@@ -44,6 +44,7 @@ Then reload: `sudo udevadm control --reload-rules && sudo udevadm trigger`
 **Windows:**
 - No additional system dependencies — `encdr-view` uses the built-in WebView2 runtime (included with Windows 10/11) via `tao` + `wry`.
 - **NI Services**: If Native Instruments software is installed, background services (such as `NIHardwareService` or `NIHostIntegrationAgent`) may claim controller USB interfaces. Stop or suspend these services (via Task Manager, Services Manager `services.msc`, or `net stop NIHardwareService`) before running Encdr apps. Once your Encdr application finishes running, they can be restarted without incident to resume standard NI software operation.
+- **Maschine Mk3 screens**: NI's driver owns the Mk3's screen interface, so raw USB access to it fails ("incompatible driver"). You don't need Zadig or to stop the NI services: when the screen interface can't be claimed, Encdr draws the screens through the NI hardware service instead (named pipes), which needs `NIHardwareService` to be **running** and the Maschine software to be closed. Inputs and LEDs use the Windows HID stack as before. Set `ENCDR_FORCE_SERVICE=1` to use the service route even when raw USB would work. If the service isn't running, the screens stay unavailable and a warning says why. The pipe protocol is verified on hardware (Maschine Mk3, Windows); Encdr's integration of it has not been run on hardware yet.
 
 ---
 
@@ -467,6 +468,7 @@ By default, packets are matched to `input_packets` entries by their length. Devi
 - **`pad_format: "id_pressure_words"`**: decodes a header-less stream of little-endian words, with the pad index in bits 15–12 and 12-bit pressure below.
 - **LED `prefix`**: a multi-byte header such as `["0x0c", "0x1e"]`, used instead of `prefix_byte`. Each LED group must set exactly one of the two.
 - **Single LED `default`**: a value written on connect (for example, a display backlight).
+- **`quirks.ni_service`**: `{ "product_id": "0x1600", "screen_interface": "screen" }` — when that interface can't be claimed over USB (Windows), draw its screens through the NI hardware service.
 - **`quirks.init_writes`**: raw writes sent once on connect, after reads are queued, e.g. `{ "interface": "control", "data": ["0x0b", "0x01"] }`.
 - **Screen `protocol`**: controller-specific init and framing (e.g. `{ "type": "ni_st7529", "display": 0 }`). Its transfers are framed by the protocol, so `full_blit` keeps an empty header and footer.
 
