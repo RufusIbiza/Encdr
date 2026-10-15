@@ -301,7 +301,7 @@ Session messages from the keyboard's bulk IN endpoint `0x83`: `HandshakeReply`, 
 #### `pub fn kk_mk3_set_plugin_data(&self, device_id: DeviceId, plugin_data: &PluginData) -> Result<()>`
 Sends the parameter page (`client_instance_parameter_page_model_set_plugin_data`, up to 8 parameters) followed by its section layout (`..._set_host_owned_viewstate`: parameters 1–4 and 5–8 grouped under the `section_name` of the first parameter in each half) over `odr_stream` (Bulk OUT `0x04`). Send it after `kk_mk3_start_session`, and again after every `HandshakeReply`.
 
-`PluginData::background` is the header image. A numeric string (e.g. `"21"`) is sent as an index into the keyboard's own image cache, which is the only form verified so far; any other string is sent as an asset name (experimental).
+`PluginData::background` is the header image. `None` sends no image. A numeric string (e.g. `"21"`) is sent as an index into the keyboard's own image cache (each index is a different built-in graphic; `21` shows the FM8 artwork), which is the only form verified so far; any other string is sent as an asset name (experimental).
 
 ```rust
 use encdr::{PluginData, RgbColor, ParameterItem};

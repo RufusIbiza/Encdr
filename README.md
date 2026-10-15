@@ -372,7 +372,7 @@ encdr/
     - Stereo VU meters: 8-channel logarithmic 7-bit dB meters (`build_vu_meters`, `-70 dB` to `+6 dB`).
     - High-resolution 14-bit rotary knob relative adjustments: SysEx `0x7F` packet parser decoding delta adjustments with 14-bit signed resolution.
     - Incoming DAW Remote MIDI parser: `parse_incoming` converting Channel 16 CCs and SysEx into typed [`KkMk3DawEvent`](encdr/src/device/komplete_kontrol/daw.rs) variants (buttons, navigation, 4D encoder relative steps, bank mapping, tempo changes).
-  - **On-Device Rendering (ODR) over USB interface 3** (thanks to our Windows tester for hardware testing on an S49 Mk3):
+  - **On-Device Rendering (ODR) over USB interface 3** (hardware testing and the verified protocol work on an S49 Mk3 contributed by [enfiniti27](https://github.com/enfiniti27)):
     - Wire format: every message is `<u32 LE length><MessagePack [2, method, params]>`, with method names and keys sent as indexes into the 437-entry symbol registry ([`symbols.rs`](encdr/src/device/komplete_kontrol/odr/symbols.rs)) agreed in the handshake. Names missing from the registry fall back to strings instead of panicking.
     - Endpoints: handshake and all commands on `odr_stream` (bulk OUT `0x04`), replies and events on bulk IN `0x83`, heartbeat on `odr_cmd` (bulk OUT `0x03`). The Mk3 descriptors now put `control` on HID interface 2 (`0x82`/`0x02`) and the ODR pipes on interface 3.
     - Session handling in the device thread: Encdr reassembles framed messages across bulk transfers (`OdrStreamDecoder`), sends the heartbeat every 8 s once the keyboard answers a handshake, and re-handshakes automatically when the keyboard sends `agent_heartbeat_request_handshake`.

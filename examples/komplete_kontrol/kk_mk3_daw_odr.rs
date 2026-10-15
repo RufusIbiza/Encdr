@@ -18,6 +18,7 @@
 //! Run with:
 //!   cargo run -p encdr-examples --bin kk_mk3_daw_odr
 //!   cargo run -p encdr-examples --bin kk_mk3_daw_odr -- --styles   (experimental graphics)
+//!   cargo run -p encdr-examples --bin kk_mk3_daw_odr -- --background 21   (header image index)
 
 use std::time::{Duration, Instant};
 use encdr::{
@@ -65,9 +66,13 @@ fn main() {
     // ── 2. Build NKS Models for ODR ───────────────────────────────────────
     println!("\n─── [2/3] ODR Extended Models (Plugin Chain, Browser, SmartPlay, Mixer) ───");
     let cyan = RgbColor::new(0, 210, 255);
-    // `background` is an index into the keyboard's own image cache (21 is known
-    // to work); uploading custom images isn't verified yet.
-    let mut plugin = PluginData::new("Analog Monolith", cyan).with_background("21");
+    let mut plugin = PluginData::new("Analog Monolith", cyan);
+    // No header image by default. `--background <n>` selects an entry in the
+    // keyboard's own image cache (each index is a different built-in graphic).
+    let args: Vec<String> = std::env::args().collect();
+    if let Some(n) = args.iter().position(|a| a == "--background").and_then(|i| args.get(i + 1)) {
+        plugin = plugin.with_background(n.clone());
+    }
 
     // The default page is all continuous knobs, the only style verified on
     // hardware. Pass `--styles` to try the experimental native waveform and
