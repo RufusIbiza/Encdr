@@ -19,7 +19,7 @@ use crate::device::led_builder::LedBuilder;
 use crate::device::parser::PacketParser;
 use crate::screen::ScreenManager;
 use crate::usb::hid::{HidInterface, HidReader};
-use crate::usb::ni_service::ServiceSession;
+use crate::usb::ni_service::{self, ServiceSession};
 
 /// Modest real-time scheduling priority for USB input threads: below typical
 /// pro-audio engine thread priority (often 60-90), above normal (0) — enough
@@ -430,7 +430,7 @@ fn run_device(
     // on it) can still be drawn by the NI hardware service.
     if let Some(quirk) = &descriptor.quirks.ni_service {
         if !interfaces.contains_key(&quirk.screen_interface) {
-            match ServiceSession::connect(quirk.product_id.0, hid_target.serial.as_deref(), Duration::from_secs(5)) {
+            match ni_service::connect_with_retry(quirk.product_id.0, hid_target.serial.as_deref(), Duration::from_secs(5)) {
                 Ok(session) => {
                     tracing::info!(
                         "Drawing the '{}' screens through the NI hardware service instead of USB",

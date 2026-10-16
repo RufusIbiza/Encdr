@@ -69,3 +69,36 @@ fn pick_serial(rx: &Receiver<Vec<u8>>, wanted: Option<&str>, timeout: Duration) 
         .or_else(|| serials.into_iter().next())
         .ok_or_else(|| "the NI service did not report a connected device".to_string())
 }
+
+/// Connect to the service, retrying a few times.
+///
+/// The service sometimes drops a registration straight after accepting it,
+/// typically right after a previous client went away; the next attempt then
+/// succeeds. A service that isn't running, or a unit it never reports, is not
+/// worth retrying.
+#[cfg(any(windows, target_os = "macos"))]
+pub fn connect_with_retry(
+    product_id: u16,
+    serial: Option<&str>,
+    timeout: Duration,
+) -> Result<ServiceSession, String> {
+    const ATTEMPTS: u32 = 4;
+    const PAUSE: Duration = Duration::from_millis(750);
+    let mut attempt = 1;
+    loop {
+        match ServiceSession::connect(product_id, serial, timeout) {
+            Ok(session) => return Ok(session),
+            Err(e) if attempt >= ATTEMPTS || e.contains("not running") || e.contains("did not report") => {
+                return Err(e);
+            }
+            Err(e) => {
+                tracing::debug!("NI service connect attempt {attempt}/{ATTEMPTS} failed: {e}; retrying");
+                attempt += 1;
+                std::thread::sleep(PAUSE);
+            }
+        }
+    }
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+pub use unsupported::connect_with_retry;

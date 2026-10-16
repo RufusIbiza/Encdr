@@ -181,13 +181,15 @@ fn serve_notifications(name: String, events: Sender<Vec<u8>>) -> Result<(), Stri
 /// instance connects, returning the request pipe.
 fn register(request: &[u8], events: &Sender<Vec<u8>>) -> Result<ClientPipe, String> {
     let bootstrap = ClientPipe::open(protocol::BOOTSTRAP_PIPE, 10)?;
-    let reply = bootstrap.transact(request)?;
+    let reply = bootstrap.transact(request).map_err(|e| format!("connect request: {e}"))?;
     drop(bootstrap);
     let ports = protocol::parse_connect_reply(&reply)?;
     serve_notifications(ports.notification.clone(), events.clone())?;
     let request_pipe = ClientPipe::open(&ports.request, 10)?;
-    request_pipe.write(&protocol::ack_notification_port(&ports.notification))?;
-    request_pipe.read_reply(Duration::from_millis(500))?;
+    request_pipe
+        .write(&protocol::ack_notification_port(&ports.notification))
+        .map_err(|e| format!("notification port ack: {e}"))?;
+    request_pipe.read_reply(Duration::from_millis(500)).map_err(|e| format!("notification port ack reply: {e}"))?;
     Ok(request_pipe)
 }
 
@@ -209,15 +211,15 @@ impl ServiceSession {
 
         let (tx, rx) = channel::<Vec<u8>>();
         let device = register(&protocol::device_connect(product_id), &tx)?;
-        device.write(&protocol::device_state_request())?;
+        device.write(&protocol::device_state_request()).map_err(|e| format!("device state request: {e}"))?;
 
         let serial = super::pick_serial(&rx, serial, timeout)?;
         tracing::info!("NI service reports device {serial}; registering for its screens");
 
         let instance = register(&protocol::instance_connect(product_id, &serial), &tx)?;
-        for message in protocol::instance_setup(product_id) {
-            instance.write(&message)?;
-            instance.read_reply(Duration::from_millis(40))?;
+        for (i, message) in protocol::instance_setup(product_id).into_iter().enumerate() {
+            instance.write(&message).map_err(|e| format!("setup message {i}: {e}"))?;
+            instance.read_reply(Duration::from_millis(40)).map_err(|e| format!("setup message {i} reply: {e}"))?;
         }
 
         Ok(Self { _device: Mutex::new(device), instance: Mutex::new(instance) })
