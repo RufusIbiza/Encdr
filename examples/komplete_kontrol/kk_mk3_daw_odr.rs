@@ -19,6 +19,7 @@
 //!   cargo run -p encdr-examples --bin kk_mk3_daw_odr
 //!   cargo run -p encdr-examples --bin kk_mk3_daw_odr -- --styles   (experimental graphics)
 //!   cargo run -p encdr-examples --bin kk_mk3_daw_odr -- --background 21   (header image index)
+//!   cargo run -p encdr-examples --bin kk_mk3_daw_odr -- --raw   (log changed HID reports as hex)
 
 use std::time::{Duration, Instant};
 use encdr::{
@@ -28,6 +29,11 @@ use encdr::{
 };
 
 fn main() {
+    if std::env::args().any(|a| a == "--raw") {
+        // SAFETY: nothing else is running yet; Encdr reads this when it opens the device.
+        unsafe { std::env::set_var("ENCDR_DUMP_REPORTS", "1") };
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()

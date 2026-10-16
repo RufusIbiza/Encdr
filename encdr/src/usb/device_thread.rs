@@ -641,6 +641,10 @@ fn run_device(
 
     // Komplete Kontrol Mk3 on-device-rendering session (inert on other devices).
     let mut odr_decoder = crate::device::komplete_kontrol::OdrStreamDecoder::new();
+    // `ENCDR_DUMP_REPORTS=1` logs every input report that differs from the
+    // previous one on the same interface, to help map controls on new devices.
+    let dump_reports = std::env::var_os("ENCDR_DUMP_REPORTS").is_some_and(|v| v != "0");
+    let mut last_reports: HashMap<String, Vec<u8>> = HashMap::new();
     let mut odr_session = OdrSession::default();
 
 
@@ -728,6 +732,10 @@ fn run_device(
                     match outcome {
                         Ok(data) => {
                             tracing::trace!("USB RECV [len={}] header={:02x?}", data.len(), &data[0..data.len().min(8)]);
+
+                            if dump_reports && source.interface != ODR_STREAM {
+                                dump_report(&mut last_reports, &source.interface, data);
+                            }
 
                             // Parse the packet
                             event_buf.clear();
@@ -1665,4 +1673,21 @@ fn run_leds(
             }
         }
     });
+}
+
+/// Log an input report if it changed since the last one on `interface`, with
+/// the changed byte offsets, for `ENCDR_DUMP_REPORTS`.
+fn dump_report(last: &mut HashMap<String, Vec<u8>>, interface: &str, data: &[u8]) {
+    let prev = last.entry(interface.to_string()).or_default();
+    if prev.as_slice() == data {
+        return;
+    }
+    let changed: Vec<usize> = if prev.len() == data.len() {
+        (0..data.len()).filter(|&i| prev[i] != data[i]).collect()
+    } else {
+        Vec::new()
+    };
+    let hex: Vec<String> = data.iter().map(|b| format!("{b:02x}")).collect();
+    tracing::info!(target: "encdr::raw", "[{interface}] len={} changed={:?} {}", data.len(), changed, hex.join(" "));
+    *prev = data.to_vec();
 }
