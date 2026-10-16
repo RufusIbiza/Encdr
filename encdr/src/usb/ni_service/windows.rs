@@ -1,6 +1,6 @@
 //! Named-pipe client for the NI hardware service (Windows).
 
-use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
+use std::sync::mpsc::{channel, Sender};
 use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -211,38 +211,7 @@ impl ServiceSession {
         let device = register(&protocol::device_connect(product_id), &tx)?;
         device.write(&protocol::device_state_request())?;
 
-        // The USB serial number may not be spelled the way the service reports
-        // it. Prefer an exact match, but once any unit has reported, don't wait
-        // longer than a short grace period for a better one.
-        const GRACE: Duration = Duration::from_millis(1500);
-        let mut deadline = Instant::now() + timeout;
-        let mut serials: Vec<String> = Vec::new();
-        let mut chosen: Option<String> = None;
-        while chosen.is_none() {
-            let left = deadline.saturating_duration_since(Instant::now());
-            if left.is_zero() {
-                break;
-            }
-            match rx.recv_timeout(left.min(Duration::from_millis(200))) {
-                Ok(data) => {
-                    if let Some(state) = protocol::parse_device_state(&data) {
-                        if state.present {
-                            if serial.is_some_and(|s| s.eq_ignore_ascii_case(&state.serial)) {
-                                chosen = Some(state.serial);
-                            } else if !serials.contains(&state.serial) {
-                                serials.push(state.serial);
-                                deadline = deadline.min(Instant::now() + GRACE);
-                            }
-                        }
-                    }
-                }
-                Err(RecvTimeoutError::Timeout) => {}
-                Err(RecvTimeoutError::Disconnected) => break,
-            }
-        }
-        let serial = chosen
-            .or_else(|| serials.into_iter().next())
-            .ok_or_else(|| "the NI service did not report a connected device".to_string())?;
+        let serial = super::pick_serial(&rx, serial, timeout)?;
         tracing::info!("NI service reports device {serial}; registering for its screens");
 
         let instance = register(&protocol::instance_connect(product_id, &serial), &tx)?;

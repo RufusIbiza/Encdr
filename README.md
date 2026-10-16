@@ -315,6 +315,8 @@ encdr/
 | ----------------------- | -------------------------- | ---------------------------------------- |
 | USB transport           | `nusb`                     | Pure Rust, async, cross-platform         |
 | HID fallback (macOS/Win)| `hidapi`                   | Fallback for OS-bound HID interfaces     |
+| NI service (Windows)    | `windows-sys`              | Named pipes to the NI hardware service   |
+| NI service (macOS)      | `core-foundation-sys`      | Message ports to the NI hardware service |
 | GPU compute             | `wgpu`                     | Format conversion + frame diff shaders   |
 | Lock-free channel       | `crossbeam-channel`        | SPSC event delivery                      |
 | Descriptor parsing      | `serde` + `serde_json`     | JSON device descriptors                  |
@@ -331,7 +333,8 @@ encdr/
 ## Changelog
 
 ### v0.7.50
-- **Maschine Mk3 screens on Windows without a driver swap**: when the screen interface can't be claimed over USB (NI's driver holds it), Encdr now draws the screens through the NI hardware service over named pipes, so Zadig isn't needed and the NI services can stay running. Opt-in per descriptor with the new `quirks.ni_service` field (set for the Maschine Mk3); `ENCDR_FORCE_SERVICE=1` forces the route. Inputs and LEDs are unchanged. The pipe protocol is verified on hardware (Windows, Maschine Mk3); this integration is awaiting a hardware run. Windows only; other platforms keep using USB.
+- **Maschine Mk3 screens through the NI hardware service (Windows and macOS)**: when the screen interface can't be claimed over USB (NI's driver or services hold it), Encdr now draws the screens through the NI hardware service instead: named pipes on Windows, message ports on macOS. Zadig isn't needed and the NI services can stay running. Opt-in per descriptor with the new `quirks.ni_service` field (set for the Maschine Mk3); `ENCDR_FORCE_SERVICE=1` forces the route. Inputs and LEDs are unchanged. The protocol is verified on hardware (Windows, Maschine Mk3); the Encdr integration, including the macOS transport, is awaiting a hardware run. Linux keeps using USB.
+- Internal: the service-route serial selection is shared between the Windows and macOS transports.
 - `mk3_vegas` example: animates both screens and writes controller input to `mk3-input-log.txt` instead of the console.
 
 ### v0.7.10

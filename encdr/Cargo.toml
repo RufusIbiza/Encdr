@@ -58,6 +58,8 @@ libc = "0.2"
 # nusb cannot claim (see usb/hid.rs). Always on for macOS/Windows; opt-in on
 # Linux via the `hid` feature, where nusb can detach usbhid instead.
 [target.'cfg(target_os = "macos")'.dependencies]
+# CFMessagePort, for the NI hardware service route (see usb/ni_service).
+core-foundation-sys = "0.8"
 hidapi = { version = "2.6", default-features = false, features = ["macos-shared-device"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
