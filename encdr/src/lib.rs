@@ -415,6 +415,21 @@ impl Encdr {
     }
 
 
+    /// Whether this process currently has the device's screens and LEDs.
+    ///
+    /// On Windows and macOS the Maschine Mk3 shares the hardware with NI's own
+    /// software, and its instance button hands it back and forth. While
+    /// another client has it this returns `false`: frames and LED changes
+    /// you submit are kept but not sent, and everything is redrawn when
+    /// control returns. Apps that render expensive frames (such as
+    /// `encdr-view`'s WebView capture) can skip that work meanwhile.
+    ///
+    /// Returns `true` for devices that don't share the hardware, and for
+    /// unknown devices.
+    pub fn has_control(&self, device_id: DeviceId) -> bool {
+        self.devices.get(&device_id).map_or(true, |handle| handle.has_control())
+    }
+
     /// Submit a screen frame. The pixels should be in RGBA8888 format
     /// (or the device's native format to skip conversion).
     pub fn submit_screen(&self, device_id: DeviceId, screen: &str, pixels: &[u8]) {
