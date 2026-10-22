@@ -119,8 +119,17 @@ impl ClientPipe {
     /// every request is answered.
     fn transact(&self, request: &[u8]) -> Result<Vec<u8>, String> {
         self.write(request)?;
-        self.read_reply(Duration::from_secs(2))?
-            .ok_or_else(|| "the NI service did not answer".to_string())
+        // Block in ReadFile rather than polling: the service closes the
+        // bootstrap pipe right after replying, and a reply not yet read is
+        // lost (Windows error 233) when it does.
+        let mut buf = vec![0u8; 4096];
+        let mut read: u32 = 0;
+        let ok = unsafe { ReadFile(self.0, buf.as_mut_ptr().cast(), buf.len() as u32, &mut read, std::ptr::null_mut()) };
+        if ok == 0 {
+            return Err(format!("the NI service closed the pipe (Windows error {})", unsafe { GetLastError() }));
+        }
+        buf.truncate(read as usize);
+        Ok(buf)
     }
 }
 
