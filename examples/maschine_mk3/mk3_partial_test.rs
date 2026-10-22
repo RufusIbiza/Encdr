@@ -5,11 +5,17 @@
 //! `RUST_LOG=encdr=debug` and watch the "Sending N bytes" lines: a full frame
 //! is ~261 KB, a partial update far less.
 //!
+//! The pad and button LEDs are set once at the start and never again. Press the
+//! controller's instance button to hand the hardware to NI's software and back:
+//! the screens and LEDs should be redrawn by themselves on return.
+//!
+//! Runs for 60 seconds, or the number of seconds given as the first argument.
+//!
 //! Run with:
-//!   RUST_LOG=encdr=debug cargo run -p encdr-examples --bin mk3_partial_test
+//!   RUST_LOG=encdr=debug cargo run -p encdr-examples --bin mk3_partial_test [-- SECONDS]
 
 use std::time::{Duration, Instant};
-use encdr::{Encdr, EncdrConfig};
+use encdr::{Encdr, EncdrConfig, LedValue};
 
 const SCREEN_W: usize = 960;
 const SCREEN_H: usize = 272;
@@ -60,9 +66,19 @@ fn main() {
             std::process::exit(1);
         });
 
-    println!("Moving a box on the left screen for 20 seconds...");
+    // Static LED state, set once: 16 pads in a colour ramp and a few buttons.
+    for i in 0..16 {
+        let (r, g, b) = if i % 2 == 0 { (255, 0, 80 + i as u8 * 10) } else { (0, 200, 255 - i as u8 * 10) };
+        encdr.set_led(device_id, &format!("pad_{i}"), LedValue::Rgb { r, g, b });
+    }
+    for button in ["play", "rec", "stop", "browser", "mixer"] {
+        encdr.set_led(device_id, button, LedValue::Bright);
+    }
+
+    let seconds: u64 = std::env::args().nth(1).and_then(|a| a.parse().ok()).unwrap_or(60);
+    println!("Moving a box on the left screen for {seconds} seconds. Press the instance button to hand over and back...");
     let start = Instant::now();
-    while start.elapsed() < Duration::from_secs(20) {
+    while start.elapsed() < Duration::from_secs(seconds) {
         encdr.submit_dual_screen(device_id, "left", "right", &frame(start.elapsed().as_secs_f32()));
         std::thread::sleep(Duration::from_millis(50));
     }

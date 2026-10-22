@@ -285,6 +285,13 @@ impl LedBuilder {
         Some(wire)
     }
 
+    /// Mark the whole buffer as unsent, so the next [`flush`](Self::flush)
+    /// writes every LED again. Used when something else may have changed the
+    /// device's LEDs.
+    pub fn invalidate(&mut self) {
+        self.dirty = true;
+    }
+
     /// Clear all LEDs to off.
     pub fn clear(&mut self) {
         self.buffer.fill(0);
@@ -332,6 +339,16 @@ mod tests {
         assert_eq!(lb.flush(), Some(vec![0x0c, 0x00, 0, 9]));
         assert_eq!(lb.flush(), None);
         assert_eq!(lb.transfer_type(), TransferType::Bulk);
+    }
+
+    #[test]
+    fn invalidate_resends_the_current_state() {
+        let mut lb = builder();
+        lb.set("play", LedValue::Single(7));
+        assert_eq!(lb.flush(), Some(vec![0x0c, 0x00, 7, 9]));
+        assert_eq!(lb.flush(), None);
+        lb.invalidate();
+        assert_eq!(lb.flush(), Some(vec![0x0c, 0x00, 7, 9]));
     }
 
     #[test]

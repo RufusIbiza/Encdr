@@ -170,7 +170,11 @@ fn serve_notifications(name: String, events: Sender<Vec<u8>>) -> Result<(), Stri
                         break;
                     }
                     buf.truncate(read as usize);
-                    tracing::trace!("NI service notification on '{name}': {} bytes", buf.len());
+                    tracing::trace!(
+                        "NI service notification on '{name}': {} bytes {:02x?}",
+                        buf.len(),
+                        &buf[..buf.len().min(128)]
+                    );
                     let _ = events.send(buf);
                     let mut written: u32 = 0;
                     let acked = unsafe { WriteFile(h, [0u8; 1].as_ptr().cast(), 0, &mut written, std::ptr::null_mut()) };
@@ -207,6 +211,7 @@ pub struct ServiceSession {
     /// Held open so the service keeps the device-level registration.
     _device: Mutex<ClientPipe>,
     instance: Mutex<ClientPipe>,
+    control: async_channel::Receiver<bool>,
 }
 
 impl ServiceSession {
@@ -224,6 +229,7 @@ impl ServiceSession {
 
         let serial = super::pick_serial(&rx, serial, timeout)?;
         tracing::info!("NI service reports device {serial}; registering for its screens");
+        let control = super::watch_control(rx);
 
         let instance = register(&protocol::instance_connect(product_id, &serial), &tx)?;
         for (i, message) in protocol::instance_setup(product_id).into_iter().enumerate() {
@@ -231,7 +237,13 @@ impl ServiceSession {
             instance.read_reply(Duration::from_millis(40)).map_err(|e| format!("setup message {i} reply: {e}"))?;
         }
 
-        Ok(Self { _device: Mutex::new(device), instance: Mutex::new(instance) })
+        Ok(Self { _device: Mutex::new(device), instance: Mutex::new(instance), control })
+    }
+
+    /// Changes in whether this client has the hardware: `true` when it became
+    /// the active instance, `false` when another client took over.
+    pub fn control_events(&self) -> async_channel::Receiver<bool> {
+        self.control.clone()
     }
 
     /// Draw a screen command stream (the bytes a USB bulk transfer would
@@ -242,7 +254,7 @@ impl ServiceSession {
         pipe.write(&message)?;
         match pipe.read_reply(protocol::DISPLAY_REPLY_TIMEOUT)? {
             Some(reply) if reply.get(..4).is_some_and(|w| w == TRUE_WORD.to_le_bytes()) => Ok(()),
-            Some(reply) => Err(format!("the NI service rejected a frame (reply {:02x?})", &reply[..reply.len().min(8)])),
+            Some(reply) => Err(format!("{} (reply {:02x?})", super::REJECTED_FRAME,&reply[..reply.len().min(8)])),
             None => Err("the NI service did not acknowledge a frame in time".to_string()),
         }
     }

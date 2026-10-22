@@ -138,7 +138,7 @@ unsafe extern "C" fn on_notification(
     // SAFETY: `info` is the `Sender` the serving thread keeps alive for as long as the port exists.
     let events = unsafe { &*(info as *const Sender<Vec<u8>>) };
     let bytes = copy_data(data);
-    tracing::trace!("NI service notification: {} bytes", bytes.len());
+    tracing::trace!("NI service notification: {} bytes {:02x?}", bytes.len(), &bytes[..bytes.len().min(128)]);
     let _ = events.send(bytes);
     ptr::null()
 }
@@ -220,6 +220,7 @@ pub struct ServiceSession {
     _device: (RemotePort, NotificationServer),
     instance: Mutex<RemotePort>,
     _instance_notifications: NotificationServer,
+    control: async_channel::Receiver<bool>,
 }
 
 impl ServiceSession {
@@ -237,6 +238,7 @@ impl ServiceSession {
 
         let serial = super::pick_serial(&rx, serial, timeout)?;
         tracing::info!("NI service reports device {serial}; registering for its screens");
+        let control = super::watch_control(rx);
 
         let (instance, notifications) = register(&protocol::instance_connect(product_id, &serial), &tx)?;
         for message in protocol::instance_setup(product_id) {
@@ -244,7 +246,13 @@ impl ServiceSession {
             let _ = instance.request(&message, Duration::from_millis(40));
         }
 
-        Ok(Self { _device: device, instance: Mutex::new(instance), _instance_notifications: notifications })
+        Ok(Self { _device: device, instance: Mutex::new(instance), _instance_notifications: notifications, control })
+    }
+
+    /// Changes in whether this client has the hardware: `true` when it became
+    /// the active instance, `false` when another client took over.
+    pub fn control_events(&self) -> async_channel::Receiver<bool> {
+        self.control.clone()
     }
 
     /// Draw a screen command stream (the bytes a USB bulk transfer would
@@ -254,7 +262,7 @@ impl ServiceSession {
         let port = self.instance.lock().map_err(|_| "NI service session poisoned".to_string())?;
         match port.request(&message, protocol::DISPLAY_REPLY_TIMEOUT) {
             Ok(reply) if reply.get(..4).is_some_and(|w| w == TRUE_WORD.to_le_bytes()) => Ok(()),
-            Ok(reply) => Err(format!("the NI service rejected a frame (reply {:02x?})", &reply[..reply.len().min(8)])),
+            Ok(reply) => Err(format!("{} (reply {:02x?})", super::REJECTED_FRAME,&reply[..reply.len().min(8)])),
             Err(code) => Err(format!("the NI service did not accept a frame (status {code})")),
         }
     }

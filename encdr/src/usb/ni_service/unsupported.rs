@@ -8,6 +8,10 @@ impl ServiceSession {
         Err("the NI service route is only available on Windows and macOS".to_string())
     }
 
+    pub fn control_events(&self) -> async_channel::Receiver<bool> {
+        async_channel::unbounded().1
+    }
+
     pub fn send_display(&self, _display: u8, _width: u16, _height: u16, _commands: &[u8]) -> Result<(), String> {
         Err("the NI service route is only available on Windows and macOS".to_string())
     }

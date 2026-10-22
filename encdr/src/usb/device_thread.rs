@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::thread;
@@ -80,6 +81,12 @@ pub enum DeviceCmd {
         pixels: Vec<u8>,
         format: PixelFormat,
     },
+    /// Internal, from the screen thread to the LED thread: another client
+    /// (e.g. NI's software) has taken the hardware. LED state is still
+    /// tracked but not written.
+    ControlLost,
+    /// Internal: control is back; every LED is written again.
+    ControlRegained,
     Disconnect,
 }
 
@@ -90,11 +97,22 @@ pub struct DeviceHandle {
     cmd_tx: async_channel::Sender<DeviceCmd>,
     led_tx: Option<async_channel::Sender<DeviceCmd>>,
     screen_tx: Option<async_channel::Sender<DeviceCmd>>,
+    /// Cleared while another client (e.g. NI's software) has the hardware.
+    has_control: Arc<AtomicBool>,
     thread: Option<thread::JoinHandle<()>>,
     screen_thread: Option<thread::JoinHandle<()>>,
 }
 
 impl DeviceHandle {
+    /// Whether this process currently has the device's screens and LEDs.
+    /// False while another client has them (on Windows and macOS, NI's
+    /// software after the controller's instance button is pressed); frames
+    /// and LED changes are then kept but not sent, and redrawn when control
+    /// returns.
+    pub fn has_control(&self) -> bool {
+        self.has_control.load(Ordering::Relaxed)
+    }
+
     /// Spawn a device I/O thread. Returns a handle for sending commands.
     pub fn spawn(
         device_id: DeviceId,
@@ -161,10 +179,16 @@ impl DeviceHandle {
             serial: usb_info.serial_number().map(str::to_owned),
         };
 
+        let led_ctl_tx = led_tx.clone();
+        let has_control = Arc::new(AtomicBool::new(true));
+        let thread_has_control = has_control.clone();
         let thread = thread::Builder::new()
             .name(format!("encdr-{}", descriptor.name.replace(' ', "-").to_lowercase()))
             .spawn(move || {
-                run_device(id, desc, usb_device, hid_target, names, cmd_rx, led_rx, screen_rx, event_tx, gpu);
+                run_device(
+                    id, desc, usb_device, hid_target, names, cmd_rx, led_rx, led_ctl_tx, thread_has_control, screen_rx,
+                    event_tx, gpu,
+                );
             })
             .map_err(|e| crate::core::error::EncdrError::Io(e))?;
 
@@ -174,6 +198,7 @@ impl DeviceHandle {
             cmd_tx,
             led_tx,
             screen_tx,
+            has_control,
             thread: Some(thread),
             screen_thread: None,
         })
@@ -190,6 +215,11 @@ impl DeviceHandle {
             | DeviceCmd::SetLedInGroup { .. }
             | DeviceCmd::SetLedStrip { .. }
             | DeviceCmd::SetLedStripInGroup { .. } => {
+                if let Some(ref tx) = self.led_tx {
+                    tx.try_send(cmd).ok();
+                }
+            }
+            DeviceCmd::ControlLost | DeviceCmd::ControlRegained => {
                 if let Some(ref tx) = self.led_tx {
                     tx.try_send(cmd).ok();
                 }
@@ -238,6 +268,8 @@ fn run_device(
     names: HashMap<String, &'static str>,
     cmd_rx: async_channel::Receiver<DeviceCmd>,
     led_rx: Option<async_channel::Receiver<DeviceCmd>>,
+    led_ctl_tx: Option<async_channel::Sender<DeviceCmd>>,
+    has_control: Arc<AtomicBool>,
     screen_rx: Option<async_channel::Receiver<DeviceCmd>>,
     event_tx: Sender<Event>,
     gpu: Option<Arc<crate::screen::GpuContext>>,
@@ -467,7 +499,7 @@ fn run_device(
         thread::Builder::new()
             .name(format!("encdr-screen-{}", descriptor.name.replace(' ', "-").to_lowercase()))
             .spawn(move || {
-                run_screens(screen_desc, screen_ifaces, screen_managers, screen_rx);
+                run_screens(screen_desc, screen_ifaces, screen_managers, screen_rx, led_ctl_tx, has_control);
             })
             .ok()
     } else {
@@ -922,6 +954,111 @@ impl OutEndpoint {
     }
 }
 
+/// How often to try the screens again while another client has them and the
+/// service sends no notifications to say otherwise.
+const REGAIN_PROBE_INTERVAL: Duration = Duration::from_millis(250);
+
+/// The same, as a safety net when the service does announce control changes
+/// and one might have been missed.
+const REGAIN_PROBE_INTERVAL_NOTIFIED: Duration = Duration::from_secs(2);
+
+/// Whether another client has the screens. The NI hardware service says so
+/// when NI's own software becomes the active instance (the controller's
+/// instance button), and refuses Encdr's frames meanwhile. Encdr then stops
+/// sending, keeps tracking the frames it is given and the LED state, and
+/// redraws everything as soon as it is the active instance again.
+struct ScreenControl {
+    lost: bool,
+    last_probe: Instant,
+    probe_interval: Duration,
+    led_tx: Option<async_channel::Sender<DeviceCmd>>,
+    /// Control changes announced by the service, when it is the screen route.
+    changes: Option<async_channel::Receiver<bool>>,
+    /// Mirrors `!lost` for [`DeviceHandle::has_control`].
+    shared: Arc<AtomicBool>,
+}
+
+impl ScreenControl {
+    fn new(
+        led_tx: Option<async_channel::Sender<DeviceCmd>>,
+        changes: Option<async_channel::Receiver<bool>>,
+        shared: Arc<AtomicBool>,
+    ) -> Self {
+        let probe_interval =
+            if changes.is_some() { REGAIN_PROBE_INTERVAL_NOTIFIED } else { REGAIN_PROBE_INTERVAL };
+        Self { lost: false, last_probe: Instant::now(), probe_interval, led_tx, changes, shared }
+    }
+
+    async fn lose(&mut self) {
+        self.last_probe = Instant::now();
+        if self.lost {
+            return;
+        }
+        self.lost = true;
+        self.shared.store(false, Ordering::Relaxed);
+        tracing::warn!(
+            "Another application (e.g. NI's software) has taken the screens; Encdr keeps its picture and LED state and redraws both when control returns"
+        );
+        self.notify_leds(DeviceCmd::ControlLost).await;
+    }
+
+    async fn regain(&mut self) {
+        if !self.lost {
+            return;
+        }
+        self.lost = false;
+        self.shared.store(true, Ordering::Relaxed);
+        tracing::info!("Control of the screens is back; redrawing the screens and LEDs");
+        self.notify_leds(DeviceCmd::ControlRegained).await;
+    }
+
+    fn probe_due(&self) -> bool {
+        self.lost && self.last_probe.elapsed() >= self.probe_interval
+    }
+
+    /// Make the next retry due now.
+    fn probe_now(&mut self) {
+        let now = Instant::now();
+        self.last_probe = now.checked_sub(self.probe_interval).unwrap_or(now);
+    }
+
+    async fn notify_leds(&self, cmd: DeviceCmd) {
+        if let Some(tx) = &self.led_tx {
+            let _ = tx.send(cmd).await;
+        }
+    }
+}
+
+/// While control is lost, redraw every screen with its latest frame. Once the
+/// service accepts one, control is back and the rest follow.
+async fn try_regain_screens(
+    descriptor: &DeviceDescriptor,
+    screen_managers: &HashMap<String, ScreenManager>,
+    screen_to_ep: &HashMap<String, (String, u8)>,
+    endpoints: &mut HashMap<(String, u8), OutEndpoint>,
+    control: &mut ScreenControl,
+) {
+    use crate::screen::protocol;
+
+    if !control.probe_due() {
+        return;
+    }
+    control.last_probe = Instant::now();
+    for screen_desc in &descriptor.screens {
+        let (Some(sm), Some(ep)) = (
+            screen_managers.get(&screen_desc.name),
+            screen_to_ep.get(&screen_desc.name).and_then(|key| endpoints.get_mut(key)),
+        ) else {
+            continue;
+        };
+        match ep.write_each(protocol::frame_transfers(screen_desc, sm.current_blit(screen_desc))).await {
+            Ok(()) => control.regain().await,
+            Err(e) if ni_service::is_rejected_frame(&e) => return,
+            Err(e) => tracing::warn!("Redrawing screen '{}' failed: {}", screen_desc.name, e),
+        }
+    }
+}
+
 /// Dedicated screen worker thread. Runs completely decoupled from the interrupt IN input loop
 /// so that large bulk pixel transfers never delay button, pad, or encoder events.
 fn run_screens(
@@ -929,10 +1066,17 @@ fn run_screens(
     screen_ifaces: HashMap<String, Iface>,
     mut screen_managers: HashMap<String, ScreenManager>,
     screen_rx: async_channel::Receiver<DeviceCmd>,
+    led_ctl_tx: Option<async_channel::Sender<DeviceCmd>>,
+    has_control: Arc<AtomicBool>,
 ) {
     use crate::screen::protocol;
 
     block_on(async {
+        let changes = screen_ifaces.values().find_map(|iface| match iface {
+            Iface::Service(session) => Some(session.control_events()),
+            _ => None,
+        });
+        let mut control = ScreenControl::new(led_ctl_tx, changes, has_control);
         let mut endpoints: HashMap<(String, u8), OutEndpoint> = HashMap::new();
         let mut screen_to_ep: HashMap<String, (String, u8)> = HashMap::new();
 
@@ -1012,6 +1156,7 @@ fn run_screens(
             );
             match ep.write_each(transfers).await {
                 Ok(()) => tracing::info!("Splash screen sent successfully for '{}'", screen_desc.name),
+                Err(e) if ni_service::is_rejected_frame(&e) => control.lose().await,
                 Err(e) => tracing::error!("Splash screen for '{}' failed: {}", screen_desc.name, e),
             }
         }
@@ -1024,6 +1169,7 @@ fn run_screens(
             screen_managers: &mut HashMap<String, ScreenManager>,
             screen_to_ep: &HashMap<String, (String, u8)>,
             endpoints: &mut HashMap<(String, u8), OutEndpoint>,
+            control: &mut ScreenControl,
         ) {
             let Some(sm) = screen_managers.get_mut(screen) else {
                 tracing::warn!("ScreenManager for '{}' not found", screen);
@@ -1036,18 +1182,80 @@ fn run_screens(
             let Some(blit_data) = sm.submit(pixels, format, screen_desc) else {
                 return;
             };
+            // The manager has taken the frame, so it stays current; while
+            // another client has the screens it is redrawn once control returns.
+            if control.lost {
+                return;
+            }
             let Some(ep) = screen_to_ep.get(screen).and_then(|key| endpoints.get_mut(key)) else {
                 tracing::warn!("Screen endpoint for '{}' not found", screen);
                 return;
             };
             tracing::debug!("Sending {} bytes for screen '{}'...", blit_data.len(), screen);
-            if let Err(e) = ep.write_each(protocol::frame_transfers(screen_desc, blit_data)).await {
-                tracing::warn!("Screen transfer for '{}' failed: {}", screen, e);
+            match ep.write_each(protocol::frame_transfers(screen_desc, blit_data)).await {
+                Ok(()) => tracing::debug!("Bulk out completed for screen '{}'", screen),
+                Err(e) if ni_service::is_rejected_frame(&e) => control.lose().await,
+                Err(e) => tracing::warn!("Screen transfer for '{}' failed: {}", screen, e),
             }
-            tracing::debug!("Bulk out completed for screen '{}'", screen);
         }
 
-        while let Ok(cmd) = screen_rx.recv().await {
+        enum Wake {
+            Cmd(DeviceCmd),
+            Control(bool),
+            Retry,
+        }
+
+        loop {
+            // Wake for a frame, for the service announcing a control change,
+            // and, while control is lost, for the next retry (so a screen the
+            // application no longer updates is still redrawn).
+            let retry_in = control.lost.then(|| control.probe_interval.saturating_sub(control.last_probe.elapsed()));
+            // `None` is the command channel closing.
+            let wake = futures_lite::future::or(
+                async {
+                    match &control.changes {
+                        Some(changes) => match changes.recv().await {
+                            Ok(active) => Some(Wake::Control(active)),
+                            // The notifications ended; carry on without them.
+                            Err(_) => std::future::pending().await,
+                        },
+                        None => std::future::pending().await,
+                    }
+                },
+                futures_lite::future::or(
+                    async { screen_rx.recv().await.ok().map(Wake::Cmd) },
+                    async {
+                        match retry_in {
+                            Some(wait) => {
+                                Timer::after(wait).await;
+                                Some(Wake::Retry)
+                            }
+                            None => std::future::pending().await,
+                        }
+                    },
+                ),
+            )
+            .await;
+            let cmd = match wake {
+                None => break,
+                Some(Wake::Cmd(cmd)) => cmd,
+                Some(Wake::Control(false)) => {
+                    control.lose().await;
+                    continue;
+                }
+                Some(Wake::Control(true)) => {
+                    // Redraw straight away rather than at the next retry.
+                    control.probe_now();
+                    try_regain_screens(&descriptor, &screen_managers, &screen_to_ep, &mut endpoints, &mut control)
+                        .await;
+                    continue;
+                }
+                Some(Wake::Retry) => {
+                    try_regain_screens(&descriptor, &screen_managers, &screen_to_ep, &mut endpoints, &mut control)
+                        .await;
+                    continue;
+                }
+            };
             match cmd {
                 DeviceCmd::Disconnect => break,
                 DeviceCmd::SubmitScreen { screen, pixels, format } => {
@@ -1059,6 +1267,7 @@ fn run_screens(
                         &mut screen_managers,
                         &screen_to_ep,
                         &mut endpoints,
+                        &mut control,
                     )
                     .await;
                 }
@@ -1112,6 +1321,7 @@ fn run_screens(
                         &mut screen_managers,
                         &screen_to_ep,
                         &mut endpoints,
+                        &mut control,
                     )
                     .await;
 
@@ -1123,11 +1333,20 @@ fn run_screens(
                         &mut screen_managers,
                         &screen_to_ep,
                         &mut endpoints,
+                        &mut control,
                     )
                     .await;
                 }
                 _ => continue,
             }
+
+            try_regain_screens(&descriptor, &screen_managers, &screen_to_ep, &mut endpoints, &mut control).await;
+        }
+
+        // Another client has the screens; leave them alone rather than draw over its picture.
+        if control.lost {
+            tracing::debug!("Not drawing the exit screensaver: another application has the screens");
+            return;
         }
 
         // Clean exit: render screensaver image to color screens, blank monochrome screens
@@ -1162,7 +1381,11 @@ fn run_screens(
                 transfers.iter().map(Vec::len).sum::<usize>()
             );
             if let Err(e) = ep.write_each(transfers).await {
-                tracing::warn!("Screensaver transfer for '{}' failed on clean exit: {}", screen_desc.name, e);
+                if ni_service::is_rejected_frame(&e) {
+                    tracing::debug!("Screensaver for '{}' not drawn: another application has the screens", screen_desc.name);
+                } else {
+                    tracing::warn!("Screensaver transfer for '{}' failed on clean exit: {}", screen_desc.name, e);
+                }
             }
         }
     });
@@ -1203,6 +1426,10 @@ fn run_leds(
 
         // Tracks cumulative mask and dirty state per feature subcommand (e.g. 0x26 -> (mask, dirty))
         let mut feature_cmd_masks: HashMap<u8, (u8, bool)> = HashMap::new();
+
+        // Set while another client (e.g. NI's software) has the hardware: LED
+        // state keeps being tracked but nothing is written over theirs.
+        let mut held = false;
 
         while let Ok(first_cmd) = led_rx.recv().await {
             // Apply this command, then drain any others already queued so a
@@ -1299,6 +1526,17 @@ fn run_leds(
                             }
                         }
                     }
+                    DeviceCmd::ControlLost => held = true,
+                    DeviceCmd::ControlRegained => {
+                        held = false;
+                        // The other client changed the LEDs; write all of ours again.
+                        for lb in &mut led_builders {
+                            lb.invalidate();
+                        }
+                        for entry in feature_cmd_masks.values_mut() {
+                            entry.1 = true;
+                        }
+                    }
                     _ => {}
                 }
 
@@ -1310,6 +1548,12 @@ fn run_leds(
 
             if disconnected {
                 break;
+            }
+
+            // Nothing is written while held; the dirty flags stay set and the
+            // next flush after ControlRegained sends everything.
+            if held {
+                continue;
             }
 
             // Flush any LED groups that were dirtied by this batch
@@ -1351,6 +1595,11 @@ fn run_leds(
                     }
                 }
             }
+        }
+
+        // Another client has the hardware; don't clear the LEDs it is showing.
+        if held {
+            return;
         }
 
         // Cleanup: clear all standard LEDs on shutdown

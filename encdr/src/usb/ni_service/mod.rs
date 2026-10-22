@@ -12,6 +12,17 @@
 
 pub mod protocol;
 
+/// Start of the error for a frame the service answers with a refusal. The
+/// service does that while another client, typically NI's own software after
+/// the controller's instance button is pressed, has the screens.
+pub const REJECTED_FRAME: &str = "the NI service rejected a frame";
+
+/// Whether an error from `send_display` is the service refusing a frame, as
+/// opposed to a broken connection.
+pub fn is_rejected_frame(error: &str) -> bool {
+    error.starts_with(REJECTED_FRAME)
+}
+
 #[cfg(any(windows, target_os = "macos"))]
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 #[cfg(any(windows, target_os = "macos"))]
@@ -68,6 +79,25 @@ fn pick_serial(rx: &Receiver<Vec<u8>>, wanted: Option<&str>, timeout: Duration) 
     chosen
         .or_else(|| serials.into_iter().next())
         .ok_or_else(|| "the NI service did not report a connected device".to_string())
+}
+
+/// Turn the notifications a session receives into control changes: `true`
+/// when this client became the active instance, `false` when another client
+/// took the hardware. The channel closes when the notifications stop.
+#[cfg(any(windows, target_os = "macos"))]
+fn watch_control(rx: Receiver<Vec<u8>>) -> async_channel::Receiver<bool> {
+    let (tx, changes) = async_channel::unbounded();
+    let _ = std::thread::Builder::new().name("encdr-ni-control".to_string()).spawn(move || {
+        for data in rx {
+            if let Some(active) = protocol::parse_control_state(&data) {
+                tracing::debug!("NI service: this client {} the hardware", if active { "has" } else { "no longer has" });
+                if tx.send_blocking(active).is_err() {
+                    break;
+                }
+            }
+        }
+    });
+    changes
 }
 
 /// Connect to the service, retrying a few times.

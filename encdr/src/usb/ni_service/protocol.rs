@@ -29,6 +29,10 @@ const MSG_DISPLAY: u32 = 0x0364_7344;
 const NOTE_DEVICE_ON: u32 = 0x0344_4e2b;
 const NOTE_DEVICE_OFF: u32 = 0x0344_4e2d;
 
+/// Sent on an instance's notification port whenever it gains or loses the
+/// hardware (the controller's instance button): `TRUE` or `0` follows.
+const NOTE_CONTROL: u32 = 0x0343_4e00;
+
 /// How long to wait for the service to answer a screen frame.
 pub const DISPLAY_REPLY_TIMEOUT: Duration = Duration::from_millis(1500);
 
@@ -151,11 +155,35 @@ pub fn parse_device_state(d: &[u8]) -> Option<DeviceState> {
     Some(DeviceState { present, serial: text(raw) })
 }
 
+/// Whether this client has the hardware, from a control notification:
+/// `Some(true)` when it became the active instance, `Some(false)` when another
+/// client (NI's software) took over, `None` for any other message.
+pub fn parse_control_state(d: &[u8]) -> Option<bool> {
+    if le32(d, 0)? != NOTE_CONTROL {
+        return None;
+    }
+    Some(le32(d, 4)? == TRUE_WORD)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     // Byte sequences below are from a real session on a Maschine Mk3.
+
+    #[test]
+    fn parses_control_notifications() {
+        // Captured while switching between Maschine and Encdr with the instance button.
+        assert_eq!(parse_control_state(&[0x00, 0x4e, 0x43, 0x03, 0x65, 0x75, 0x72, 0x74]), Some(true));
+        assert_eq!(parse_control_state(&[0x00, 0x4e, 0x43, 0x03, 0, 0, 0, 0]), Some(false));
+        // Other instance notifications are not control changes.
+        assert_eq!(parse_control_state(&[0x00, 0x4e, 0x44, 0x03, 0x65, 0x75, 0x72, 0x74]), None);
+        let button = [
+            0x00, 0x4e, 0x73, 0x03, 0xa4, 0x07, 0, 0, 0x08, 0x7b, 0x3d, 0x66, 1, 0, 0, 0, 6, 0, 0, 0, 1, 0xd5, 0, 0,
+        ];
+        assert_eq!(parse_control_state(&button), None);
+        assert_eq!(parse_control_state(&[0x00, 0x4e, 0x43, 0x03]), None, "truncated");
+    }
 
     #[test]
     fn device_connect_matches_the_wire_format() {
