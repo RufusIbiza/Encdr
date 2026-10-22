@@ -339,6 +339,7 @@ encdr/
 - Partial screen updates work over the service route: only the changed rectangle is sent when a frame differs from the last in a small area (about 5-11 KB against 261 KB for a full frame on the Mk3). The new `mk3_partial_test` example shows this.
 - Internal: the service-route serial selection is shared between the Windows and macOS transports.
 - `mk3_vegas` example: animates both screens and writes controller input to `mk3-input-log.txt` instead of the console.
+- **Fixed Maschine Mk3 buttons, encoders, knobs and touch strip not working over the Windows/macOS HID stack**: the OS delivers every input report zero-padded to the longest report (64 bytes), so the 42-byte buttons report matched no parser and was silently dropped (pads still worked). A report with no exact size match is now parsed as the longest declared packet that fits, provided everything after it is padding. Verified on Windows (Maschine Mk3).
 
 ### v0.7.10
 - **Windows WebView Fix**:
