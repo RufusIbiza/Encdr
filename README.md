@@ -315,6 +315,8 @@ encdr/
 | ----------------------- | -------------------------- | ---------------------------------------- |
 | USB transport           | `nusb`                     | Pure Rust, async, cross-platform         |
 | HID fallback (macOS/Win)| `hidapi`                   | Fallback for OS-bound HID interfaces     |
+| NI service (Windows)    | `windows-sys`              | Named pipes to the NI hardware service   |
+| NI service (macOS)      | `core-foundation-sys`      | Message ports to the NI hardware service |
 | GPU compute             | `wgpu`                     | Format conversion + frame diff shaders   |
 | Lock-free channel       | `crossbeam-channel`        | SPSC event delivery                      |
 | Descriptor parsing      | `serde` + `serde_json`     | JSON device descriptors                  |
@@ -329,6 +331,18 @@ encdr/
 | PNG decode (Windows)    | `png`                      | Decode CapturePreview PNG output to RGBA |
 
 ## Changelog
+
+### v0.7.50
+- **Maschine Mk3 screens through the NI hardware service (Windows and macOS)**: when the screen interface can't be claimed over USB (NI's driver or services hold it), Encdr now draws the screens through the NI hardware service instead: named pipes on Windows, message ports on macOS. Zadig isn't needed and the NI services can stay running. Opt-in per descriptor with the new `quirks.ni_service` field (set for the Maschine Mk3); `ENCDR_FORCE_SERVICE=1` forces the route. Inputs and LEDs are unchanged. Verified on hardware on Windows (Maschine Mk3, with the NI services running); the macOS transport is awaiting a hardware run. Linux keeps using USB.
+- The service route retries its connection a few times; failures now name the step that failed.
+- Fixed the service connection failing every time on Windows (error 233): the service closes the bootstrap pipe right after replying, and polling for the reply could lose it. The reply is now read with a blocking `ReadFile`. The macOS transport gets its reply back with each request, so it isn't affected.
+- Partial screen updates work over the service route: only the changed rectangle is sent when a frame differs from the last in a small area (about 5-11 KB against 261 KB for a full frame on the Mk3). The new `mk3_partial_test` example shows this.
+- Internal: the service-route serial selection is shared between the Windows and macOS transports.
+- `mk3_vegas` example: animates both screens and writes controller input to `mk3-input-log.txt` instead of the console.
+- **Fixed Maschine Mk3 buttons, encoders, knobs and touch strip not working over the Windows/macOS HID stack**: the OS delivers every input report zero-padded to the longest report (64 bytes), so the 42-byte buttons report matched no parser and was silently dropped (pads still worked). A report with no exact size match is now parsed as the longest declared packet that fits, provided everything after it is padding. Verified on Windows (Maschine Mk3).
+- **Sharing the Maschine Mk3 with NI's software**: the controller's instance button hands the hardware between NI's software and Encdr, and the NI service refuses Encdr's frames while NI's software has it. Encdr now learns of the change from the service's own notification (rejected frames remain a fallback), stops sending, keeps tracking the latest frame and LED state, and when control returns redraws both screens in full and rewrites every LED, with nothing to do in the app. The exit screensaver and LED clear are skipped while NI's software has the hardware. Verified on Windows; the macOS transport shares the code but has not been run on hardware.
+- **`Encdr::has_control(device_id)` and `encdr-view` pausing**: reports whether Encdr currently has the device's screens and LEDs. `ScreenView` and `DualScreenView` use it to skip the WebView capture (and its conversion work) while NI's software has the hardware; a pending frame stays flagged, so the first capture after control returns shows the page as it is then.
+- Internal: `LedBuilder::invalidate`, `ScreenManager::current_blit`, and the raw service notifications are logged in hex at `trace` level. The `mk3_partial_test` example sets static pad and button LEDs and takes its run time in seconds as an argument.
 
 ### v0.7.10
 - **Windows WebView Fix**:

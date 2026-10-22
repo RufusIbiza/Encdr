@@ -759,10 +759,26 @@ impl PacketParser {
             }
         }
 
-        let Some(state) = self.packet_parsers.get_mut(&buf.len()) else {
+        // Declared packets without items (e.g. the Mk3's pad stream, handled
+        // above) have nothing to parse here, so they don't count as a match.
+        let parses = |size: &usize| self.packet_parsers.get(size).is_some_and(|s| !s.items.is_empty());
+        let size = if parses(&buf.len()) {
+            buf.len()
+        } else {
+            // The OS HID stacks (Windows, macOS) hand over every input report in
+            // a buffer as long as the longest report, padded with zeros, so a
+            // shorter report arrives longer than its declared size. Fall back to
+            // the longest declared packet that fits, if all that follows it is
+            // padding.
+            match self.packet_parsers.keys().copied().filter(|s| *s < buf.len() && parses(s)).max() {
+                Some(size) if buf[size..].iter().all(|&b| b == 0) => size,
+                _ => return,
+            }
+        };
+        let Some(state) = self.packet_parsers.get_mut(&size) else {
             return;
         };
-        Self::parse_items(state, buf, &self.names, self.device_id, events);
+        Self::parse_items(state, &buf[..size], &self.names, self.device_id, events);
     }
 
     /// Parse the descriptor items (buttons, touches, encoders, sliders) of one packet.
@@ -1038,6 +1054,35 @@ mod tests {
         let desc = reg.find(0x17cc, 0x1140).expect("Maschine Mk2 descriptor missing").clone();
         let names = reg.intern_descriptor_names(&desc);
         PacketParser::new(DeviceId::from_usb(0, 0, 0x17cc, 0x1140), &desc, names)
+    }
+
+    /// Over the OS HID stack on Windows the Mk3's 42-byte buttons report
+    /// arrives zero-padded to 64 bytes. It must parse like the raw 42-byte one.
+    #[test]
+    fn padded_buttons_report_parses_like_the_raw_one() {
+        // First report of a capture on Windows (hidapi), buttons/encoder report 0x01.
+        let captured: [u8; 48] = [
+            0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0x80, 0, 0x01, 0x51, 0x01, 0xc6, 0, 0x72, 0x01, 0x32, 0x01, 0xbb, 0x01,
+            0xac, 0x03, 0, 0, 0xd5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0x0f, 0x47, 0x0f, 0xff, 0x0f, 0, 0, 0, 0, 0, 0,
+        ];
+        let mut raw = captured[..42].to_vec();
+        let mut padded = captured[..42].to_vec();
+        padded.resize(64, 0);
+
+        let mut from_raw = Vec::new();
+        mk3_parser().parse(&raw, &mut from_raw);
+        let mut from_padded = Vec::new();
+        mk3_parser().parse(&padded, &mut from_padded);
+
+        assert!(!from_raw.is_empty(), "the captured report should produce events");
+        assert_eq!(format!("{from_padded:?}"), format!("{from_raw:?}"));
+
+        // Data after the declared size isn't padding, so it isn't this report.
+        padded[50] = 0x7f;
+        let mut from_odd = Vec::new();
+        mk3_parser().parse(&padded, &mut from_odd);
+        assert!(from_odd.is_empty());
+        raw.clear();
     }
 
     /// Reproduces the exact double-pumped capture documented in

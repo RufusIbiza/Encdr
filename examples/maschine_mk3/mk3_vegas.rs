@@ -4,11 +4,16 @@
 //! - Sweeping rainbow wave across all 16 RGB pads and Group A-H buttons.
 //! - Animated dual-color wave pattern across the Smart Strip touchstrip.
 //! - Chasing brightness wave across transport, performance, and mode buttons.
-//! - Full console telemetry reporting every pad velocity, touchstrip position, knob turn, encoder gesture, and button click.
+//! - Animated rainbow on both screens (works on Windows with the NI services running).
+//! - Every pad velocity, touchstrip position, knob turn, encoder gesture, and button click is
+//!   written to `mk3-input-log.txt` (the console only shows a status line).
 //!
 //! Run with:
 //!   cargo run -p encdr-examples --bin mk3_vegas
+//!   cargo run -p encdr-examples --bin mk3_vegas -- --no-screens
 
+use std::fs::File;
+use std::io::Write;
 use std::time::{Duration, Instant};
 use encdr::{Encdr, EncdrConfig, Event, LedValue};
 
@@ -26,6 +31,30 @@ fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
         _ => (c, 0.0, x),
     };
     (((r + m) * 255.0) as u8, ((g + m) * 255.0) as u8, ((b + m) * 255.0) as u8)
+}
+
+const SCREEN_W: usize = 960;
+const SCREEN_H: usize = 272;
+
+/// Rainbow with a moving white bar across both screens, as RGBA8888.
+fn screen_frame(t: f32) -> Vec<u8> {
+    let mut px = vec![255u8; SCREEN_W * SCREEN_H * 4];
+    let bar = ((t * 0.35).fract() * SCREEN_W as f32) as usize;
+    for y in 0..SCREEN_H {
+        let v = 0.35 + 0.65 * (y as f32 / SCREEN_H as f32);
+        for x in 0..SCREEN_W {
+            let (r, g, b) = if x.abs_diff(bar) < 5 {
+                (255, 255, 255)
+            } else {
+                hsv_to_rgb(x as f32 * 360.0 / SCREEN_W as f32 + t * 120.0, 1.0, v)
+            };
+            let i = (y * SCREEN_W + x) * 4;
+            px[i] = r;
+            px[i + 1] = g;
+            px[i + 2] = b;
+        }
+    }
+    px
 }
 
 fn main() {
@@ -51,7 +80,14 @@ fn main() {
     let desc = encdr.device_descriptor(device_id).unwrap().clone();
     println!(" Connected: {} (VID:PID 0x{:04x}:0x{:04x})", desc.name, desc.vendor_id.0, desc.product_id.0);
     println!(" Controls available: {}\n", desc.control_count());
+    let screens = !std::env::args().any(|a| a == "--no-screens") && !desc.screens.is_empty();
+    let mut input_log = File::create("mk3-input-log.txt").expect("Could not create mk3-input-log.txt");
+    println!("Input events are written to mk3-input-log.txt. Screens: {}.", if screens { "on" } else { "off" });
     println!("Interact with buttons, knobs, touchstrip, and pads. Press Ctrl+C to quit.\n");
+    let mut input_events = 0u64;
+    let mut frames = 0u64;
+    let mut last_screen = Instant::now();
+    let mut next_status = Instant::now() + Duration::from_secs(2);
 
     let events = encdr.events().clone();
     let start_time = Instant::now();
@@ -82,25 +118,31 @@ fn main() {
                             }
                         }
                     }
-                    println!("[{:8.3}s] [BUTTON] {} -> {}", elapsed, name.to_uppercase(), if pressed { "\x1b[1;32mPRESSED\x1b[0m" } else { "\x1b[2mRELEASED\x1b[0m" });
+                    input_events += 1;
+                    writeln!(input_log, "[{:8.3}s] [BUTTON] {} -> {}", elapsed, name.to_uppercase(), if pressed { "PRESSED" } else { "RELEASED" }).ok();
                 }
                 Event::Grid { name, index, pressure, .. } => {
                     if (1..=16).contains(&index) {
                         pressed_pads[(index - 1) as usize] = pressure > 0.0;
                     }
-                    println!("[{:8.3}s] [GRID] {} (#{index:02}) pressure: {:5.1}%", elapsed, name.to_uppercase(), pressure * 100.0);
+                    input_events += 1;
+                    writeln!(input_log, "[{:8.3}s] [GRID] {} (#{index:02}) pressure: {:5.1}%", elapsed, name.to_uppercase(), pressure * 100.0).ok();
                 }
                 Event::Slider { name, value, .. } => {
-                    println!("[{:8.3}s] [TOUCHSTRIP] {} = {:5.1}%", elapsed, name.to_uppercase(), value * 100.0);
+                    input_events += 1;
+                    writeln!(input_log, "[{:8.3}s] [TOUCHSTRIP] {} = {:5.1}%", elapsed, name.to_uppercase(), value * 100.0).ok();
                 }
                 Event::Touch { name, touched, .. } => {
-                    println!("[{:8.3}s] [CAP-TOUCH] {} -> {}", elapsed, name.to_uppercase(), if touched { "\x1b[1;34mTOUCHED\x1b[0m" } else { "\x1b[2mRELEASED\x1b[0m" });
+                    input_events += 1;
+                    writeln!(input_log, "[{:8.3}s] [CAP-TOUCH] {} -> {}", elapsed, name.to_uppercase(), if touched { "TOUCHED" } else { "RELEASED" }).ok();
                 }
                 Event::Encoder { name, delta, .. } => {
-                    println!("[{:8.3}s] [ENCODER] {} delta: {:+2}", elapsed, name.to_uppercase(), delta);
+                    input_events += 1;
+                    writeln!(input_log, "[{:8.3}s] [ENCODER] {} delta: {:+2}", elapsed, name.to_uppercase(), delta).ok();
                 }
                 Event::EncoderFine { name, delta, .. } => {
-                    println!("[{:8.3}s] [ENCODER FINE] {} delta: {:+.3}", elapsed, name.to_uppercase(), delta);
+                    input_events += 1;
+                    writeln!(input_log, "[{:8.3}s] [ENCODER FINE] {} delta: {:+.3}", elapsed, name.to_uppercase(), delta).ok();
                 }
                 Event::DeviceDisconnected { .. } => {
                     eprintln!("Device disconnected.");
@@ -141,6 +183,18 @@ fn main() {
                 let wave = ((elapsed * 4.0 + (idx as f32) * 0.2).sin() * 63.0 + 64.0) as u8;
                 encdr.set_led(device_id, btn, LedValue::Single(wave));
             }
+        }
+
+        if screens && last_screen.elapsed() >= Duration::from_millis(50) {
+            last_screen = Instant::now();
+            encdr.submit_dual_screen(device_id, "left", "right", &screen_frame(elapsed));
+            frames += 1;
+        }
+
+        if Instant::now() >= next_status {
+            next_status = Instant::now() + Duration::from_secs(2);
+            input_log.flush().ok();
+            println!("[{elapsed:6.1}s] screen frames submitted: {frames}, input events logged: {input_events}");
         }
 
         std::thread::sleep(Duration::from_millis(1));

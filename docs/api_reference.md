@@ -225,6 +225,9 @@ encdr.sync_jog_ring_position(device_id, JogDeck::Left, 1440, LedValue::Rgb { r: 
 
 
 
+#### `pub fn has_control(&self, device_id: DeviceId) -> bool`
+Whether this process currently has the device's screens and LEDs. The Maschine Mk3 shares its hardware with NI's own software on Windows and macOS, and the controller's instance button hands it back and forth. While another client has it this returns `false`: submitted frames and LED changes are kept but not sent, and everything is redrawn automatically when control returns. Apps with costly frame rendering can check it to skip that work. Returns `true` for devices that don't share the hardware and for unknown devices.
+
 #### `pub fn submit_screen(&self, device_id: DeviceId, screen: &str, pixels: &[u8])`
 Submits a raw frame of `RGBA8888` pixel bytes to a specified display. The frame is fed through the GPU compute pipeline, converted to the display's native format (e.g., BGR565 or 1-bit Mono), dirty-rect diffed against the previous frame, and transferred via USB.
 
@@ -836,7 +839,7 @@ ScreenView::pump_events();
 Returns `true` if the WebView's DOM/CSS compositor has rendered new pixels since the last capture.
 
 #### `pub fn capture_and_submit(&self, encdr: &Encdr) -> Result<(), String>`
-Immediately grabs the composited surface using platform-native capture mechanisms (Cairo snapshot on Linux, `takeSnapshot` on macOS, `CapturePreview` on Windows) and submits the RGBA buffer to Encdr.
+Immediately grabs the composited surface using platform-native capture mechanisms (Cairo snapshot on Linux, `takeSnapshot` on macOS, `CapturePreview` on Windows) and submits the RGBA buffer to Encdr. Does nothing while another client has the hardware (see `Encdr::has_control`); a pending frame stays flagged, so the next call after control returns captures the page as it is then.
 
 ```rust
 view.capture_and_submit(&encdr)?;

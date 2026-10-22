@@ -44,6 +44,12 @@ impl ScreenManager {
         }
     }
 
+    /// The latest submitted frame as a full-screen transfer buffer, whether or
+    /// not it was sent. Use it to redraw a screen that something else drew on.
+    pub fn current_blit(&self, screen_desc: &ScreenDesc) -> Vec<u8> {
+        protocol::build_full_blit(screen_desc, &self.prev_frame)
+    }
+
     /// Submit a new frame. Returns the USB transfer buffer if the frame
     /// has changed (or it's time for a keyframe), or None if identical.
     pub fn submit(
@@ -682,6 +688,10 @@ mod tests {
         frame_red[0] = 0x00;
         let res4 = sm.submit(&frame_red, PixelFormat::Bgr565Be, &desc);
         assert!(res4.is_some(), "Partial change should return Some");
+
+        // The current frame can be redrawn in full at any time, even when it
+        // was only ever sent as a partial update.
+        assert_eq!(sm.current_blit(&desc), protocol::build_full_blit(&desc, &frame_red));
     }
 
     #[test]

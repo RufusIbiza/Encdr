@@ -123,7 +123,16 @@ impl ScreenView {
     }
 
     /// Capture the current WebView contents and submit to encdr for USB transfer.
+    ///
+    /// Does nothing while another client (e.g. NI's software) has the
+    /// hardware; a pending frame stays flagged, so the next call after
+    /// control returns captures the page as it is then.
     pub fn capture_and_submit(&self, encdr: &Encdr) -> Result<(), String> {
+        if !encdr.has_control(self.device_id) {
+            tracing::trace!("Skipping WebView capture: another application has the hardware");
+            return Ok(());
+        }
+
         #[cfg(target_os = "linux")]
         let (_w, _h, rgba) = capture::capture_webview_pixels(
             &self.inner.webkit_view,
@@ -315,7 +324,16 @@ impl DualScreenView {
     }
 
     /// Capture the current double-width WebView contents and submit to encdr for USB transfer.
+    ///
+    /// Does nothing while another client (e.g. NI's software) has the
+    /// hardware; a pending frame stays flagged, so the next call after
+    /// control returns captures the page as it is then.
     pub fn capture_and_submit(&self, encdr: &Encdr) -> Result<(), String> {
+        if !encdr.has_control(self.device_id) {
+            tracing::trace!("Skipping WebView capture: another application has the hardware");
+            return Ok(());
+        }
+
         #[cfg(target_os = "linux")]
         let (_w, _h, rgba) = capture::capture_webview_pixels(
             &self.inner.webkit_view,

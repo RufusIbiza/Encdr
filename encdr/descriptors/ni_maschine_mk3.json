@@ -1038,6 +1038,10 @@
   ],
   "quirks": {
     "dual_handle": true,
-    "detach_kernel_driver": true
+    "detach_kernel_driver": true,
+    "ni_service": {
+      "product_id": "0x1600",
+      "screen_interface": "screen"
+    }
   }
 }
