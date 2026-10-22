@@ -333,8 +333,10 @@ encdr/
 ## Changelog
 
 ### v0.7.50
-- **Maschine Mk3 screens through the NI hardware service (Windows and macOS)**: when the screen interface can't be claimed over USB (NI's driver or services hold it), Encdr now draws the screens through the NI hardware service instead: named pipes on Windows, message ports on macOS. Zadig isn't needed and the NI services can stay running. Opt-in per descriptor with the new `quirks.ni_service` field (set for the Maschine Mk3); `ENCDR_FORCE_SERVICE=1` forces the route. Inputs and LEDs are unchanged. The protocol is verified on hardware (Windows, Maschine Mk3); the Encdr integration, including the macOS transport, is awaiting a hardware run. Linux keeps using USB.
-- The service route retries its connection a few times, since the service sometimes drops a registration straight after accepting it; failures now name the step that failed.
+- **Maschine Mk3 screens through the NI hardware service (Windows and macOS)**: when the screen interface can't be claimed over USB (NI's driver or services hold it), Encdr now draws the screens through the NI hardware service instead: named pipes on Windows, message ports on macOS. Zadig isn't needed and the NI services can stay running. Opt-in per descriptor with the new `quirks.ni_service` field (set for the Maschine Mk3); `ENCDR_FORCE_SERVICE=1` forces the route. Inputs and LEDs are unchanged. Verified on hardware on Windows (Maschine Mk3, with the NI services running); the macOS transport is awaiting a hardware run. Linux keeps using USB.
+- The service route retries its connection a few times; failures now name the step that failed.
+- Fixed the service connection failing every time on Windows (error 233): the service closes the bootstrap pipe right after replying, and polling for the reply could lose it. The reply is now read with a blocking `ReadFile`. The macOS transport gets its reply back with each request, so it isn't affected.
+- Partial screen updates work over the service route: only the changed rectangle is sent when a frame differs from the last in a small area (about 5-11 KB against 261 KB for a full frame on the Mk3). The new `mk3_partial_test` example shows this.
 - Internal: the service-route serial selection is shared between the Windows and macOS transports.
 - `mk3_vegas` example: animates both screens and writes controller input to `mk3-input-log.txt` instead of the console.
 
