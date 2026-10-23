@@ -82,29 +82,75 @@ impl ScreenManager {
         if !force_full {
             if let Some(partial_blit) = &screen_desc.partial_blit {
                 if partial_blit.supported {
-                    let dirty = compute_dirty_rect(
-                        &self.prev_frame,
-                        &native_pixels,
-                        self.width,
-                        self.height,
-                        self.pixel_format.bytes_per_pixel(),
-                        partial_blit.x_align,
-                        partial_blit.y_align,
-                    );
+                    let dirty = if let Some(ref mut gpu) = self.gpu_pipeline {
+                        if self.pixel_format == PixelFormat::Bgr565Be {
+                            futures_lite::future::block_on(gpu.compute_dirty_rect_gpu(
+                                &native_pixels,
+                                &self.prev_frame,
+                                self.width,
+                                self.height,
+                                partial_blit.x_align,
+                                partial_blit.y_align,
+                            ))
+                        } else {
+                            compute_dirty_rect(
+                                &self.prev_frame,
+                                &native_pixels,
+                                self.width,
+                                self.height,
+                                self.pixel_format.bytes_per_pixel(),
+                                partial_blit.x_align,
+                                partial_blit.y_align,
+                            )
+                        }
+                    } else {
+                        compute_dirty_rect(
+                            &self.prev_frame,
+                            &native_pixels,
+                            self.width,
+                            self.height,
+                            self.pixel_format.bytes_per_pixel(),
+                            partial_blit.x_align,
+                            partial_blit.y_align,
+                        )
+                    };
 
                     match dirty {
                         DirtyRect::Clean => return None,
                         DirtyRect::Partial { x, y, w, h } => {
                             self.prev_frame.copy_from_slice(&native_pixels);
-                            let region_pixels = extract_region(
-                                &native_pixels,
-                                self.width,
-                                self.pixel_format.bytes_per_pixel(),
-                                x,
-                                y,
-                                w,
-                                h,
-                            );
+                            let region_pixels = if let Some(ref mut gpu) = self.gpu_pipeline {
+                                if self.pixel_format == PixelFormat::Bgr565Be {
+                                    futures_lite::future::block_on(gpu.extract_region_gpu(
+                                        &native_pixels,
+                                        self.width,
+                                        x,
+                                        y,
+                                        w,
+                                        h,
+                                    ))
+                                } else {
+                                    extract_region(
+                                        &native_pixels,
+                                        self.width,
+                                        self.pixel_format.bytes_per_pixel(),
+                                        x,
+                                        y,
+                                        w,
+                                        h,
+                                    )
+                                }
+                            } else {
+                                extract_region(
+                                    &native_pixels,
+                                    self.width,
+                                    self.pixel_format.bytes_per_pixel(),
+                                    x,
+                                    y,
+                                    w,
+                                    h,
+                                )
+                            };
                             return Some(protocol::build_partial_blit(
                                 screen_desc,
                                 x,
@@ -386,7 +432,8 @@ pub(crate) fn st7529_gray5_to_mono(src: &[u8], width: usize, height: usize) -> V
 
 // ── Frame diffing ──────────────────────────────────────────────────────────
 
-enum DirtyRect {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DirtyRect {
     Clean,
     Partial { x: u16, y: u16, w: u16, h: u16 },
     Full,

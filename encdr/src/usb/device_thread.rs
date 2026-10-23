@@ -501,6 +501,7 @@ fn run_device(
         }
 
         let screen_has_control = has_control.clone();
+        let screen_gpu = gpu.clone();
         thread::Builder::new()
             .name(format!("encdr-screen-{}", descriptor.name.replace(' ', "-").to_lowercase()))
             .spawn(move || {
@@ -512,6 +513,7 @@ fn run_device(
                     input_ctl_tx,
                     led_ctl_tx,
                     screen_has_control,
+                    screen_gpu,
                 );
             })
             .ok()
@@ -1110,10 +1112,12 @@ fn run_screens(
     input_ctl_tx: async_channel::Sender<DeviceCmd>,
     led_ctl_tx: Option<async_channel::Sender<DeviceCmd>>,
     has_control: Arc<AtomicBool>,
+    gpu: Option<Arc<crate::screen::GpuContext>>,
 ) {
     use crate::screen::protocol;
 
     block_on(async {
+        let mut dual_gpu = gpu.map(crate::screen::GpuConvertPipeline::new);
         let changes = screen_ifaces.values().find_map(|iface| match iface {
             Iface::Service(session) => Some(session.control_events()),
             _ => None,
@@ -1337,28 +1341,59 @@ fn run_screens(
                         );
                         continue;
                     }
-                    let bpp = format.bytes_per_pixel();
-                    let Some((left_pixels, right_pixels)) = crate::screen::split_horizontal(
-                        &pixels,
-                        left_desc.width as usize,
-                        right_desc.width as usize,
-                        left_desc.height as usize,
-                        bpp,
-                    ) else {
-                        tracing::warn!(
-                            "SubmitDualScreen: pixel buffer size mismatch (expected {} bytes, got {})",
-                            (left_desc.width as usize + right_desc.width as usize)
-                                * left_desc.height as usize
-                                * bpp,
-                            pixels.len()
-                        );
-                        continue;
+                    let (left_pixels, right_pixels, send_format) = if let Some(ref mut d_gpu) = dual_gpu {
+                        if format == PixelFormat::Rgba8888
+                            && left_desc.pixel_format == PixelFormat::Bgr565Be
+                            && right_desc.pixel_format == PixelFormat::Bgr565Be
+                        {
+                            let (l, r) = d_gpu
+                                .split_convert_dual(
+                                    &pixels,
+                                    left_desc.width as u32,
+                                    right_desc.width as u32,
+                                    left_desc.height as u32,
+                                )
+                                .await;
+                            (l, r, PixelFormat::Bgr565Be)
+                        } else {
+                            let bpp = format.bytes_per_pixel();
+                            let Some((l, r)) = crate::screen::split_horizontal(
+                                &pixels,
+                                left_desc.width as usize,
+                                right_desc.width as usize,
+                                left_desc.height as usize,
+                                bpp,
+                            ) else {
+                                tracing::warn!("SubmitDualScreen: pixel buffer size mismatch");
+                                continue;
+                            };
+                            (l, r, format)
+                        }
+                    } else {
+                        let bpp = format.bytes_per_pixel();
+                        let Some((l, r)) = crate::screen::split_horizontal(
+                            &pixels,
+                            left_desc.width as usize,
+                            right_desc.width as usize,
+                            left_desc.height as usize,
+                            bpp,
+                        ) else {
+                            tracing::warn!(
+                                "SubmitDualScreen: pixel buffer size mismatch (expected {} bytes, got {})",
+                                (left_desc.width as usize + right_desc.width as usize)
+                                    * left_desc.height as usize
+                                    * bpp,
+                                pixels.len()
+                            );
+                            continue;
+                        };
+                        (l, r, format)
                     };
 
                     process_and_send_screen(
                         &left_screen,
                         &left_pixels,
-                        format,
+                        send_format,
                         &descriptor,
                         &mut screen_managers,
                         &screen_to_ep,
@@ -1370,7 +1405,7 @@ fn run_screens(
                     process_and_send_screen(
                         &right_screen,
                         &right_pixels,
-                        format,
+                        send_format,
                         &descriptor,
                         &mut screen_managers,
                         &screen_to_ep,

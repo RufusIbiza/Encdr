@@ -60,7 +60,10 @@ impl Encdr {
 
         let (event_tx, event_rx) = crossbeam_channel::unbounded();
 
-        let gpu = config.gpu.map(Arc::new);
+        let gpu = config
+            .gpu
+            .map(Arc::new)
+            .or_else(|| futures_lite::future::block_on(GpuContext::new()).map(Arc::new));
 
         Ok(Self {
             registry,
