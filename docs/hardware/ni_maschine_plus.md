@@ -18,6 +18,13 @@ The Maschine Plus is an embedded standalone Linux music production workstation. 
 | | Control / HID | OUT | `0x03` | Interrupt (64B) | Button backlights, RGB pads, Smart Strip LEDs |
 | **Interface 5** | Display | OUT | `0x04` | Bulk (512B) | Screen blit commands for left and right displays |
 
+### Windows & macOS: NI Hardware Service & Instance Switching
+
+In Controller Mode (`0x1820`), the Maschine Plus uses `quirks.ni_service` (`product_id: "0x1820"`, `screen_interface: "screen"`):
+- **Control Interface (Interface 4)**: Opened via the OS HID stack (`hidapi`) on Windows and macOS, with automatic zero-padded 64-byte HID input report handling.
+- **Screen Interface (Interface 5)**: When raw USB interface 5 cannot be claimed directly (or `ENCDR_FORCE_SERVICE=1` is set), Encdr routes full and partial screen blits through the running NI hardware service (`NIHostIntegrationAgent` / `NIHardwareService` on Windows named pipes, `NIHostIntegrationAgent` / `NIHardwareAgent` on macOS `CFMessagePort`s).
+- **Instance Button Hand-off**: Pressing the controller's instance button switches hardware ownership (`Encdr::has_control`) between NI software and Encdr, automatically releasing held inputs and pausing input/LED/screen output while NI software owns the hardware, and restoring both screens and all LEDs in full when control returns.
+
 ## Input Reports
 
 ### Report `0x01`: Buttons & Encoders (42 bytes)

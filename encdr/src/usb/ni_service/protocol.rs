@@ -10,8 +10,17 @@
 
 use std::time::Duration;
 
-/// Pipe the service listens on for new clients of Maschine Mk3-class devices.
+/// Primary bootstrap pipe/port (`NIHostIntegrationAgent`).
 pub const BOOTSTRAP_PIPE: &str = "com.native-instruments.NIHostIntegrationAgent";
+
+/// Bootstrap pipes/ports exposed by NI's background services, tried in order:
+/// `NIHostIntegrationAgent` first (Maschine Mk3, Maschine Plus, etc.), then
+/// `NIHardwareService` / `NIHardwareAgent` (`NIHWMainHandler`, used by
+/// Maschine Studio and standalone NI hardware service installations).
+pub const BOOTSTRAP_PIPES: &[&str] = &[
+    BOOTSTRAP_PIPE,
+    "NIHWMainHandler",
+];
 
 /// The service's "yes" word, which also opens every successful reply.
 pub const TRUE_WORD: u32 = 0x7472_7565;

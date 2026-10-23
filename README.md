@@ -332,6 +332,16 @@ encdr/
 
 ## Changelog
 
+### v0.7.60
+- **Maschine Studio & Maschine Plus NI Hardware Service Screen Route (Windows & macOS)**:
+  - Added `quirks.ni_service` for **Maschine Plus** (`0x17cc:0x1820`) and **Maschine Studio** (`0x17cc:0x1300`), allowing dual 480×272 color displays to render through Native Instruments' background service daemon (`NIHostIntegrationAgent` or `NIHardwareService`) on Windows (named pipes) and macOS (Core Foundation message ports) without driver replacement (Zadig) or stopping background services.
+  - Added multi-bootstrap endpoint support: `ServiceSession::connect` queries `com.native-instruments.NIHostIntegrationAgent` first (Maschine Mk3, Maschine Plus), falling back to `NIHWMainHandler` (`NIHardwareService` on Windows, `NIHardwareAgent` on macOS) for Maschine Studio and standalone hardware service installations.
+  - Full support for exclusive input ownership, synthetic release on loss of control, silent background relative encoder tracking, and full screen/LED restoration on regain of control across all three dual-screen Maschine models.
+  - Verified and cross-checked against Ghidra decompilation of Native Instruments binaries (`NIHardwareService.exe` and `NIHostIntegrationAgent.exe`).
+- **Hardware Reference & Documentation**:
+  - Updated hardware references for Maschine Plus (`docs/hardware/ni_maschine_plus.md`) and Maschine Studio (`docs/hardware/ni_maschine_studio.md`) with NI hardware service and instance-switching setup.
+  - Updated `docs/usage.md`, `docs/quickstart.md`, and `docs/api_reference.md` to document the NI service route for Maschine Mk3, Maschine Plus, and Maschine Studio.
+
 ### v0.7.52 (reported and verified by [TVbene](https://github.com/TVBene))
 - **Exclusive Input Ownership on NI Service Hand-off (Windows and macOS)**:
   - Gated HID/USB input event emission on NI hardware service instance ownership (`has_control`). When another client (such as Maschine software) takes control of the hardware via the controller's instance button, Encdr immediately emits release events (`ButtonReleased`, `PadReleased`, `TouchStripReleased`, `EncoderTouched { touched: false }`) for any currently held inputs and suppresses further input events until control returns.

@@ -440,6 +440,21 @@ mod tests {
             assert_eq!(screen.pixel_format, crate::core::descriptor::PixelFormat::Bgr565Be);
         }
         assert_eq!(desc.leds.len(), 2);
+        let ni_service = desc.quirks.ni_service.as_ref().expect("ni_service quirk missing on Maschine Plus");
+        assert_eq!(ni_service.product_id.0, 0x1820);
+        assert_eq!(ni_service.screen_interface, "screen");
+
+        let names = reg.intern_descriptor_names(&desc);
+        let mut parser = crate::device::parser::PacketParser::new(crate::core::event::DeviceId(1), &desc, names);
+        let mut events = Vec::new();
+
+        // Verify 64-byte zero-padded OS HID buttons report parses on Maschine Plus
+        let mut buf = vec![0u8; 64];
+        buf[0] = 0x01;
+        buf[1] = 0x40; // shift (byte 1 mask 0x40)
+        parser.parse(&buf, &mut events);
+        let shift_event = events.iter().find(|e| matches!(e, crate::core::event::Event::Button { name, pressed, .. } if *name == "shift" && *pressed));
+        assert!(shift_event.is_some(), "Expected shift pressed event on Maschine Plus from 64-byte HID report");
     }
 
     #[test]
@@ -460,12 +475,16 @@ mod tests {
         assert!(desc.leds.iter().any(|l| l.id == "pad_leds" && l.prefix_bytes() == [0x81]));
         assert!(desc.leds.iter().any(|l| l.id == "master_meters" && l.prefix_bytes() == [0x82]));
         assert!(desc.leds.iter().any(|l| l.id == "jogwheel_ring" && l.prefix_bytes() == [0x83]));
+        let ni_service = desc.quirks.ni_service.as_ref().expect("ni_service quirk missing on Maschine Studio");
+        assert_eq!(ni_service.product_id.0, 0x1300);
+        assert_eq!(ni_service.screen_interface, "screen");
 
         let names = reg.intern_descriptor_names(&desc);
         let mut parser = crate::device::parser::PacketParser::new(crate::core::event::DeviceId(1), &desc, names);
         let mut events = Vec::new();
 
-        let mut buf = vec![0u8; 42];
+        // Verify both raw 42-byte and 64-byte zero-padded OS HID buttons reports parse on Maschine Studio
+        let mut buf = vec![0u8; 64];
         buf[0] = 0x01;
         buf[14] = 0x10; // play (byte 14 mask 0x10)
         parser.parse(&buf, &mut events);

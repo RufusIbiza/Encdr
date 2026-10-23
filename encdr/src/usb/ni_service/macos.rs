@@ -206,8 +206,12 @@ fn serve_notifications(name: String, events: Sender<Vec<u8>>) -> Result<Notifica
 
 /// Register with the service for the bootstrap step shared by device and
 /// instance connects, returning the request port and the notification server.
-fn register(request: &[u8], events: &Sender<Vec<u8>>) -> Result<(RemotePort, NotificationServer), String> {
-    let bootstrap = RemotePort::open(protocol::BOOTSTRAP_PIPE, 10)?;
+fn register(
+    bootstrap_name: &str,
+    request: &[u8],
+    events: &Sender<Vec<u8>>,
+) -> Result<(RemotePort, NotificationServer), String> {
+    let bootstrap = RemotePort::open(bootstrap_name, 10)?;
     let reply = bootstrap.transact(request)?;
     drop(bootstrap);
     let ports = protocol::parse_connect_reply(&reply)?;
@@ -232,19 +236,37 @@ impl ServiceSession {
     /// serial number (or the first one it reports when `serial` is `None` or
     /// not found).
     pub fn connect(product_id: u16, serial: Option<&str>, timeout: Duration) -> Result<Self, String> {
-        if RemotePort::open(protocol::BOOTSTRAP_PIPE, 1).is_err() {
-            return Err("the NI hardware service is not running".to_string());
+        let mut last_err = None;
+        for &bootstrap_name in protocol::BOOTSTRAP_PIPES {
+            if RemotePort::open(bootstrap_name, 1).is_err() {
+                continue;
+            }
+            match Self::connect_via(bootstrap_name, product_id, serial, timeout) {
+                Ok(session) => return Ok(session),
+                Err(e) => {
+                    tracing::debug!("NI service bootstrap '{bootstrap_name}' did not connect for 0x{product_id:04x}: {e}");
+                    last_err = Some(e);
+                }
+            }
         }
+        Err(last_err.unwrap_or_else(|| "the NI hardware service is not running".to_string()))
+    }
 
+    fn connect_via(
+        bootstrap_name: &str,
+        product_id: u16,
+        serial: Option<&str>,
+        timeout: Duration,
+    ) -> Result<Self, String> {
         let (tx, rx) = channel::<Vec<u8>>();
-        let device = register(&protocol::device_connect(product_id), &tx)?;
+        let device = register(bootstrap_name, &protocol::device_connect(product_id), &tx)?;
         let _ = device.0.request(&protocol::device_state_request(), Duration::from_millis(500));
 
         let serial = super::pick_serial(&rx, serial, timeout)?;
-        tracing::info!("NI service reports device {serial}; registering for its screens");
+        tracing::info!("NI service ('{bootstrap_name}') reports device {serial}; registering for its screens");
         let control = super::watch_control(rx);
 
-        let (instance, notifications) = register(&protocol::instance_connect(product_id, &serial), &tx)?;
+        let (instance, notifications) = register(bootstrap_name, &protocol::instance_connect(product_id, &serial), &tx)?;
         for message in protocol::instance_setup(product_id) {
             // Some setup messages are answered and some are not; none is needed.
             let _ = instance.request(&message, Duration::from_millis(40));

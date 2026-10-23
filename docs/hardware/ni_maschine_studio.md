@@ -18,6 +18,13 @@ The Maschine Studio was Native Instruments' flagship production controller, feat
 | | Control / HID | OUT | `0x01` | Interrupt (64B) | 4-report LED updates (`0x80`, `0x81`, `0x82`, `0x83`) |
 | **Interface 1** | Display | OUT | `0x02` | Bulk (512B) | Screen blit commands for left and right displays |
 
+### Windows & macOS: NI Hardware Service & Instance Switching
+
+The Maschine Studio (`0x1300`) uses `quirks.ni_service` (`product_id: "0x1300"`, `screen_interface: "screen"`):
+- **Control Interface (Interface 0)**: Opened via the OS HID stack (`hidapi`) on Windows and macOS, with automatic zero-padded 64-byte HID input report handling for both the 42-byte `buttons` report (`0x01`) and pad reports (`0x20` / `0x02`).
+- **Screen Interface (Interface 1)**: When raw USB interface 1 cannot be claimed directly (or `ENCDR_FORCE_SERVICE=1` is set), Encdr routes full and partial screen blits through the running NI hardware service (`NIHostIntegrationAgent` or `NIHardwareService` / `NIHWMainHandler` on Windows named pipes and macOS `CFMessagePort`s).
+- **Instance Button Hand-off**: Pressing the controller's instance button switches hardware ownership (`Encdr::has_control`) between NI software and Encdr, automatically releasing held inputs and pausing input/LED/screen output while NI software owns the hardware, and restoring both screens and all 4 LED report banks in full when control returns.
+
 ## Input Reports
 
 ### Report `0x01`: Buttons, Jogwheel & Knobs (42 bytes)
