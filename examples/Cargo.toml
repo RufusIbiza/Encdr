@@ -7,6 +7,7 @@ publish = false
 [dependencies]
 encdr = { path = "../encdr" }
 encdr-view = { path = "../encdr-view" }
+encdr-skia = { path = "../encdr-skia" }
 nusb = "0.2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -177,6 +178,10 @@ path = "maschine_mk3/mk3_partial_test.rs"
 [[bin]]
 name = "mk3_button_brightness"
 path = "maschine_mk3/button_brightness.rs"
+
+[[bin]]
+name = "mk3_skia"
+path = "maschine_mk3/mk3_skia.rs"
 
 # ── Maschine Plus & Studio ──
 

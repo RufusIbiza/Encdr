@@ -1,0 +1,21 @@
+[package]
+name = "encdr-skia"
+version.workspace = true
+edition.workspace = true
+description = "GPU-accelerated Skia 2D screen renderer for encdr controller screens"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords = ["native-instruments", "ni", "skia", "gpu", "vulkan", "display", "controller"]
+categories = ["hardware-support", "gui"]
+
+[dependencies]
+encdr = { version = "0.7.52", path = "../encdr" }
+skia-safe = { version = "0.153", features = ["ganesh", "vulkan"] }
+ash = "0.38"
+tracing = "0.1"
+
+[features]
+default = ["vulkan"]
+vulkan = []

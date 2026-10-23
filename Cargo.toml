@@ -1,5 +1,5 @@
 [workspace]
-members = ["encdr", "encdr-view", "examples"]
+members = ["encdr", "encdr-view", "encdr-skia", "examples"]
 resolver = "2"
 
 [workspace.package]
