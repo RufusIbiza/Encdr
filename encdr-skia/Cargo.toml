@@ -7,7 +7,7 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 readme.workspace = true
-keywords = ["native-instruments", "ni", "skia", "gpu", "vulkan", "display", "controller"]
+keywords = ["native-instruments", "ni", "skia", "vulkan", "display"]
 categories = ["hardware-support", "gui"]
 
 [dependencies]
