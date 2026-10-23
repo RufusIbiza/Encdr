@@ -415,12 +415,13 @@ impl Encdr {
     }
 
 
-    /// Whether this process currently has the device's screens and LEDs.
+    /// Whether this process currently has the device (inputs, screens, and LEDs).
     ///
     /// On Windows and macOS the Maschine Mk3 shares the hardware with NI's own
     /// software, and its instance button hands it back and forth. While
-    /// another client has it this returns `false`: frames and LED changes
-    /// you submit are kept but not sent, and everything is redrawn when
+    /// another client has it this returns `false`: any held inputs emit
+    /// release events and further input events are suppressed, frames and LED
+    /// changes you submit are kept but not sent, and everything is redrawn when
     /// control returns. Apps that render expensive frames (such as
     /// `encdr-view`'s WebView capture) can skip that work meanwhile.
     ///

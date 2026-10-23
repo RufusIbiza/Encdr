@@ -24,6 +24,10 @@ pub struct PacketParser {
     /// Packets routed by interface + report id / pad format instead of size
     routed_packets: Vec<RoutedPacket>,
     pad_stream_state: Option<PadStreamState>,
+    /// Whether this client currently has the hardware. While false, incoming
+    /// packets still update raw control positions so encoders and held buttons
+    /// don't jump when control returns, but no events are emitted.
+    active: bool,
     created_at: Instant,
 }
 
@@ -61,6 +65,8 @@ const MK2_MEDIAN_WINDOW: usize = 9;
 
 struct PadStreamState {
     pad_states: [bool; 16],
+    /// Whether this pad was reported as pressed to the consuming app.
+    pad_reported: [bool; 16],
     pad_pressures: [f32; 16],
     /// Last time each pad's tuple was seen in a Report 0x02 packet.
     last_update: [Instant; 16],
@@ -80,6 +86,7 @@ impl Default for PadStreamState {
         let now = Instant::now();
         Self {
             pad_states: [false; 16],
+            pad_reported: [false; 16],
             pad_pressures: [0.0; 16],
             last_update: [now; 16],
             last_strike: [None; 16],
@@ -95,6 +102,8 @@ struct ButtonState {
     byte: usize,
     mask: u8,
     prev: bool,
+    /// Whether this control was reported as pressed/touched to the consuming app.
+    reported: bool,
     is_touch: bool,
 }
 
@@ -103,6 +112,8 @@ struct WideTouchState {
     name: String,
     bytes: Vec<usize>,
     prev: bool,
+    /// Whether this sensor was reported as touched to the consuming app.
+    reported: bool,
 }
 
 impl PacketParser {
@@ -130,6 +141,7 @@ impl PacketParser {
                             byte: b.byte,
                             mask: b.mask.0 as u8,
                             prev: false,
+                            reported: false,
                             is_touch: false,
                         });
                     }
@@ -140,6 +152,7 @@ impl PacketParser {
                                 name: t.name.clone(),
                                 bytes: bytes.clone(),
                                 prev: false,
+                                reported: false,
                             });
                         } else if let Some(byte) = t.byte {
                             // Single-byte bitmask touch
@@ -149,6 +162,7 @@ impl PacketParser {
                                 byte,
                                 mask,
                                 prev: false,
+                                reported: false,
                                 is_touch: true,
                             });
                         }
@@ -202,7 +216,136 @@ impl PacketParser {
             packet_parsers,
             routed_packets,
             pad_stream_state,
+            active: true,
             created_at: Instant::now(),
+        }
+    }
+
+    /// Set whether this client currently has the hardware.
+    ///
+    /// When set to `false` (another client, such as NI's software, took over),
+    /// every button, touch sensor, and pad that was reported as active emits a
+    /// release event so the consuming app cannot be left with stuck state.
+    /// While `false`, incoming packets keep updating the raw control positions
+    /// without emitting events, so returning to `true` never produces phantom
+    /// encoder jumps or false presses for buttons still held from the other app.
+    pub fn set_active(&mut self, active: bool, events: &mut Vec<Event>) {
+        if self.active == active {
+            return;
+        }
+        self.active = active;
+        if active {
+            return;
+        }
+
+        for state in self
+            .packet_parsers
+            .values_mut()
+            .chain(self.routed_packets.iter_mut().map(|r| &mut r.state))
+        {
+            for btn in &mut state.button_states {
+                if btn.reported {
+                    btn.reported = false;
+                    if let Some(&name) = self.names.get(&btn.name) {
+                        if btn.is_touch {
+                            events.push(Event::Touch {
+                                device: self.device_id,
+                                name,
+                                touched: false,
+                            });
+                        } else {
+                            events.push(Event::Button {
+                                device: self.device_id,
+                                name,
+                                pressed: false,
+                            });
+                        }
+                    }
+                }
+            }
+            for wt in &mut state.wide_touch_states {
+                if wt.reported {
+                    wt.reported = false;
+                    if let Some(&name) = self.names.get(&wt.name) {
+                        events.push(Event::Touch {
+                            device: self.device_id,
+                            name,
+                            touched: false,
+                        });
+                    }
+                }
+            }
+        }
+
+        if let Some(ref mut state) = self.pad_stream_state {
+            for p in 0..16 {
+                if state.pad_reported[p] {
+                    state.pad_reported[p] = false;
+                    state.pad_states[p] = false;
+                    state.pad_pressures[p] = 0.0;
+                    state.last_strike[p] = None;
+                    state.aftertouch_count[p] = 0;
+                    let pad_name = *self.names.get(PAD_MAP[p]).unwrap_or(&PAD_MAP[p]);
+                    events.push(Event::Button {
+                        device: self.device_id,
+                        name: pad_name,
+                        pressed: false,
+                    });
+                    events.push(Event::Grid {
+                        device: self.device_id,
+                        name: pad_name,
+                        index: p as u8,
+                        pressure: 0.0,
+                    });
+                }
+            }
+        }
+    }
+
+    /// Gate pad events emitted since `start` on `self.active` and `pad_reported`:
+    /// presses are only reported while active, and aftertouch/releases are only
+    /// reported for pads whose press was reported to the consuming app.
+    fn filter_pad_events(&mut self, start: usize, events: &mut Vec<Event>) {
+        let Some(ref mut state) = self.pad_stream_state else {
+            return;
+        };
+        let active = self.active;
+        let names = &self.names;
+        let mut i = start;
+        while i < events.len() {
+            let keep = match &events[i] {
+                Event::Button { name, pressed, .. } => {
+                    if let Some(p) = PAD_MAP.iter().position(|&n| names.get(n).copied().unwrap_or(n) == *name) {
+                        if *pressed {
+                            if active {
+                                state.pad_reported[p] = true;
+                                true
+                            } else {
+                                state.pad_reported[p] = false;
+                                false
+                            }
+                        } else {
+                            state.pad_reported[p]
+                        }
+                    } else {
+                        active
+                    }
+                }
+                Event::Grid { index, pressure, .. } => {
+                    let p = (*index as usize).min(15);
+                    let was_reported = state.pad_reported[p];
+                    if *pressure == 0.0 {
+                        state.pad_reported[p] = false;
+                    }
+                    was_reported
+                }
+                _ => active,
+            };
+            if keep {
+                i += 1;
+            } else {
+                events.remove(i);
+            }
         }
     }
 
@@ -238,6 +381,7 @@ impl PacketParser {
                 buf,
                 &self.names,
                 self.device_id,
+                self.active,
                 events,
             ),
         }
@@ -249,6 +393,7 @@ impl PacketParser {
         let Some(ref mut state) = self.pad_stream_state else {
             return;
         };
+        let start = events.len();
         let now = Instant::now();
 
         for word in buf.chunks_exact(2) {
@@ -308,6 +453,7 @@ impl PacketParser {
                 }
             }
         }
+        self.filter_pad_events(start, events);
     }
 
     /// Parse a USB packet and return events. Dispatches by packet size or report type.
@@ -318,6 +464,7 @@ impl PacketParser {
             tracing::trace!("PAD RAW [len={}]: {:02x?}", buf.len(), &buf[0..buf.len().min(16)]);
 
             if let Some(ref mut state) = self.pad_stream_state {
+                let start = events.len();
                 // If the pad report is completely empty (all zeros), release all pads
                 let is_all_zeros = buf[1..].iter().all(|&b| b == 0);
 
@@ -341,6 +488,7 @@ impl PacketParser {
                             });
                         }
                     }
+                    self.filter_pad_events(start, events);
                     return;
                 }
 
@@ -415,7 +563,7 @@ impl PacketParser {
                                 // NoteOn (0x10): Pad struck
                                 0x10 => {
                                     let pressure = (pressure_raw as f32 / 4095.0).max(0.01);
-                                    if !prev_pressed {
+                                    if !prev_pressed || (self.active && !state.pad_reported[p_usize]) {
                                         state.pad_states[p_usize] = true;
                                         state.aftertouch_count[p_usize] = 0;
                                         tracing::trace!(
@@ -674,6 +822,7 @@ impl PacketParser {
                         }
                     }
                 }
+                self.filter_pad_events(start, events);
                 return;
             }
         }
@@ -689,6 +838,7 @@ impl PacketParser {
 
         if let Some(pad_data) = mk2_pad_bytes {
             if let Some(ref mut state) = self.pad_stream_state {
+                let start = events.len();
                 const MK2_PRESS_THRESHOLD: f32 = 48.0 / 4095.0;
                 const MK2_RELEASE_THRESHOLD: f32 = 16.0 / 4095.0;
 
@@ -755,6 +905,7 @@ impl PacketParser {
                         }
                     }
                 }
+                self.filter_pad_events(start, events);
                 return;
             }
         }
@@ -778,7 +929,7 @@ impl PacketParser {
         let Some(state) = self.packet_parsers.get_mut(&size) else {
             return;
         };
-        Self::parse_items(state, &buf[..size], &self.names, self.device_id, events);
+        Self::parse_items(state, &buf[..size], &self.names, self.device_id, self.active, events);
     }
 
     /// Parse the descriptor items (buttons, touches, encoders, sliders) of one packet.
@@ -787,30 +938,50 @@ impl PacketParser {
         buf: &[u8],
         names: &HashMap<String, &'static str>,
         device_id: DeviceId,
+        active: bool,
         events: &mut Vec<Event>,
     ) {
         // Parse buttons and single-byte touch sensors
         for btn in &mut state.button_states {
-
             if btn.byte >= buf.len() {
                 continue;
             }
             let pressed = (buf[btn.byte] & btn.mask) != 0;
             if pressed != btn.prev {
                 btn.prev = pressed;
-                if let Some(&name) = names.get(&btn.name) {
-                    if btn.is_touch {
-                        events.push(Event::Touch {
-                            device: device_id,
-                            name,
-                            touched: pressed,
-                        });
-                    } else {
-                        events.push(Event::Button {
-                            device: device_id,
-                            name,
-                            pressed,
-                        });
+                if pressed && active {
+                    btn.reported = true;
+                    if let Some(&name) = names.get(&btn.name) {
+                        if btn.is_touch {
+                            events.push(Event::Touch {
+                                device: device_id,
+                                name,
+                                touched: true,
+                            });
+                        } else {
+                            events.push(Event::Button {
+                                device: device_id,
+                                name,
+                                pressed: true,
+                            });
+                        }
+                    }
+                } else if !pressed && btn.reported {
+                    btn.reported = false;
+                    if let Some(&name) = names.get(&btn.name) {
+                        if btn.is_touch {
+                            events.push(Event::Touch {
+                                device: device_id,
+                                name,
+                                touched: false,
+                            });
+                        } else {
+                            events.push(Event::Button {
+                                device: device_id,
+                                name,
+                                pressed: false,
+                            });
+                        }
                     }
                 }
             }
@@ -821,12 +992,24 @@ impl PacketParser {
             let touched = wt.bytes.iter().any(|&b| b < buf.len() && buf[b] != 0);
             if touched != wt.prev {
                 wt.prev = touched;
-                if let Some(&name) = names.get(&wt.name) {
-                    events.push(Event::Touch {
-                        device: device_id,
-                        name,
-                        touched,
-                    });
+                if touched && active {
+                    wt.reported = true;
+                    if let Some(&name) = names.get(&wt.name) {
+                        events.push(Event::Touch {
+                            device: device_id,
+                            name,
+                            touched: true,
+                        });
+                    }
+                } else if !touched && wt.reported {
+                    wt.reported = false;
+                    if let Some(&name) = names.get(&wt.name) {
+                        events.push(Event::Touch {
+                            device: device_id,
+                            name,
+                            touched: false,
+                        });
+                    }
                 }
             }
         }
@@ -844,12 +1027,14 @@ impl PacketParser {
                         match desc.encoding {
                             EncoderEncoding::Wrap16 => {
                                 if let Some(delta) = enc_state.update_wrap16(raw) {
-                                    if let Some(&name) = names.get(&desc.name) {
-                                        events.push(Event::Encoder {
-                                            device: device_id,
-                                            name,
-                                            delta,
-                                        });
+                                    if active {
+                                        if let Some(&name) = names.get(&desc.name) {
+                                            events.push(Event::Encoder {
+                                                device: device_id,
+                                                name,
+                                                delta,
+                                            });
+                                        }
                                     }
                                 }
                             }
@@ -871,39 +1056,46 @@ impl PacketParser {
                         match desc.encoding {
                             EncoderEncoding::Signed16 => {
                                 if let Some(raw_delta) = enc_state.update_signed16(val) {
-                                    let delta = raw_delta / desc.scale;
-                                    if let Some(&name) = names.get(&desc.name) {
-                                        events.push(Event::EncoderFine {
-                                            device: device_id,
-                                            name,
-                                            delta,
-                                        });
+                                    if active {
+                                        let delta = raw_delta / desc.scale;
+                                        if let Some(&name) = names.get(&desc.name) {
+                                            events.push(Event::EncoderFine {
+                                                device: device_id,
+                                                name,
+                                                delta,
+                                            });
+                                        }
                                     }
                                 }
                             }
                             EncoderEncoding::Wrap16Wide => {
                                 if let Some(raw_delta) = enc_state.update_wrap16_wide(val) {
-                                    let delta = raw_delta as f32 / desc.scale;
-                                    if let Some(&name) = names.get(&desc.name) {
-                                        events.push(Event::EncoderFine {
-                                            device: device_id,
-                                            name,
-                                            delta,
-                                        });
+                                    if active {
+                                        let delta = raw_delta as f32 / desc.scale;
+                                        if let Some(&name) = names.get(&desc.name) {
+                                            events.push(Event::EncoderFine {
+                                                device: device_id,
+                                                name,
+                                                delta,
+                                            });
+                                        }
                                     }
                                 }
                             }
                             EncoderEncoding::Erp => {
                                 // bytes: [b, a] — the two wiper taps
                                 let pos = decode_erp(buf[desc.bytes[1]], buf[desc.bytes[0]]);
-                                if let Some(raw_delta) = enc_state.update_erp(pos, desc.deadband) {
-                                    let delta = raw_delta as f32 / desc.scale;
-                                    if let Some(&name) = names.get(&desc.name) {
-                                        events.push(Event::EncoderFine {
-                                            device: device_id,
-                                            name,
-                                            delta,
-                                        });
+                                let deadband = if active { desc.deadband } else { 0 };
+                                if let Some(raw_delta) = enc_state.update_erp(pos, deadband) {
+                                    if active {
+                                        let delta = raw_delta as f32 / desc.scale;
+                                        if let Some(&name) = names.get(&desc.name) {
+                                            events.push(Event::EncoderFine {
+                                                device: device_id,
+                                                name,
+                                                delta,
+                                            });
+                                        }
                                     }
                                 }
                             }
@@ -915,20 +1107,22 @@ impl PacketParser {
                     let Some(raw_val) = read_slider_value(buf, desc) else { continue };
                     if let Some(sl_state) = state.slider_states.get_mut(&desc.name) {
                         if let Some(_changed) = sl_state.update_slider(raw_val) {
-                            let value = if desc.normalize {
-                                let max = desc
-                                    .max_value
-                                    .unwrap_or((1u32 << desc.bits) - 1);
-                                raw_val as f32 / max as f32
-                            } else {
-                                raw_val as f32
-                            };
-                            if let Some(&name) = names.get(&desc.name) {
-                                events.push(Event::Slider {
-                                    device: device_id,
-                                    name,
-                                    value: value.clamp(0.0, 1.0),
-                                });
+                            if active {
+                                let value = if desc.normalize {
+                                    let max = desc
+                                        .max_value
+                                        .unwrap_or((1u32 << desc.bits) - 1);
+                                    raw_val as f32 / max as f32
+                                } else {
+                                    raw_val as f32
+                                };
+                                if let Some(&name) = names.get(&desc.name) {
+                                    events.push(Event::Slider {
+                                        device: device_id,
+                                        name,
+                                        value: value.clamp(0.0, 1.0),
+                                    });
+                                }
                             }
                         }
                     }
@@ -943,6 +1137,7 @@ impl PacketParser {
         let Some(ref mut state) = self.pad_stream_state else {
             return;
         };
+        let start = events.len();
         let now = Instant::now();
         for p in 0..16 {
             if !state.pad_states[p] {
@@ -1006,6 +1201,7 @@ impl PacketParser {
                 });
             }
         }
+        self.filter_pad_events(start, events);
     }
 }
 
@@ -1651,6 +1847,102 @@ mod tests {
             Some(("pad_4", false)),
             "Explicit NoteOff (0x20) releases pad cleanly"
         );
+    }
+
+    #[test]
+    fn losing_control_releases_held_inputs_and_gates_events_until_regained() {
+        let mut parser = mk3_parser();
+        let mut events = Vec::new();
+
+        // 1. Seed encoder/slider baseline while active, and press shift (byte 1, 0x40),
+        //    encoder_touch_1 (byte 10, 0x80), touchstrip_touch (bytes 30..32 = 512),
+        //    and pad_1 (hardware pad index 12).
+        let mut pkt = [0u8; 42];
+        pkt[0] = 0x01;
+        pkt[1] = 0x40; // shift pressed
+        pkt[10] = 0x80; // encoder_touch_1 touched
+        pkt[11] = 3; // main_encoder at 3
+        pkt[12..14].copy_from_slice(&100u16.to_le_bytes()); // screen_encoder_1 at 100
+        pkt[30..32].copy_from_slice(&512u16.to_le_bytes()); // touchstrip at 512 (touched)
+        parser.parse(&pkt, &mut events);
+
+        let mut pad_pkt = [0u8; 64];
+        pad_pkt[0] = 0x02;
+        pad_pkt[1] = 0x0c; // pad_1
+        pad_pkt[2] = 0x14; // NoteOn, raw pressure 1024
+        pad_pkt[3] = 0x00;
+        parser.parse(&pad_pkt, &mut events);
+
+        assert!(events.iter().any(|e| matches!(e, Event::Button { name: "shift", pressed: true, .. })));
+        assert!(events.iter().any(|e| matches!(e, Event::Touch { name: "encoder_touch_1", touched: true, .. })));
+        assert!(events.iter().any(|e| matches!(e, Event::Touch { name: "touchstrip_touch", touched: true, .. })));
+        assert!(events.iter().any(|e| matches!(e, Event::Button { name: "pad_1", pressed: true, .. })));
+
+        // 2. Lose control: every active button, touch, and pad must release immediately.
+        events.clear();
+        parser.set_active(false, &mut events);
+
+        assert!(events.iter().any(|e| matches!(e, Event::Button { name: "shift", pressed: false, .. })));
+        assert!(events.iter().any(|e| matches!(e, Event::Touch { name: "encoder_touch_1", touched: false, .. })));
+        assert!(events.iter().any(|e| matches!(e, Event::Touch { name: "touchstrip_touch", touched: false, .. })));
+        assert!(events.iter().any(|e| matches!(e, Event::Button { name: "pad_1", pressed: false, .. })));
+        assert!(events.iter().any(|e| matches!(e, Event::Grid { name: "pad_1", pressure, .. } if *pressure == 0.0)));
+
+        // 3. While inactive: release shift/touches, turn encoders, move touchstrip,
+        //    press play (byte 6, 0x20) and top_1 (byte 9, 0x01, e.g. to switch instances),
+        //    and strike pad_2 (hardware index 13). No events may be emitted.
+        events.clear();
+        pkt[1] = 0x00; // shift released while inactive
+        pkt[6] = 0x20; // play pressed while inactive
+        pkt[9] = 0x01; // top_1 pressed while inactive (held across regain)
+        pkt[10] = 0x00; // encoder_touch_1 released while inactive
+        pkt[11] = 10; // main_encoder turned to 10 while inactive
+        pkt[12..14].copy_from_slice(&400u16.to_le_bytes()); // screen_encoder_1 turned to 400
+        pkt[30..32].copy_from_slice(&0u16.to_le_bytes()); // touchstrip released
+        parser.parse(&pkt, &mut events);
+
+        pkt[6] = 0x00; // play released while still inactive
+        parser.parse(&pkt, &mut events);
+
+        pad_pkt[1] = 0x0d; // pad_2 struck while inactive (held across regain)
+        pad_pkt[2] = 0x14;
+        pad_pkt[3] = 0x00;
+        parser.parse(&pad_pkt, &mut events);
+
+        assert!(events.is_empty(), "no events may be emitted while inactive, got: {events:?}");
+
+        // 4. Regain control while top_1 and pad_2 are still physically held from the other app.
+        parser.set_active(true, &mut events);
+        assert!(events.is_empty());
+
+        // Next report arrives with top_1 still held and encoders at their new positions (10 and 400):
+        // must not fire a false press for top_1 or a phantom delta for the encoders.
+        parser.parse(&pkt, &mut events);
+        assert!(events.is_empty(), "first report after regain must not leak held buttons or encoder jumps: {events:?}");
+
+        // Aftertouch and release for pad_2 (which was struck while inactive) must also be ignored.
+        pad_pkt[2] = 0x42;
+        pad_pkt[3] = 0x00;
+        parser.parse(&pad_pkt, &mut events);
+        pad_pkt[2] = 0x30;
+        pad_pkt[3] = 0x00;
+        parser.parse(&pad_pkt, &mut events);
+        assert!(events.is_empty(), "pad struck while inactive must not leak aftertouch/release: {events:?}");
+
+        // Releasing top_1 (which was pressed while inactive) must not emit an orphan release.
+        pkt[9] = 0x00;
+        parser.parse(&pkt, &mut events);
+        assert!(events.is_empty(), "releasing a button pressed while inactive must not emit orphan release: {events:?}");
+
+        // 5. Fresh inputs while active work normally from the updated baseline.
+        pkt[9] = 0x01; // press top_1 now that we have control
+        pkt[11] = 11; // turn main_encoder by +1 from 10 -> 11
+        pkt[12..14].copy_from_slice(&450u16.to_le_bytes()); // turn screen_encoder_1 by +50 from 400 -> 450
+        parser.parse(&pkt, &mut events);
+
+        assert!(events.iter().any(|e| matches!(e, Event::Button { name: "top_1", pressed: true, .. })));
+        assert!(events.iter().any(|e| matches!(e, Event::Encoder { name: "main_encoder", delta: 1, .. })));
+        assert!(events.iter().any(|e| matches!(e, Event::EncoderFine { name: "screen_encoder_1", delta, .. } if (*delta - 0.05).abs() < 1e-5)));
     }
 }
 

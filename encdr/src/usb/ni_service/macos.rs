@@ -54,6 +54,10 @@ struct RemotePort(CFMessagePortRef);
 // SAFETY: a CFMessagePort may be used from any thread; the callers serialise
 // access (a `Mutex` around the only shared instance).
 unsafe impl Send for RemotePort {}
+// SAFETY: Core Foundation message ports are thread-safe. The request port that
+// is shared by a ServiceSession is additionally protected by a Mutex; the
+// device-level port is only retained to keep the registration alive.
+unsafe impl Sync for RemotePort {}
 
 impl Drop for RemotePort {
     fn drop(&mut self) {

@@ -51,12 +51,12 @@ Encdr uses `nusb` for asynchronous USB access and `webkit2gtk` for offscreen Web
 #### macOS
 No additional system packages are required (`encdr-view` uses macOS's built-in `WKWebView` via `tao` and `wry`).
 
-> **Native Instruments Services on macOS**: If you have official NI software installed (such as Maschine, Komplete Kontrol, or Traktor), background agents like `NIHardwareAgent` and `NIHostIntegrationAgent` will attempt to maintain exclusive USB communication with the hardware. Stop or suspend these processes (via Activity Monitor, `launchctl`, or `killall NIHardwareAgent NIHostIntegrationAgent`) before launching Encdr applications. Once your Encdr session finishes, you can start the services again without incident.
+> **Native Instruments Services on macOS**: For the **Maschine Mk3**, keep `NIHardwareAgent` running — Encdr uses the OS HID stack for controls/LEDs and the NI hardware service for the screens, and the controller's instance button switches inputs, LEDs, and screens between NI software and Encdr. (For other NI controllers whose screens use raw USB, stop `NIHardwareAgent` and `NIHostIntegrationAgent` first if they hold exclusive USB access.)
 
 #### Windows
 No additional system packages are required (`encdr-view` uses the Microsoft Edge WebView2 runtime pre-installed on Windows 10/11).
 
-> **Native Instruments Services on Windows**: If official NI software is installed, background services such as `NIHardwareService` or `NIHostIntegrationAgent` may hold open USB handles to connected controllers. Stop or suspend these services (via Task Manager, the Services management console `services.msc`, or running `net stop NIHardwareService` in an Administrator prompt) before launching Encdr. When your Encdr application has finished running, the services can be started again without incident.
+> **Native Instruments Services on Windows**: For the **Maschine Mk3**, keep `NIHardwareService` running — no Zadig driver replacement is needed, Encdr routes the screens through the NI hardware service while using the Windows HID stack for controls/LEDs, and the controller's instance button hands the hardware between NI software and Encdr. (For other NI controllers whose screens use raw USB, stop `NIHardwareService` first if it holds exclusive USB access.)
 
 ---
 

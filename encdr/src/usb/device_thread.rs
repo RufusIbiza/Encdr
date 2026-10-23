@@ -81,11 +81,12 @@ pub enum DeviceCmd {
         pixels: Vec<u8>,
         format: PixelFormat,
     },
-    /// Internal, from the screen thread to the LED thread: another client
-    /// (e.g. NI's software) has taken the hardware. LED state is still
+    /// Internal, from the screen thread to the input and LED threads: another
+    /// client (e.g. NI's software) has taken the hardware. Held inputs emit
+    /// release events and further inputs are suppressed; LED state is still
     /// tracked but not written.
     ControlLost,
-    /// Internal: control is back; every LED is written again.
+    /// Internal: control is back; inputs resume and every LED is written again.
     ControlRegained,
     Disconnect,
 }
@@ -104,11 +105,12 @@ pub struct DeviceHandle {
 }
 
 impl DeviceHandle {
-    /// Whether this process currently has the device's screens and LEDs.
-    /// False while another client has them (on Windows and macOS, NI's
-    /// software after the controller's instance button is pressed); frames
-    /// and LED changes are then kept but not sent, and redrawn when control
-    /// returns.
+    /// Whether this process currently has the device (inputs, screens, and LEDs).
+    /// False while another client has it (on Windows and macOS, NI's
+    /// software after the controller's instance button is pressed); inputs
+    /// are then suppressed (after releasing any held controls), frames and
+    /// LED changes are kept but not sent, and screens and LEDs are redrawn
+    /// when control returns.
     pub fn has_control(&self) -> bool {
         self.has_control.load(Ordering::Relaxed)
     }
@@ -179,6 +181,7 @@ impl DeviceHandle {
             serial: usb_info.serial_number().map(str::to_owned),
         };
 
+        let input_ctl_tx = cmd_tx.clone();
         let led_ctl_tx = led_tx.clone();
         let has_control = Arc::new(AtomicBool::new(true));
         let thread_has_control = has_control.clone();
@@ -186,8 +189,8 @@ impl DeviceHandle {
             .name(format!("encdr-{}", descriptor.name.replace(' ', "-").to_lowercase()))
             .spawn(move || {
                 run_device(
-                    id, desc, usb_device, hid_target, names, cmd_rx, led_rx, led_ctl_tx, thread_has_control, screen_rx,
-                    event_tx, gpu,
+                    id, desc, usb_device, hid_target, names, cmd_rx, input_ctl_tx, led_rx, led_ctl_tx,
+                    thread_has_control, screen_rx, event_tx, gpu,
                 );
             })
             .map_err(|e| crate::core::error::EncdrError::Io(e))?;
@@ -267,6 +270,7 @@ fn run_device(
     hid_target: HidTarget,
     names: HashMap<String, &'static str>,
     cmd_rx: async_channel::Receiver<DeviceCmd>,
+    input_ctl_tx: async_channel::Sender<DeviceCmd>,
     led_rx: Option<async_channel::Receiver<DeviceCmd>>,
     led_ctl_tx: Option<async_channel::Sender<DeviceCmd>>,
     has_control: Arc<AtomicBool>,
@@ -496,10 +500,19 @@ fn run_device(
             screen_managers.insert(s.name.clone(), sm);
         }
 
+        let screen_has_control = has_control.clone();
         thread::Builder::new()
             .name(format!("encdr-screen-{}", descriptor.name.replace(' ', "-").to_lowercase()))
             .spawn(move || {
-                run_screens(screen_desc, screen_ifaces, screen_managers, screen_rx, led_ctl_tx, has_control);
+                run_screens(
+                    screen_desc,
+                    screen_ifaces,
+                    screen_managers,
+                    screen_rx,
+                    input_ctl_tx,
+                    led_ctl_tx,
+                    screen_has_control,
+                );
             })
             .ok()
     } else {
@@ -590,11 +603,24 @@ fn run_device(
                     // Timeout tick wakes up the loop so the sweep below executes
                 }
                 Woken::Cmd(cmd) => {
-                    // The only command still routed here is Disconnect.
-                    // LED and Screen commands go to their dedicated threads.
-                    if matches!(cmd, DeviceCmd::Disconnect) {
-                        running = false;
-                        break;
+                    match cmd {
+                        DeviceCmd::Disconnect => {
+                            running = false;
+                            break;
+                        }
+                        DeviceCmd::ControlLost | DeviceCmd::ControlRegained => {
+                            let active = matches!(cmd, DeviceCmd::ControlRegained)
+                                && has_control.load(Ordering::Relaxed);
+                            event_buf.clear();
+                            parser.set_active(active, &mut event_buf);
+                            for event in event_buf.drain(..) {
+                                if event_tx.send(event).is_err() {
+                                    running = false;
+                                    break;
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 }
                 Woken::Read(idx, incoming) => {
@@ -609,11 +635,20 @@ fn run_device(
                     };
                     match outcome {
                         Ok(data) => {
-                            tracing::trace!("USB RECV [len={}] header={:02x?}", data.len(), &data[0..data.len().min(8)]);
+                            let active = has_control.load(Ordering::Relaxed);
+                            tracing::trace!(
+                                "USB RECV [len={}, active={}] header={:02x?}",
+                                data.len(),
+                                active,
+                                &data[0..data.len().min(8)]
+                            );
 
-                            // Parse the packet
+                            // Parse the packet (while inactive, updates raw control state
+                            // without emitting events; on transition to inactive, releases
+                            // any held controls first).
                             event_buf.clear();
-                            if !hook.on_packet(device_id, data, &mut event_buf) {
+                            parser.set_active(active, &mut event_buf);
+                            if !active || !hook.on_packet(device_id, data, &mut event_buf) {
                                 parser.parse_from(&source.interface, data, &mut event_buf);
                             }
 
@@ -648,6 +683,7 @@ fn run_device(
             if running && last_timeout_sweep.elapsed() >= PAD_TIMEOUT_POLL_INTERVAL {
                 last_timeout_sweep = Instant::now();
                 event_buf.clear();
+                parser.set_active(has_control.load(Ordering::Relaxed), &mut event_buf);
                 parser.check_pad_timeouts(&mut event_buf);
                 for event in event_buf.drain(..) {
                     if event_tx.send(event).is_err() {
@@ -962,15 +998,17 @@ const REGAIN_PROBE_INTERVAL: Duration = Duration::from_millis(250);
 /// and one might have been missed.
 const REGAIN_PROBE_INTERVAL_NOTIFIED: Duration = Duration::from_secs(2);
 
-/// Whether another client has the screens. The NI hardware service says so
+/// Whether another client has the hardware. The NI hardware service says so
 /// when NI's own software becomes the active instance (the controller's
-/// instance button), and refuses Encdr's frames meanwhile. Encdr then stops
-/// sending, keeps tracking the frames it is given and the LED state, and
-/// redraws everything as soon as it is the active instance again.
+/// instance button), and refuses Encdr's frames meanwhile. Encdr then releases
+/// any held inputs and suppresses further input events, stops sending frames
+/// and LEDs while keeping the latest picture and LED state, and redraws
+/// everything and resumes inputs as soon as it is the active instance again.
 struct ScreenControl {
     lost: bool,
     last_probe: Instant,
     probe_interval: Duration,
+    input_tx: async_channel::Sender<DeviceCmd>,
     led_tx: Option<async_channel::Sender<DeviceCmd>>,
     /// Control changes announced by the service, when it is the screen route.
     changes: Option<async_channel::Receiver<bool>>,
@@ -980,13 +1018,14 @@ struct ScreenControl {
 
 impl ScreenControl {
     fn new(
+        input_tx: async_channel::Sender<DeviceCmd>,
         led_tx: Option<async_channel::Sender<DeviceCmd>>,
         changes: Option<async_channel::Receiver<bool>>,
         shared: Arc<AtomicBool>,
     ) -> Self {
         let probe_interval =
             if changes.is_some() { REGAIN_PROBE_INTERVAL_NOTIFIED } else { REGAIN_PROBE_INTERVAL };
-        Self { lost: false, last_probe: Instant::now(), probe_interval, led_tx, changes, shared }
+        Self { lost: false, last_probe: Instant::now(), probe_interval, input_tx, led_tx, changes, shared }
     }
 
     async fn lose(&mut self) {
@@ -997,8 +1036,9 @@ impl ScreenControl {
         self.lost = true;
         self.shared.store(false, Ordering::Relaxed);
         tracing::warn!(
-            "Another application (e.g. NI's software) has taken the screens; Encdr keeps its picture and LED state and redraws both when control returns"
+            "Another application (e.g. NI's software) has taken the hardware; Encdr pauses inputs, keeps its picture and LED state, and restores everything when control returns"
         );
+        let _ = self.input_tx.send(DeviceCmd::ControlLost).await;
         self.notify_leds(DeviceCmd::ControlLost).await;
     }
 
@@ -1008,7 +1048,8 @@ impl ScreenControl {
         }
         self.lost = false;
         self.shared.store(true, Ordering::Relaxed);
-        tracing::info!("Control of the screens is back; redrawing the screens and LEDs");
+        tracing::info!("Control of the hardware is back; resuming inputs and redrawing the screens and LEDs");
+        let _ = self.input_tx.send(DeviceCmd::ControlRegained).await;
         self.notify_leds(DeviceCmd::ControlRegained).await;
     }
 
@@ -1066,6 +1107,7 @@ fn run_screens(
     screen_ifaces: HashMap<String, Iface>,
     mut screen_managers: HashMap<String, ScreenManager>,
     screen_rx: async_channel::Receiver<DeviceCmd>,
+    input_ctl_tx: async_channel::Sender<DeviceCmd>,
     led_ctl_tx: Option<async_channel::Sender<DeviceCmd>>,
     has_control: Arc<AtomicBool>,
 ) {
@@ -1076,7 +1118,7 @@ fn run_screens(
             Iface::Service(session) => Some(session.control_events()),
             _ => None,
         });
-        let mut control = ScreenControl::new(led_ctl_tx, changes, has_control);
+        let mut control = ScreenControl::new(input_ctl_tx, led_ctl_tx, changes, has_control);
         let mut endpoints: HashMap<(String, u8), OutEndpoint> = HashMap::new();
         let mut screen_to_ep: HashMap<String, (String, u8)> = HashMap::new();
 

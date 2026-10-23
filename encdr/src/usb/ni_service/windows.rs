@@ -33,6 +33,7 @@ struct ClientPipe(HANDLE);
 // SAFETY: a pipe HANDLE can be used from any thread; access is serialised by
 // the callers (a `Mutex` around the only shared instance).
 unsafe impl Send for ClientPipe {}
+unsafe impl Sync for ClientPipe {}
 
 impl Drop for ClientPipe {
     fn drop(&mut self) {
