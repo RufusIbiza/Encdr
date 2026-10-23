@@ -23,6 +23,20 @@ pub struct SkiaScreenView {
 }
 
 impl SkiaScreenView {
+    /// Create a new Skia-backed screen by automatically using the primary/first screen of the device.
+    pub fn for_device(encdr: &Encdr, device_id: DeviceId) -> Result<Self, String> {
+        let descriptor = encdr
+            .device_descriptor(device_id)
+            .ok_or_else(|| format!("Device {:?} not connected", device_id))?;
+
+        if let Some(screen) = descriptor.screens.first() {
+            let name = screen.name.clone();
+            Self::new(encdr, device_id, &name)
+        } else {
+            Err(format!("Device {:?} has no screens", device_id))
+        }
+    }
+
     /// Create a new Skia-backed screen for a connected device using a dedicated GPU context.
     pub fn new(encdr: &Encdr, device_id: DeviceId, screen_name: &str) -> Result<Self, String> {
         let gpu = Arc::new(Mutex::new(SkiaGpuContext::new()));
@@ -43,7 +57,7 @@ impl SkiaScreenView {
         let screen_desc = descriptor
             .screens
             .iter()
-            .find(|s| s.name == screen_name)
+            .find(|s| s.name == screen_name || (descriptor.screens.len() == 1))
             .ok_or_else(|| format!("Screen '{}' not found on device", screen_name))?;
 
         let width = screen_desc.width as u32;
@@ -60,7 +74,7 @@ impl SkiaScreenView {
             gpu,
             surface,
             device_id,
-            screen_name: screen_name.to_string(),
+            screen_name: screen_desc.name.clone(),
             width,
             height,
             pixel_buf,

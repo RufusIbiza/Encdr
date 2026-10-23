@@ -36,12 +36,7 @@ fn main() {
     std::thread::sleep(Duration::from_millis(500));
 
     // Create dual-screen Skia renderer
-    let mut dual_screen = match SkiaDualScreenView::new(
-        &encdr,
-        device_id,
-        "left_screen",
-        "right_screen",
-    ) {
+    let mut dual_screen = match SkiaDualScreenView::for_device(&encdr, device_id) {
         Ok(v) => v,
         Err(e) => {
             eprintln!("Failed to create SkiaDualScreenView: {}", e);

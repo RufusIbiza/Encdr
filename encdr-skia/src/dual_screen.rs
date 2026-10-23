@@ -27,6 +27,22 @@ pub struct SkiaDualScreenView {
 }
 
 impl SkiaDualScreenView {
+    /// Create a new Skia-backed dual screen renderer by automatically detecting
+    /// the dual screens on the connected device.
+    pub fn for_device(encdr: &Encdr, device_id: DeviceId) -> Result<Self, String> {
+        let descriptor = encdr
+            .device_descriptor(device_id)
+            .ok_or_else(|| format!("Device {:?} not connected", device_id))?;
+
+        if descriptor.screens.len() == 2 {
+            let left = descriptor.screens[0].name.clone();
+            let right = descriptor.screens[1].name.clone();
+            Self::new(encdr, device_id, &left, &right)
+        } else {
+            Self::new(encdr, device_id, "left", "right")
+        }
+    }
+
     /// Create a new Skia-backed dual screen renderer for a connected device using a dedicated GPU context.
     pub fn new(
         encdr: &Encdr,
@@ -53,13 +69,13 @@ impl SkiaDualScreenView {
         let left_desc = descriptor
             .screens
             .iter()
-            .find(|s| s.name == left_screen)
+            .find(|s| s.name == left_screen || (left_screen == "left_screen" && s.name == "left"))
             .ok_or_else(|| format!("Left screen '{}' not found on device", left_screen))?;
 
         let right_desc = descriptor
             .screens
             .iter()
-            .find(|s| s.name == right_screen)
+            .find(|s| s.name == right_screen || (right_screen == "right_screen" && s.name == "right"))
             .ok_or_else(|| format!("Right screen '{}' not found on device", right_screen))?;
 
         if left_desc.height != right_desc.height {
@@ -85,8 +101,8 @@ impl SkiaDualScreenView {
             gpu,
             surface,
             device_id,
-            left_screen: left_screen.to_string(),
-            right_screen: right_screen.to_string(),
+            left_screen: left_desc.name.clone(),
+            right_screen: right_desc.name.clone(),
             total_width,
             left_width,
             right_width,
