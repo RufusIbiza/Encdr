@@ -332,11 +332,11 @@ encdr/
 
 ## Changelog
 
-### v0.7.52
+### v0.7.52 (reported and verified by [TVbene](https://github.com/TVBene))
 - **Exclusive Input Ownership on NI Service Hand-off (Windows and macOS)**:
   - Gated HID/USB input event emission on NI hardware service instance ownership (`has_control`). When another client (such as Maschine software) takes control of the hardware via the controller's instance button, Encdr immediately emits release events (`ButtonReleased`, `PadReleased`, `TouchStripReleased`, `EncoderTouched { touched: false }`) for any currently held inputs and suppresses further input events until control returns.
   - Physical button, pad, touch strip, and relative encoder state continues tracking silently in the background while inactive so returning to Encdr does not produce false encoder jumps or stuck buttons.
-- **macOS Build Fix & Thread Safety (`ServiceSession`)**:
+- **macOS Build Fix & Thread Safety (`ServiceSession`)** (contributed by [TVbene](https://github.com/TVBene)):
   - Implemented `Sync` for `RemotePort` (`CFMessagePortRef`) on macOS (`encdr/src/usb/ni_service/macos.rs`) and `ClientPipe` (`HANDLE`) on Windows (`encdr/src/usb/ni_service/windows.rs`), fixing `Arc<ServiceSession>: Send` compilation on macOS (`error[E0277]: *mut __CFMessagePort cannot be shared between threads safely`).
 - **macOS Hardware Verification & Documentation**:
   - Verified the macOS Core Foundation message-port NI hardware service screen route, zero-padded 64-byte HID input reports, and instance hand-off on Apple Silicon with Maschine Mk3.
