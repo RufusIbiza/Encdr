@@ -41,9 +41,13 @@ let mut encdr = Encdr::new(EncdrConfig::default())?;
 
 #### `pub fn scan(&mut self) -> Result<Vec<DeviceId>>`
 Enumerates active USB devices using `nusb`. Matches connected devices against loaded descriptors by `vendor_id` and `product_id`. For each matching controller:
-1. Detaches host OS kernel drivers if required by descriptor quirks.
-2. Claims control and screen interfaces.
-3. Spawns dedicated background worker threads for input polling and output transfers.
+1. Detaches host OS kernel drivers if required by descriptor quirks (`detach_kernel_driver` on Linux).
+2. Claims control and screen interfaces with automatic platform fallbacks:
+   - **Raw USB (`nusb`)**: Used first whenever the OS allows claiming the USB interface directly.
+   - **OS HID Stack (`hidapi`)**: On macOS (`IOHIDManager`), Windows (`HidUsb`), and Linux (when built with `--features hid` or forced via `ENCDR_FORCE_HID=1`), interrupt-only HID interfaces that the OS keeps bound to its own driver are opened automatically through the native HID stack. Zero-padded OS HID input reports (e.g. 42-byte reports padded to 64 bytes) are automatically matched to the longest declared packet that fits.
+   - **NI Hardware Service (`quirks.ni_service`)**: On Windows (named pipes) and macOS (`CFMessagePort`s), if a bulk screen interface cannot be claimed over raw USB (or `ENCDR_FORCE_SERVICE=1` is set) and the descriptor declares `quirks.ni_service` (e.g. Maschine Mk3), Encdr connects to the running `NIHardwareService` / `NIHardwareAgent` and routes full and partial screen blits through it.
+   - **Fault-Tolerant Partial Claiming**: If an individual interface cannot be opened, Encdr logs a warning and continues with the remaining interfaces rather than aborting the device connection (only failing if no interface can be claimed at all).
+3. Spawns dedicated background worker threads for input polling, screen blitting, LED flushing, and (when using the NI service route) instance control-state monitoring.
 4. Emits an `Event::DeviceConnected` event.
 
 Returns a vector of newly connected [`DeviceId`](#3-device-identifiers-deviceid)s.
@@ -226,7 +230,24 @@ encdr.sync_jog_ring_position(device_id, JogDeck::Left, 1440, LedValue::Rgb { r: 
 
 
 #### `pub fn has_control(&self, device_id: DeviceId) -> bool`
-Whether this process currently has the device (inputs, screens, and LEDs). The Maschine Mk3 shares its hardware with NI's own software on Windows and macOS, and the controller's instance button hands it back and forth. While another client has it this returns `false`: any held inputs emit release events and further input events are suppressed, submitted frames and LED changes are kept but not sent, and everything is redrawn automatically when control returns. Apps with costly frame rendering can check it to skip that work. Returns `true` for devices that don't share the hardware and for unknown devices.
+Returns `true` if this process currently owns the hardware device (inputs, screens, and LEDs), or `false` while another client (such as Native Instruments' Maschine software) has focus on the hardware.
+
+On Windows and macOS, when the Maschine Mk3 is connected alongside NI's background hardware service (`NIHardwareService` / `NIHardwareAgent`), pressing the controller's **Instance** button hands the hardware back and forth between NI software and Encdr:
+- **When control is lost (`has_control` becomes `false`)**:
+  - **Inputs**: Encdr immediately emits synthetic release events (`Event::Button { pressed: false }`, `Event::Touch { touched: false }`, `Event::Grid { pressure: 0.0 }`) for any currently held buttons, capacitive touches, touch strips, or pads so the application cannot be left with stuck notes or modifiers. Further incoming HID/USB input events are suppressed while the other client owns the hardware, while physical state (including relative encoder raw positions) continues tracking silently in the background.
+  - **Screens & LEDs**: Submitted screen frames and LED updates continue to be recorded in `ScreenManager` and `LedBuilder` state, but no USB/service transfers are sent to the hardware.
+- **When control is regained (`has_control` becomes `true`)**:
+  - **Inputs**: Input event delivery resumes cleanly without false relative encoder jumps or duplicate presses for controls that remained held across the hand-off.
+  - **Screens & LEDs**: Encdr automatically redraws every screen in full from its latest retained frame and rewrites all LED groups and feature-report LEDs.
+
+Returns `true` for controllers that do not share hardware via the NI service and for unknown `DeviceId`s. [`ScreenView::poll`](#pub-fn-pollself-encdr-encdr) and [`DualScreenView::poll`](#pub-fn-pollself-encdr-encdr-1) check `has_control` automatically to skip expensive WebView snapshots while another application owns the hardware.
+
+```rust
+if encdr.has_control(device_id) {
+    // Render and submit custom CPU/GPU frame only when Encdr owns the displays
+    encdr.submit_screen(device_id, "left", &rgba_pixels);
+}
+```
 
 #### `pub fn submit_screen(&self, device_id: DeviceId, screen: &str, pixels: &[u8])`
 Submits a raw frame of `RGBA8888` pixel bytes to a specified display. The frame is fed through the GPU compute pipeline, converted to the display's native format (e.g., BGR565 or 1-bit Mono), dirty-rect diffed against the previous frame, and transferred via USB.
@@ -297,10 +318,9 @@ Returns all loaded descriptors in the registry.
 
 #### `pub fn disconnect(&mut self, device_id: DeviceId)`
 Performs a graceful clean exit on the specified controller:
-1. Submits the default screensaver image as the final frame across all color screens (or clears monochrome displays).
-2. Clears all illuminated LEDs to off (both standard output groups and feature-report quirk LEDs).
-3. Synchronously joins worker threads to guarantee all USB transfers are completed before releasing claimed interfaces.
-4. Removes the device from the active device list.
+1. If `has_control(device_id)` is `true`, submits the default screensaver image as the final frame across all color screens (or clears monochrome displays) and clears all illuminated LEDs to off (both standard output groups and feature-report quirk LEDs). If another client currently owns the hardware (`has_control(device_id)` is `false`), the screensaver and LED clear are skipped so the other client's displays and LEDs are left undisturbed.
+2. Synchronously joins worker threads to guarantee all transfers are completed before releasing claimed interfaces.
+3. Removes the device from the active device list.
 
 #### `pub fn shutdown(&mut self)`
 Disconnects all active devices and cleanly terminates worker threads using the clean exit procedure. Also invoked automatically when `Encdr` is dropped.
@@ -775,6 +795,44 @@ pub struct ScreenDesc {
 - `pixel_count(&self) -> usize`: Width $\times$ Height.
 - `byte_size(&self) -> usize`: Total frame byte buffer size.
 
+### `QuirksDesc` & `NiServiceQuirkDesc`
+Defined in [`encdr::core::descriptor::QuirksDesc`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/core/descriptor.rs#L536-L563).
+
+```rust
+pub struct QuirksDesc {
+    pub dual_handle: bool,
+    pub detach_kernel_driver: bool,
+    pub touchstrip: Option<TouchstripQuirksDesc>,
+    pub feature_report_leds: Option<FeatureReportLedsQuirkDesc>,
+    pub init_writes: Vec<InitWriteDesc>,
+    pub ni_service: Option<NiServiceQuirkDesc>,
+}
+
+pub struct NiServiceQuirkDesc {
+    /// Product ID the NI hardware service identifies the device by (e.g. `0x1600` for Maschine Mk3).
+    pub product_id: HexU16,
+    /// Interface ID whose screens can be drawn through the NI hardware service (e.g. `"screen"`).
+    pub screen_interface: String,
+}
+```
+
+| Field | Type | Description |
+| ----- | ---- | ----------- |
+| `dual_handle` | `bool` | Claims separate USB interface handles when control and screen endpoints reside on distinct USB interfaces. |
+| `detach_kernel_driver` | `bool` | Detaches the OS kernel driver (`usbhid` on Linux) before claiming USB interfaces. |
+| `touchstrip` | `Option<TouchstripQuirksDesc>` | Heartbeat byte indices required when updating touchstrip LEDs. |
+| `feature_report_leds` | `Option<FeatureReportLedsQuirkDesc>` | EP0 `SET_REPORT` feature-report LED mapping (e.g. Traktor Kontrol S8 Cue/Filter/Thru LEDs). |
+| `init_writes` | `Vec<InitWriteDesc>` | One-shot raw byte sequences sent on connect after input reads are queued (e.g. Maschine Mk1 init). |
+| `ni_service` | `Option<NiServiceQuirkDesc>` | Enables the NI hardware service screen route on Windows (named pipes) and macOS (`CFMessagePort`s) when the USB screen interface cannot be claimed directly, and tracks instance-button ownership hand-offs (`Encdr::has_control`). |
+
+### Environment Variables & Cargo Features
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| `ENCDR_FORCE_SERVICE=1` | Env Var | On Windows and macOS, forces `quirks.ni_service` screens through the NI hardware service even if the raw USB screen interface could be claimed directly. |
+| `ENCDR_FORCE_HID=1` | Env Var | Forces interrupt-only HID interfaces through `hidapi` even when raw USB (`nusb`) could claim them. |
+| `hid` | Cargo Feature | Enables the `hidapi` (`linux-static-hidraw`) backend on Linux (always enabled on macOS and Windows). |
+
 ---
 
 ## 13. WebView Offscreen Renderer: `encdr-view`
@@ -895,7 +953,7 @@ let dual_view = DualScreenView::new(
 Creates a new double-width WebView renderer with custom screen identifiers.
 
 #### `pub fn capture_and_submit(&self, encdr: &Encdr) -> Result<(), String>`
-Captures the double-width surface and dispatches it via `encdr.submit_dual_screen_with_format`.
+Captures the double-width surface and dispatches it via `encdr.submit_dual_screen_with_format`. Does nothing while another client has the hardware (see [`Encdr::has_control`](#pub-fn-has_controlself-device_id-deviceid---bool)); a pending frame stays flagged, so the next call after control returns captures the page as it is then.
 
 #### `pub fn poll(&self, encdr: &Encdr)`
 Checks `is_frame_ready()`, and if new content was composited, captures and submits the dual-screen frame to Encdr.

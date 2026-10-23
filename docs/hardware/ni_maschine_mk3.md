@@ -34,12 +34,20 @@ The Linux HID subsystem will automatically claim the Mk3's control interface. Be
    ```
 2. **Automatic Detachment:** `encdr` uses a `detach_kernel_driver` quirk specifically for this device. As long as the `udev` rule is in place, `encdr` will automatically detach the kernel driver and claim the interface for you.
 
-### Running the Example
+### Windows & macOS: NI Hardware Service & Instance Switching
 
-To verify everything is working, run the Mk3 screen test example. This example initializes the device, captures input from the encoders and buttons, and renders an interactive UI across both color displays.
+On **Windows** and **macOS**, the Maschine Mk3 works alongside Native Instruments' background services (`NIHardwareService` on Windows, `NIHardwareAgent` / `NIHostIntegrationAgent` on macOS) without Zadig or stopping NI services:
+- **Control Interface (Interface 4)**: Opened through the OS HID stack (`hidapi`). Zero-padded 64-byte OS HID input reports are automatically matched to the 42-byte buttons report.
+- **Screen Interface (Interface 5)**: Configured with `quirks.ni_service` (`product_id: "0x1600"`, `screen_interface: "screen"`). When the raw USB interface is held by NI's driver or service (or `ENCDR_FORCE_SERVICE=1` is set), Encdr routes full and partial screen blits through the NI hardware service (named pipes on Windows, Core Foundation message ports on macOS).
+- **Instance Button Hand-off**: Pressing the physical **Instance** (`Shift + Plug-in`) button switches hardware ownership between NI software (e.g. Maschine 3) and Encdr. While NI software owns the hardware (`Encdr::has_control` is `false`), Encdr emits release events for any held inputs, suppresses further input events, and pauses screen/LED writes while retaining state; when control returns to Encdr, both screens are redrawn in full, all LEDs are restored, and inputs resume without encoder jumps.
+
+### Running the Examples
+
+To verify everything is working, run the Mk3 screen test or partial-blit test examples:
 
 ```bash
 cargo run -p encdr-examples --bin mk3_screen_test
+cargo run -p encdr-examples --bin mk3_partial_test -- 15
 ```
 
 ---
@@ -94,6 +102,8 @@ cargo run -p encdr-examples --bin mk3_screen_test
 **Quirk: `dual_handle`** — The Mk3 requires separate USB interface handles (one per interface). Both are claimed from the same USB device.
 
 **Quirk: `detach_kernel_driver`** — On Linux, the HID kernel driver must be detached before claiming the interface.
+
+**Quirk: `ni_service`** (`product_id: "0x1600"`, `screen_interface: "screen"`) — On Windows and macOS, when raw USB interface 5 cannot be claimed directly (or `ENCDR_FORCE_SERVICE=1` is set), Encdr routes screen blits through the NI hardware service and tracks instance-button ownership hand-offs (`Encdr::has_control`).
 
 ---
 

@@ -547,8 +547,8 @@ pub struct QuirksDesc {
     /// device that stalls commands until replies are read cannot deadlock).
     #[serde(default)]
     pub init_writes: Vec<InitWriteDesc>,
-    /// Lets the NI hardware service draw this device's screens when their
-    /// USB interface can't be claimed (Windows keeps NI's driver on it).
+    /// Lets the NI hardware service draw this device's screens on Windows and
+    /// macOS when their USB interface can't be claimed directly.
     #[serde(default)]
     pub ni_service: Option<NiServiceQuirkDesc>,
 }
