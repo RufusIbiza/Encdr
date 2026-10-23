@@ -19,6 +19,7 @@ This document provides a comprehensive API reference for [`encdr`](file:///home/
 11. [Error Handling: `EncdrError`](#11-error-handling-encdrerror)
 12. [Device Descriptors & Runtime Introspection](#12-device-descriptors--runtime-introspection)
 13. [WebView Offscreen Renderer: `encdr-view`](#13-webview-offscreen-renderer-encdr-view)
+14. [Skia 2D Canvas Renderer: `encdr-skia`](#14-skia-2d-canvas-renderer-encdr-skia)
 
 ---
 
@@ -978,3 +979,75 @@ Returns the left display identifier string.
 
 #### `pub fn right_screen_name(&self) -> &str`
 Returns the right display identifier string.
+
+---
+
+## 14. Skia 2D Canvas Renderer: `encdr-skia`
+
+The `encdr-skia` crate provides high-performance 2D vector and raster graphics rendering directly on the GPU using Google's Skia graphics library via `skia-safe` (with headless Vulkan Ganesh acceleration).
+
+It offers a lightweight, high-framerate alternative to `encdr-view` when you don't need a full browser engine and DOM, making it ideal for 60 FPS audio oscilloscopes, peak meters, interactive vector dials, and real-time waveforms.
+
+### Key Types
+
+- [`SkiaScreenView`](file:///home/rufus/Documents/Projects/Encdr/encdr-skia/src/screen.rs): Manages a GPU-accelerated Skia surface for an individual controller display.
+- [`SkiaDualScreenView`](file:///home/rufus/Documents/Projects/Encdr/encdr-skia/src/dual_screen.rs): Manages a single double-width Skia canvas (e.g. 960×272 on Maschine Mk3/Studio/S8) spanning both displays seamlessly.
+- [`SkiaGpuContext`](file:///home/rufus/Documents/Projects/Encdr/encdr-skia/src/gpu.rs): Initializes a headless Vulkan device (`ash`) and Skia Ganesh `DirectContext`. Falls back automatically to CPU rasterization if no Vulkan device is available.
+
+### Re-exported Skia Types
+
+`encdr-skia` re-exports essential Skia graphics primitives directly from `skia-safe`:
+- `Canvas`, `Surface`, `Paint`, `PaintStyle`, `Color`
+- `Path`, `PathBuilder`, `Rect`, `RRect`, `Point`
+- `Font`, `Typeface`, `FontMgr`, `ColorType`, `AlphaType`
+
+### Dual-Screen Rendering Example
+
+```rust
+use encdr::{Encdr, EncdrConfig};
+use encdr_skia::{Color, Font, Paint, PaintStyle, Rect, SkiaDualScreenView};
+
+let mut encdr = Encdr::new(EncdrConfig::default())?;
+let device_id = encdr.scan()?[0];
+
+// Automatically detects display names ("left", "right") and geometry
+let mut dual_screen = SkiaDualScreenView::for_device(&encdr, device_id)?;
+
+// Draw closure pattern: automatically submits frame on completion
+dual_screen.draw(&encdr, |canvas| {
+    canvas.clear(Color::from_rgb(18, 20, 26));
+
+    let mut paint = Paint::default();
+    paint.set_color(Color::from_rgb(56, 189, 248));
+    paint.set_anti_alias(true);
+
+    // Left display (0..480)
+    canvas.draw_rect(Rect::from_xywh(20.0, 20.0, 440.0, 232.0), &paint);
+
+    // Right display (480..960)
+    paint.set_color(Color::from_rgb(239, 68, 68));
+    canvas.draw_circle((720.0, 136.0), 60.0, &paint);
+})?;
+```
+
+### Manual Drawing & Submitting
+
+```rust
+// Obtain mutable reference to the underlying Skia Canvas
+let canvas = dual_screen.canvas();
+canvas.clear(Color::BLACK);
+// ... perform draw commands ...
+
+// Submit the rendered frame through Encdr's GPU pipeline
+dual_screen.submit(&encdr)?;
+```
+
+### End-to-End GPU Pipeline Execution
+
+When using `SkiaDualScreenView::submit` or `SkiaScreenView::submit`:
+1. Skia rasterizes directly to an offscreen Vulkan render target in GPU memory.
+2. The double-width surface is read into Encdr's `run_screens` worker.
+3. Encdr executes the `split_convert.wgsl` compute pass, splitting and converting pixels to `BGR565_BE` format directly on the GPU.
+4. Encdr executes `diff.wgsl` to compute the dirty bounding box on the GPU.
+5. If partial, `extract_region.wgsl` packs the changed sub-rectangle on the GPU.
+6. The dirty rectangle bytes are transferred directly to the controller's USB endpoint.

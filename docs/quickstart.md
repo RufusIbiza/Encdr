@@ -14,12 +14,15 @@ By the end of this guide, you will have a working application that:
 
 ### Cargo Dependencies
 
-Add `encdr` and `encdr-view` to your project's `Cargo.toml`:
+Add `encdr` (and optionally `encdr-view` for WebViews or `encdr-skia` for 2D GPU Skia canvas) to your project's `Cargo.toml`:
 
 ```toml
 [dependencies]
-encdr = "0.6.0"
-encdr-view = "0.6.0"
+encdr = "0.8.0"
+# For HTML/CSS/Canvas offscreen WebViews:
+encdr-view = "0.8.0"
+# Or for high-performance 60 FPS Vulkan Skia 2D rendering:
+# encdr-skia = "0.8.0"
 crossbeam-channel = "0.5"
 serde_json = "1.0"
 tracing = "0.1"
@@ -30,6 +33,7 @@ tracing-subscriber = "0.3"
 > ```toml
 > encdr = { path = "encdr" }
 > encdr-view = { path = "encdr-view" }
+> encdr-skia = { path = "encdr-skia" }
 > ```
 
 ### Platform Setup

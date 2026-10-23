@@ -13,6 +13,9 @@ encdr = { path = "path/to/encdr/encdr" }
 
 # Optional: WebView screen renderer (Linux, macOS, Windows)
 encdr-view = { path = "path/to/encdr/encdr-view" }
+
+# Optional: High-performance 2D Skia canvas renderer (Vulkan)
+encdr-skia = { path = "path/to/encdr/encdr-skia" }
 ```
 
 Encdr requires a GPU that supports wgpu (Vulkan, Metal, or DX12). The GPU is used for screen format conversion and frame diffing.
@@ -388,6 +391,28 @@ The WebView approach works with standard HTML, CSS, Canvas, SVG — anything the
 - **Linux**: WebKitGTK snapshot → Cairo surface → RGBA
 - **macOS**: WKWebView `takeSnapshot` → NSBitmapImageRep → RGBA
 - **Windows**: WebView2 `CapturePreview` → PNG decode → RGBA
+
+### Skia 2D Canvas Renderer (Tier 3)
+
+`encdr-skia` renders hardware-accelerated 2D graphics using Google's Skia library (via `skia-safe`) backed by headless Vulkan (Ganesh). It allows direct drawing with vector paths, text, shaders, and circles at 60 FPS without the memory footprint of a browser engine:
+
+```rust
+use encdr_skia::{SkiaDualScreenView, Color, Paint, Rect};
+
+// Automatically configures dual screens ("left" and "right")
+let mut dual = SkiaDualScreenView::for_device(&encdr, device_id).unwrap();
+
+dual.draw(&encdr, |canvas| {
+    canvas.clear(Color::BLACK);
+
+    let mut paint = Paint::default();
+    paint.set_color(Color::from_rgb(56, 189, 248));
+    paint.set_anti_alias(true);
+
+    // Draw across the full 960x272 dual-screen canvas:
+    canvas.draw_rect(Rect::from_xywh(20.0, 20.0, 440.0, 232.0), &paint);
+}).unwrap();
+```
 
 ---
 

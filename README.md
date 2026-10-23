@@ -8,9 +8,10 @@
 
 Encdr is a Rust library that allows you to easily add Native Instruments (NI) controller support to your application. It handles all the low-level USB HID communication and screen rendering for you. It also offers additional helper functions for specific hardware features, such as push encoder detection, light rings, and 7-segment LED displays. Although most HID-based NI controllers are supported at this point, adding support for additional controllers just requires creating a new JSON descriptor file and registering it with the descriptor registry. 
 
-Screen output is achieved in one of two ways:
+Screen output is achieved in one of three ways:
 - **Raw pixel data** (the default) — send raw RGBA pixel data, and Encdr will handle the colour space conversion, GPU-accelerated diffing, encoding, and USB transfer.
-- **WebView** — use the wgpu-based WebView implementation in the `encdr-view` crate. This allows you to create your screen UI using HTML/CSS/Canvas and let Encdr handle GPU-accelerated rendering to the device screens.
+- **WebView (`encdr-view`)** — use the wgpu-based WebView implementation in the `encdr-view` crate. This allows you to create your screen UI using HTML/CSS/Canvas and let Encdr handle GPU-accelerated rendering to the device screens.
+- **Skia 2D Canvas (`encdr-skia`)** — high-performance 2D vector and raster graphics using Google's Skia library (via `skia-safe`) backed by a headless Vulkan Ganesh GPU context. Draw paths, shapes, typography, and visualizers at 60 FPS directly on the GPU with minimal memory overhead and zero browser runtime dependencies.
 
 Inspired by the [openAV-Ctlra](https://github.com/openAVproductions/openAV-Ctlra) C library, reimagined in Rust with data-driven device descriptors, zero-copy I/O, and a GPU-accelerated screen pipeline.
 
@@ -20,7 +21,7 @@ Inspired by the [openAV-Ctlra](https://github.com/openAVproductions/openAV-Ctlra
 
 1. **Exposes hardware truthfully** — every button, slider, encoder, LED, and screen is enumerated and accessible by name. The consuming app decides what each control does.
 2. **Data-driven device definitions** — new devices are added via JSON descriptor files, not Rust code. The descriptor defines USB endpoints, byte-level packet layouts, LED mappings, and screen protocols.
-3. **Two-tier screen pipeline** — an optional WebView renderer (`encdr-view`) lets apps build screen UIs with HTML/CSS/Canvas, while the core module accepts raw pixel buffers. Both share the same GPU conversion/diff/transfer backend.
+3. **Multi-tier screen pipeline** — choose between raw pixel buffers (`encdr::screen`), offscreen WebViews with HTML/CSS (`encdr-view`), or hardware-accelerated 2D vector drawing with Skia (`encdr-skia`). All paths share the same core GPU compute pipeline (`wgpu` WGSL) for dual-screen splitting, format conversion (RGBA → BGR565-BE), dirty-rect diffing, and partial blit extraction directly in VRAM.
 4. **Optimizes for latency** — async USB I/O, lock-free event delivery, GPU-side format conversion, dirty-region-only transfers.
 
 ### What can it do?
@@ -52,6 +53,11 @@ cargo add encdr
 And additionally, if you want to use the WebView-based screen implementation:
 ```bash
 cargo add encdr-view
+```
+
+Or if you want to use the GPU-accelerated Skia 2D canvas renderer:
+```bash
+cargo add encdr-skia
 ```
 > [!NOTE]
 > **Platform Prerequisites**: On Linux, compiling requires `libudev-dev` (plus `libwebkit2gtk-4.1-dev` and `libgtk-3-dev` if using `encdr-view`), and non-root hardware access requires setting up a udev rule ([see here](docs/usage.md#platform-prerequisites)). 
@@ -120,7 +126,7 @@ fn main() {
 │                     Consumer App (e.g. Bitwig)                  │
 │                                                                 │
 │  ← Receives: named events (button, slider, encoder, touch)      │
-│  → Sends:    LED state, screen content (HTML or raw pixels)     │
+│  → Sends:    LED state, screen content (HTML, Skia, or raw px)  │
 └──────────────┬──────────────────────────────┬───────────────────┘
                │                              │
        ┌───────▼───────┐            ┌─────────▼──────────────────┐
@@ -131,12 +137,17 @@ fn main() {
        │  → normalize  │            │  │ Offscreen WebView     │ │
        │  → emit event │            │  │ HTML/CSS/Canvas → px  │ │
        │  (lock-free)  │            │  └──────────┬────────────┘ │
+       │               │            │  ┌──────────▼────────────┐ │
+       │               │            │  │ encdr-skia (optional) │ │
+       │               │            │  │ Skia 2D Canvas (GPU)  │ │
+       │               │            │  │ Vulkan Ganesh → px    │ │
+       │               │            │  └──────────┬────────────┘ │
        │               │            │             │ OR raw pixels│
        └───────────────┘            │  ┌──────────▼────────────┐ │
-               │                    │  │ encdr::screen (core)  │ │
-               │                    │  │ GPU format convert    │ │
+               │                    │  │ encdr::screen (wgpu)  │ │
+               │                    │  │ GPU dual split/conv   │ │
                │                    │  │ GPU frame diff        │ │
-               │                    │  │ Partial blit extract  │ │
+               │                    │  │ GPU partial extract   │ │
                │                    │  └──────────┬────────────┘ │
                │                    │        USB bulk write      │
                │                    └─────────────┬──────────────┘
@@ -325,12 +336,29 @@ encdr/
 | Error handling          | `thiserror`                | Typed errors                             |
 | Async executor          | `futures-lite`             | Lightweight internal async               |
 | WebView (optional)      | `wry` + `tao`              | Offscreen HTML rendering                 |
+| 2D Skia (optional)      | `skia-safe` + `ash`        | GPU-accelerated 2D vector graphics (Vulkan)|
 | WebKit snapshot (Linux) | `webkit2gtk` + `cairo-rs`  | Pixel capture via WebKit snapshot        |
 | Obj-C bridge (macOS)    | `objc2` + `block2`         | WKWebView `takeSnapshot` pixel capture   |
 | COM/WebView2 (Windows)  | `webview2-com` + `windows` | WebView2 `CapturePreview` pixel capture  |
 | PNG decode (Windows)    | `png`                      | Decode CapturePreview PNG output to RGBA |
 
 ## Changelog
+
+### v0.8.0
+- **`encdr-skia`: 2D GPU Vector & Raster Screen Renderer (Skia / Vulkan)**:
+  - Added dedicated workspace crate `encdr-skia` providing high-performance 2D hardware-accelerated rendering powered by Google's Skia graphics engine (`skia-safe 0.153`) and headless Vulkan (Ganesh) direct contexts.
+  - Features `SkiaScreenView` for single displays and `SkiaDualScreenView` for seamless double-width rendering (e.g. 960×272 on Maschine Mk3, Maschine Studio, Traktor S8) across dual screens with zero browser runtime overhead.
+  - Automatic display name and geometry autodetection via `SkiaDualScreenView::for_device`.
+  - Added interactive 60 FPS GPU demo [`examples/maschine_mk3/mk3_skia.rs`](examples/maschine_mk3/mk3_skia.rs) featuring real-time audio oscilloscope, 8-channel animated peak meters, and vector dials modulated by hardware knobs and touch strip.
+- **End-to-End GPU Screen Compute Pipeline (`wgpu` WGSL)**:
+  - Moved all remaining post-render screen processing stages onto the GPU via custom WGSL compute shaders for both Skia and WebView pipelines up until USB bus dispatch:
+    - **Dual Split & Conversion (`split_convert.wgsl`)**: Double-width $960\times 272$ RGBA frame split and packed into native 16-bit `BGR565_BE` left and right displays in a single parallel GPU compute pass.
+    - **Dirty-Rect Frame Diffing (`diff.wgsl`)**: Current vs. previous frame comparison executed entirely on the GPU with workgroup atomic reduction (`atomicMin` / `atomicMax`), evaluating Clean, Partial, or Full dirty bounding boxes.
+    - **Sub-Rectangle Extraction (`extract_region.wgsl`)**: Changed rectangular regions are extracted in GPU memory matching device coordinate alignment constraints (`x_align`), transferring only the dirty byte slice over USB.
+  - `Encdr::new` now auto-detects and initializes the high-performance GPU context (`GpuContext`) if none is explicitly provided.
+  - Full transparent CPU fallback for systems without GPU adapters or CI environments.
+- **Documentation & Architectural Updates**:
+  - Updated API reference, quickstart guide, and architectural diagrams documenting the three rendering options (raw pixels, WebViews, and Skia).
 
 ### v0.7.60
 - **Maschine Studio & Maschine Plus NI Hardware Service Screen Route (Windows & macOS)**:
