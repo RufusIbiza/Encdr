@@ -434,6 +434,14 @@ impl Encdr {
         self.devices.get(&device_id).map_or(true, |handle| handle.has_control())
     }
 
+    /// Number of submitted screen frames still waiting for the device thread (0 for unknown devices).
+    ///
+    /// Each queued frame is one more frame of display latency: a producer that submits faster than the USB link
+    /// drains should wait until this is back to 0 or 1, so the next frame it draws is the freshest state.
+    pub fn screen_backlog(&self, device_id: DeviceId) -> usize {
+        self.devices.get(&device_id).map_or(0, |handle| handle.screen_backlog())
+    }
+
     /// Submit a screen frame. The pixels should be in RGBA8888 format
     /// (or the device's native format to skip conversion).
     pub fn submit_screen(&self, device_id: DeviceId, screen: &str, pixels: &[u8]) {

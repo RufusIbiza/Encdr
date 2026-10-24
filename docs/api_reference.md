@@ -250,6 +250,22 @@ if encdr.has_control(device_id) {
 }
 ```
 
+#### `pub fn screen_backlog(&self, device_id: DeviceId) -> usize`
+Returns the number of submitted screen frames waiting in the background device thread queue for the specified controller (returns `0` for unknown `DeviceId`s).
+
+Each queued frame represents one additional frame of display latency. Producers (such as 60 FPS Skia render loops or WebView poll cycles) that generate frames faster than the USB bus drains can query `screen_backlog`:
+- If `screen_backlog > 1`, skip or throttle frame generation until the queue clears to 0 or 1.
+- Guarantees the controller screens always render the freshest interaction state rather than lagging behind a backlog of stale buffered frames.
+
+```rust
+// Render loop queue pacing:
+if encdr.screen_backlog(device_id) <= 1 {
+    dual_screen.draw(&encdr, |canvas| {
+        // Draw 60 FPS oscilloscope / visualizer
+    })?;
+}
+```
+
 #### `pub fn submit_screen(&self, device_id: DeviceId, screen: &str, pixels: &[u8])`
 Submits a raw frame of `RGBA8888` pixel bytes to a specified display. The frame is fed through the GPU compute pipeline, converted to the display's native format (e.g., BGR565 or 1-bit Mono), dirty-rect diffed against the previous frame, and transferred via USB.
 

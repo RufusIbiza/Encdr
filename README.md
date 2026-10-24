@@ -344,6 +344,11 @@ encdr/
 
 ## Changelog
 
+### v0.8.1
+- **Frame Queue Limiting & Latency Control (`screen_backlog`)**:
+  - Added [`Encdr::screen_backlog(device_id)`](docs/api_reference.md#pub-fn-screen_backlogself-device_id-deviceid---usize) and `DeviceHandle::screen_backlog()` reporting the count of submitted frames pending transfer in the screen worker queue.
+  - Enables high-framerate rendering loops (such as Skia 60 FPS visualizers or WebView capture loops) to monitor USB transfer latency and pace frame submissions when `screen_backlog > 1`, ensuring the controller displays render the freshest interaction state with minimal latency without buffering stale frames.
+
 ### v0.8.0
 - **`encdr-skia`: 2D GPU Vector & Raster Screen Renderer (Skia / Vulkan)**:
   - Added dedicated workspace crate `encdr-skia` providing high-performance 2D hardware-accelerated rendering powered by Google's Skia graphics engine (`skia-safe 0.153`) and headless Vulkan (Ganesh) direct contexts.

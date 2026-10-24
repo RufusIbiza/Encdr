@@ -207,6 +207,11 @@ impl DeviceHandle {
         })
     }
 
+    /// Frames submitted to the screens that the device thread has not taken yet.
+    pub fn screen_backlog(&self) -> usize {
+        self.screen_tx.as_ref().map_or(0, |tx| tx.len())
+    }
+
     pub fn send(&self, cmd: DeviceCmd) {
         match &cmd {
             DeviceCmd::SubmitScreen { .. } | DeviceCmd::SubmitDualScreen { .. } => {
