@@ -54,7 +54,7 @@ pub use screen::SkiaScreenView;
 
 // Re-export core Skia types for convenience
 pub use skia_safe::{
-    AlphaType, BlendMode, Canvas, ClipOp, Color, Color4f, ColorSpace, ColorType, Font, FontStyle,
-    Image, ImageInfo, Matrix, Paint, PaintStyle, Path, PathBuilder, PathDirection, Point, RRect,
-    Rect, Shader, Surface, Typeface, Vector,
+    AlphaType, BlendMode, Canvas, ClipOp, Color, Color4f, ColorSpace, ColorType, Data, Font,
+    FontStyle, Image, ImageInfo, Matrix, Paint, PaintStyle, Path, PathBuilder, PathDirection,
+    Point, RRect, Rect, RuntimeEffect, Shader, Surface, Typeface, Vector,
 };

@@ -37,7 +37,7 @@ On its own, nothing. Add a sprinkling of imagination, though, and it allows you 
 
 - **iPhone/iPad (iOS/iPadOS) support** — Apple does not allow non-standard USB communication with non-MFi certified devices without custom hardware or driver entitlements, which is outside the scope of this library.
 - **Audio interface streaming** — Encdr is strictly a control surface, LED, and display driver library. Audio streaming (inputs, outputs, soundcards) is handled directly by standard OS audio subsystems (ALSA/PipeWire on Linux, CoreAudio on macOS, ASIO/WASAPI on Windows).
-- **Native Instruments software integration** — Encdr communicates directly with the controller hardware; it does not interface with Traktor Pro, Maschine, or Komplete Kontrol software libraries, or proprietary NKS preset databases. It can't add additional functionality to these apps, nor can it make these apps support non-NI or previously unsupported hardware.
+- **Native Instruments DAW & library integration** — Encdr is an independent hardware communication layer. While it directly integrates with NI's background service daemons (`NIHostIntegrationAgent` / `NIHardwareService`) on Windows and macOS to drive displays and coordinate hardware hand-off via the controller's instance button on supported devices (Maschine Mk3, Maschine Studio, Maschine Plus), it does not interface with Traktor Pro, Maschine, or Komplete Kontrol application software, project files, or proprietary NKS preset databases. It cannot add functionality to those apps or make them support non-NI hardware.
 - **Wireless or Bluetooth operation** — All supported controllers communicate strictly over wired USB.
 
 ### How do I install it?
