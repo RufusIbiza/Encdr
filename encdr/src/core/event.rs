@@ -15,6 +15,26 @@ impl DeviceId {
             | product_id as u64;
         DeviceId(id)
     }
+
+    /// USB bus number.
+    pub fn bus(&self) -> u8 {
+        ((self.0 >> 48) & 0xFF) as u8
+    }
+
+    /// USB device address assigned by the host.
+    pub fn address(&self) -> u8 {
+        ((self.0 >> 40) & 0xFF) as u8
+    }
+
+    /// USB Vendor ID.
+    pub fn vendor_id(&self) -> u16 {
+        ((self.0 >> 16) & 0xFFFF) as u16
+    }
+
+    /// USB Product ID.
+    pub fn product_id(&self) -> u16 {
+        (self.0 & 0xFFFF) as u16
+    }
 }
 
 impl std::fmt::Display for DeviceId {

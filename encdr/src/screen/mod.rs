@@ -3,12 +3,46 @@ pub mod gpu_pipeline;
 pub mod protocol;
 pub mod screensaver;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use crate::core::descriptor::{PixelFormat, ScreenDesc};
 
 pub use gpu::GpuContext;
 pub use gpu_pipeline::GpuConvertPipeline;
+
+static DITHERING: AtomicBool = AtomicBool::new(true);
+
+/// Turns ordered dithering of the 8-bit -> 5/6-bit colour reduction on or off (on by default).
+///
+/// The colour screens take 16-bit pixels; plain truncation turns smooth gradients into visible bands. A fixed 4x4
+/// Bayer pattern (a function of the pixel position only, so an unchanged frame converts to identical bytes and
+/// frame diffing / partial blits are unaffected) trades the bands for a fine, stable grain.
+pub fn set_dithering(enabled: bool) {
+    DITHERING.store(enabled, Ordering::Relaxed);
+}
+
+pub fn dithering() -> bool {
+    DITHERING.load(Ordering::Relaxed)
+}
+
+/// 4x4 Bayer thresholds, 0..=15 (the GPU shaders carry the same table).
+const BAYER4: [[u16; 4]; 4] = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
+
+/// 8-bit RGB -> 565 with an optional ordered dither for pixel (x, y).
+///
+/// `floor(v / step + t)` with `t = (2 * bayer + 1) / 32` in (0, 1): averages to exactly `v / step` over the 4x4 cell
+/// (truncation is the `t = 0` case) and never reaches the next level for values that are already exact.
+fn quantize_565(r: u8, g: u8, b: u8, x: usize, y: usize, dither: bool) -> u16 {
+    if !dither {
+        return (((r as u16) >> 3) << 11) | (((g as u16) >> 2) << 5) | ((b as u16) >> 3);
+    }
+    let t = 2 * BAYER4[y & 3][x & 3] + 1;
+    let r5 = ((r as u16 * 4 + t) >> 5).min(31);
+    let g6 = ((g as u16 * 8 + t) >> 5).min(63);
+    let b5 = ((b as u16 * 4 + t) >> 5).min(31);
+    (r5 << 11) | (g6 << 5) | b5
+}
 
 /// Manages the screen pipeline for a single screen: format conversion,
 /// frame diffing, and partial blit extraction.
@@ -65,7 +99,7 @@ impl ScreenManager {
             // Use GPU pipeline for RGBA→BGR565 conversion
             match (input_format, self.pixel_format) {
                 (PixelFormat::Rgba8888, PixelFormat::Bgr565Be) => {
-                    futures_lite::future::block_on(gpu.convert_rgba_to_bgr565(pixels))
+                    futures_lite::future::block_on(gpu.convert_rgba_to_bgr565(pixels, self.width as u32))
                 }
                 _ => convert_format(pixels, input_format, self.pixel_format, self.width, self.height),
             }
@@ -221,6 +255,7 @@ pub fn convert_format(
 /// Convert RGBA8888 to BGR565 big-endian (CPU fallback).
 pub(crate) fn rgba8_to_bgr565_be(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
     let pixel_count = width * height;
+    let dither = dithering();
     let mut out = Vec::with_capacity(pixel_count * 2);
 
     for i in 0..pixel_count {
@@ -229,14 +264,7 @@ pub(crate) fn rgba8_to_bgr565_be(rgba: &[u8], width: usize, height: usize) -> Ve
             out.extend_from_slice(&[0, 0]);
             continue;
         }
-        let r = rgba[offset];
-        let g = rgba[offset + 1];
-        let b = rgba[offset + 2];
-
-        let r5 = (r as u16 >> 3) & 0x1f;
-        let g6 = (g as u16 >> 2) & 0x3f;
-        let b5 = (b as u16 >> 3) & 0x1f;
-        let bgr565 = (r5 << 11) | (g6 << 5) | b5;
+        let bgr565 = quantize_565(rgba[offset], rgba[offset + 1], rgba[offset + 2], i % width.max(1), i / width.max(1), dither);
 
         // Big-endian
         out.push((bgr565 >> 8) as u8);
@@ -249,6 +277,7 @@ pub(crate) fn rgba8_to_bgr565_be(rgba: &[u8], width: usize, height: usize) -> Ve
 /// Convert RGB888 to BGR565 big-endian.
 fn rgb8_to_bgr565_be(rgb: &[u8], width: usize, height: usize) -> Vec<u8> {
     let pixel_count = width * height;
+    let dither = dithering();
     let mut out = Vec::with_capacity(pixel_count * 2);
 
     for i in 0..pixel_count {
@@ -257,14 +286,7 @@ fn rgb8_to_bgr565_be(rgb: &[u8], width: usize, height: usize) -> Vec<u8> {
             out.extend_from_slice(&[0, 0]);
             continue;
         }
-        let r = rgb[offset];
-        let g = rgb[offset + 1];
-        let b = rgb[offset + 2];
-
-        let r5 = (r as u16 >> 3) & 0x1f;
-        let g6 = (g as u16 >> 2) & 0x3f;
-        let b5 = (b as u16 >> 3) & 0x1f;
-        let bgr565 = (r5 << 11) | (g6 << 5) | b5;
+        let bgr565 = quantize_565(rgb[offset], rgb[offset + 1], rgb[offset + 2], i % width.max(1), i / width.max(1), dither);
 
         out.push((bgr565 >> 8) as u8);
         out.push((bgr565 & 0xff) as u8);
@@ -582,6 +604,32 @@ pub fn split_horizontal(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn dither_averages_to_the_true_level_and_keeps_exact_values() {
+        // a value between two 5-bit levels (r = 100 -> 12.5): the 4x4 cell mixes 12 and 13 and averages 12.5
+        let mut sum = 0u32;
+        let mut seen = std::collections::BTreeSet::new();
+        for y in 0..4 {
+            for x in 0..4 {
+                let r5 = (quantize_565(100, 0, 0, x, y, true) >> 11) as u32;
+                sum += r5;
+                seen.insert(r5);
+            }
+        }
+        assert_eq!(seen.len(), 2);
+        assert!((sum as f64 / 16.0 - 12.5).abs() < 0.07, "cell average {}", sum as f64 / 16.0);
+        // values that are already exact never move, at any position, and white stays white
+        for y in 0..4 {
+            for x in 0..4 {
+                assert_eq!(quantize_565(96, 0, 0, x, y, true) >> 11, 12);
+                assert_eq!(quantize_565(255, 255, 255, x, y, true), 0xFFFF);
+                assert_eq!(quantize_565(0, 0, 0, x, y, true), 0);
+            }
+        }
+        // off = plain truncation
+        assert_eq!(quantize_565(100, 100, 100, 3, 3, false), (12 << 11) | (25 << 5) | 12);
+    }
+
     use super::*;
 
     #[test]

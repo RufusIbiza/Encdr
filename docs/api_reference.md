@@ -58,6 +58,53 @@ let new_devices = encdr.scan()?;
 println!("Discovered {} new controllers", new_devices.len());
 ```
 
+#### `pub fn wait_for_controller(&mut self, filter: impl Into<ControllerFilter>) -> Result<DeviceId>`
+Waits until a controller matching the specified [`ControllerFilter`](#controllerfilter) is connected.
+
+- If a compatible controller is already connected at the time of call, returns its `DeviceId` immediately without blocking.
+- If not connected, displays a user-facing console message specifying which controllers are supported:
+  `Waiting for a compatible controller to be connected (supported: NI Maschine Mk3)...`
+- Blocks gracefully (yielding the CPU) while monitoring USB hotplug events until a matching controller is plugged in.
+- Once connected, prints `Controller connected: <Name> (<VID>:<PID>)`, emits [`Event::DeviceConnected`](#4-hardware-events-event) onto the event channel, and returns the new [`DeviceId`].
+
+```rust
+// Match by name or substring:
+let device_id = encdr.wait_for_controller("Maschine Mk3")?;
+
+// Match by multiple supported models:
+let device_id = encdr.wait_for_controller(&["Maschine Mk3", "Maschine Plus"])?;
+
+// Match by USB VID/PID:
+let device_id = encdr.wait_for_controller((0x17cc, 0x1600))?;
+
+// Match any supported hardware:
+let device_id = encdr.wait_for_any_controller()?;
+```
+
+#### `pub fn wait_for_controller_timeout(&mut self, filter: impl Into<ControllerFilter>, timeout: Duration) -> Result<DeviceId>`
+Same as [`wait_for_controller`](#pub-fn-wait_for_controller), but times out with `Err(EncdrError::DeviceNotFound(...))` if no compatible controller connects within `timeout`.
+
+```rust
+use std::time::Duration;
+
+let device_id = encdr.wait_for_controller_timeout(&["Maschine Mk3"], Duration::from_secs(10))?;
+```
+
+#### `pub fn is_connected(&self, device_id: DeviceId) -> bool`
+Returns `true` if the specified controller is currently physically connected to USB and actively communicating, or `false` if it has been unplugged or disconnected.
+
+```rust
+if encdr.is_connected(device_id) {
+    encdr.set_led(device_id, "play", LedValue::Bright);
+}
+```
+
+#### `pub fn set_supported_controllers(&self, filter: impl Into<ControllerFilter>)`
+Sets or updates the filter used by the background hotplug thread to determine which controllers to connect automatically.
+
+#### `pub fn clear_supported_controllers(&self)`
+Clears any controller filter, allowing all supported hardware recognized by loaded descriptors to auto-connect on hotplug.
+
 #### `pub fn events(&self) -> &crossbeam_channel::Receiver<Event>`
 Returns a reference to the lock-free SPSC/MPSC crossbeam channel receiver. All input events from all connected hardware devices are delivered here.
 
@@ -361,6 +408,8 @@ pub struct EncdrConfig {
     pub gpu: Option<GpuContext>,
     pub descriptor_dirs: Vec<String>,
     pub skip_builtins: bool,
+    pub auto_hotplug: bool,
+    pub supported_controllers: Option<ControllerFilter>,
 }
 ```
 
@@ -371,6 +420,22 @@ pub struct EncdrConfig {
 | `gpu` | `Option<GpuContext>` | `None` | Shared `wgpu` device and queue. If `None`, Encdr creates its own high-performance GPU context. |
 | `descriptor_dirs` | `Vec<String>` | `vec![]` | Additional filesystem directories scanned for `.json` device descriptors at startup. |
 | `skip_builtins` | `bool` | `false` | When `true`, built-in descriptors (D2, S8, S5, S4, S2, Mk3, etc.) are omitted from the registry. |
+| `auto_hotplug` | `bool` | `true` | When `true`, a background hotplug monitor automatically discovers, connects, and re-connects supported USB hardware controllers. |
+| `supported_controllers` | `Option<ControllerFilter>` | `None` | Optional hardware filter. When set, only matching controllers will be connected automatically. |
+
+### `ControllerFilter`
+
+Defined in [`encdr::ControllerFilter`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/usb/hotplug.rs).
+
+Expresses which controllers an application supports:
+- `ControllerFilter::Any`: Any recognized hardware controller.
+- `ControllerFilter::Name(String)`: Case-insensitive name, normalized name (e.g. `"maschine_mk3"` or `"Maschine Mk3"`), or hex VID:PID string (e.g. `"0x17cc:0x1600"`).
+- `ControllerFilter::Names(Vec<String>)`: List of supported model names.
+- `ControllerFilter::Id(u16, u16)`: Specific USB `(vendor_id, product_id)`.
+- `ControllerFilter::Ids(Vec<(u16, u16)>)`: List of supported USB `(vendor_id, product_id)` pairs.
+- `ControllerFilter::Custom(Arc<dyn Fn(&DeviceDescriptor) -> bool + Send + Sync>)`: Custom predicate.
+
+Implements `From` for `&str`, `String`, `&[&str]`, `[&str; N]`, `Vec<String>`, `(u16, u16)`, and `&[(u16, u16)]` for ergonomic usage.
 
 ---
 

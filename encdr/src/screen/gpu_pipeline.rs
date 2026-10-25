@@ -60,6 +60,9 @@ pub struct GpuConvertPipeline {
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct ConvertParams {
     pixel_count: u32,
+    width: u32,
+    dither: u32,
+    _pad: u32,
 }
 
 #[repr(C)]
@@ -69,6 +72,8 @@ struct SplitParams {
     left_width: u32,
     right_width: u32,
     height: u32,
+    dither: u32,
+    _pad: [u32; 3],
 }
 
 #[repr(C)]
@@ -435,7 +440,7 @@ impl GpuConvertPipeline {
     }
 
     /// Convert RGBA8888 pixels to BGR565 big-endian using the GPU.
-    pub async fn convert_rgba_to_bgr565(&mut self, rgba: &[u8]) -> Vec<u8> {
+    pub async fn convert_rgba_to_bgr565(&mut self, rgba: &[u8], width: u32) -> Vec<u8> {
         let pixel_count = rgba.len() / 4;
         if pixel_count == 0 {
             return Vec::new();
@@ -452,6 +457,9 @@ impl GpuConvertPipeline {
         self.gpu.queue.write_buffer(input_buf, 0, rgba);
         let params = ConvertParams {
             pixel_count: pixel_count as u32,
+            width: width.max(1),
+            dither: super::dithering() as u32,
+            _pad: 0,
         };
         self.gpu
             .queue
@@ -500,7 +508,7 @@ impl GpuConvertPipeline {
         }
 
         tracing::warn!("GPU readback failed, falling back to CPU conversion");
-        super::rgba8_to_bgr565_be(rgba, pixel_count, 1)
+        super::rgba8_to_bgr565_be(rgba, width.max(1) as usize, pixel_count / width.max(1) as usize)
     }
 
     /// Split double-width RGBA8888 input into left and right BGR565BE buffers directly on the GPU.
@@ -618,6 +626,8 @@ impl GpuConvertPipeline {
             left_width: left_w,
             right_width: right_w,
             height: h,
+            dither: super::dithering() as u32,
+            _pad: [0; 3],
         };
         self.gpu
             .queue
@@ -1069,7 +1079,7 @@ mod tests {
                 0, 0, 255, 255,
                 255, 255, 255, 255,
             ];
-            let converted = futures_lite::future::block_on(pipeline.convert_rgba_to_bgr565(&rgba));
+            let converted = futures_lite::future::block_on(pipeline.convert_rgba_to_bgr565(&rgba, 4));
             let cpu_expected = super::super::rgba8_to_bgr565_be(&rgba, 4, 1);
             assert_eq!(converted, cpu_expected);
         }
@@ -1106,16 +1116,8 @@ mod tests {
                 4,
             )
             .unwrap();
-            let cpu_left_expected = super::super::rgba8_to_bgr565_be(
-                &cpu_left_rgba,
-                left_w as usize * h as usize,
-                1,
-            );
-            let cpu_right_expected = super::super::rgba8_to_bgr565_be(
-                &cpu_right_rgba,
-                right_w as usize * h as usize,
-                1,
-            );
+            let cpu_left_expected = super::super::rgba8_to_bgr565_be(&cpu_left_rgba, left_w as usize, h as usize);
+            let cpu_right_expected = super::super::rgba8_to_bgr565_be(&cpu_right_rgba, right_w as usize, h as usize);
 
             assert_eq!(gpu_left.len(), cpu_left_expected.len());
             assert_eq!(gpu_right.len(), cpu_right_expected.len());

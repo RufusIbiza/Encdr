@@ -100,6 +100,8 @@ pub struct DeviceHandle {
     screen_tx: Option<async_channel::Sender<DeviceCmd>>,
     /// Cleared while another client (e.g. NI's software) has the hardware.
     has_control: Arc<AtomicBool>,
+    /// Cleared when the device is disconnected physically or shut down.
+    is_connected: Arc<AtomicBool>,
     thread: Option<thread::JoinHandle<()>>,
     screen_thread: Option<thread::JoinHandle<()>>,
 }
@@ -107,12 +109,18 @@ pub struct DeviceHandle {
 impl DeviceHandle {
     /// Whether this process currently has the device (inputs, screens, and LEDs).
     /// False while another client has it (on Windows and macOS, NI's
-    /// software after the controller's instance button is pressed); inputs
+    /// software after the controller's instance button is pressed) or when
+    /// the device is physically disconnected; inputs
     /// are then suppressed (after releasing any held controls), frames and
     /// LED changes are kept but not sent, and screens and LEDs are redrawn
     /// when control returns.
     pub fn has_control(&self) -> bool {
-        self.has_control.load(Ordering::Relaxed)
+        self.has_control.load(Ordering::Relaxed) && self.is_connected.load(Ordering::Relaxed)
+    }
+
+    /// Whether this device is physically connected and responsive.
+    pub fn is_connected(&self) -> bool {
+        self.is_connected.load(Ordering::Relaxed)
     }
 
     /// Spawn a device I/O thread. Returns a handle for sending commands.
@@ -183,14 +191,17 @@ impl DeviceHandle {
 
         let input_ctl_tx = cmd_tx.clone();
         let led_ctl_tx = led_tx.clone();
+        let screen_ctl_tx = screen_tx.clone();
         let has_control = Arc::new(AtomicBool::new(true));
         let thread_has_control = has_control.clone();
+        let is_connected = Arc::new(AtomicBool::new(true));
+        let thread_is_connected = is_connected.clone();
         let thread = thread::Builder::new()
             .name(format!("encdr-{}", descriptor.name.replace(' ', "-").to_lowercase()))
             .spawn(move || {
                 run_device(
                     id, desc, usb_device, hid_target, names, cmd_rx, input_ctl_tx, led_rx, led_ctl_tx,
-                    thread_has_control, screen_rx, event_tx, gpu,
+                    thread_has_control, thread_is_connected, screen_rx, screen_ctl_tx, event_tx, gpu,
                 );
             })
             .map_err(|e| crate::core::error::EncdrError::Io(e))?;
@@ -202,6 +213,7 @@ impl DeviceHandle {
             led_tx,
             screen_tx,
             has_control,
+            is_connected,
             thread: Some(thread),
             screen_thread: None,
         })
@@ -245,6 +257,8 @@ impl DeviceHandle {
     }
 
     pub fn disconnect(mut self) {
+        self.is_connected.store(false, Ordering::SeqCst);
+        self.has_control.store(false, Ordering::SeqCst);
         self.send(DeviceCmd::Disconnect);
         if let Some(thread) = self.thread.take() {
             thread.join().ok();
@@ -257,6 +271,8 @@ impl DeviceHandle {
 
 impl Drop for DeviceHandle {
     fn drop(&mut self) {
+        self.is_connected.store(false, Ordering::SeqCst);
+        self.has_control.store(false, Ordering::SeqCst);
         self.send(DeviceCmd::Disconnect);
         if let Some(thread) = self.thread.take() {
             thread.join().ok();
@@ -279,7 +295,9 @@ fn run_device(
     led_rx: Option<async_channel::Receiver<DeviceCmd>>,
     led_ctl_tx: Option<async_channel::Sender<DeviceCmd>>,
     has_control: Arc<AtomicBool>,
+    is_connected: Arc<AtomicBool>,
     screen_rx: Option<async_channel::Receiver<DeviceCmd>>,
+    screen_ctl_tx: Option<async_channel::Sender<DeviceCmd>>,
     event_tx: Sender<Event>,
     gpu: Option<Arc<crate::screen::GpuContext>>,
 ) {
@@ -506,7 +524,10 @@ fn run_device(
         }
 
         let screen_has_control = has_control.clone();
+        let screen_is_connected = is_connected.clone();
         let screen_gpu = gpu.clone();
+        let screen_input_ctl_tx = input_ctl_tx.clone();
+        let screen_led_ctl_tx = led_ctl_tx.clone();
         thread::Builder::new()
             .name(format!("encdr-screen-{}", descriptor.name.replace(' ', "-").to_lowercase()))
             .spawn(move || {
@@ -515,9 +536,10 @@ fn run_device(
                     screen_ifaces,
                     screen_managers,
                     screen_rx,
-                    input_ctl_tx,
-                    led_ctl_tx,
+                    screen_input_ctl_tx,
+                    screen_led_ctl_tx,
                     screen_has_control,
+                    screen_is_connected,
                     screen_gpu,
                 );
             })
@@ -532,10 +554,11 @@ fn run_device(
     let led_thread = if let Some((led_rx, led_iface)) = led_rx.zip(control_iface.clone()) {
         let led_builders = led_builders;
         let feature_leds = descriptor.quirks.feature_report_leds.clone();
+        let led_is_connected = is_connected.clone();
         thread::Builder::new()
             .name(format!("encdr-led-{}", descriptor.name.replace(' ', "-").to_lowercase()))
             .spawn(move || {
-                run_leds(led_iface, led_builders, feature_leds, led_rx);
+                run_leds(led_iface, led_builders, feature_leds, led_rx, led_is_connected);
             })
             .ok()
     } else {
@@ -604,6 +627,14 @@ fn run_device(
 
             match woken {
                 Woken::CmdChannelClosed => {
+                    is_connected.store(false, Ordering::SeqCst);
+                    has_control.store(false, Ordering::SeqCst);
+                    if let Some(ref tx) = screen_ctl_tx {
+                        tx.try_send(DeviceCmd::Disconnect).ok();
+                    }
+                    if let Some(ref tx) = led_ctl_tx {
+                        tx.try_send(DeviceCmd::Disconnect).ok();
+                    }
                     running = false;
                 }
                 Woken::TimeoutTick => {
@@ -612,12 +643,21 @@ fn run_device(
                 Woken::Cmd(cmd) => {
                     match cmd {
                         DeviceCmd::Disconnect => {
+                            is_connected.store(false, Ordering::SeqCst);
+                            has_control.store(false, Ordering::SeqCst);
+                            if let Some(ref tx) = screen_ctl_tx {
+                                tx.try_send(DeviceCmd::Disconnect).ok();
+                            }
+                            if let Some(ref tx) = led_ctl_tx {
+                                tx.try_send(DeviceCmd::Disconnect).ok();
+                            }
                             running = false;
                             break;
                         }
                         DeviceCmd::ControlLost | DeviceCmd::ControlRegained => {
                             let active = matches!(cmd, DeviceCmd::ControlRegained)
-                                && has_control.load(Ordering::Relaxed);
+                                && has_control.load(Ordering::Relaxed)
+                                && is_connected.load(Ordering::Relaxed);
                             event_buf.clear();
                             parser.set_active(active, &mut event_buf);
                             for event in event_buf.drain(..) {
@@ -642,7 +682,7 @@ fn run_device(
                     };
                     match outcome {
                         Ok(data) => {
-                            let active = has_control.load(Ordering::Relaxed);
+                            let active = has_control.load(Ordering::Relaxed) && is_connected.load(Ordering::Relaxed);
                             tracing::trace!(
                                 "USB RECV [len={}, active={}] header={:02x?}",
                                 data.len(),
@@ -668,8 +708,28 @@ fn run_device(
                             }
                         }
                         Err(e) => {
-                            tracing::warn!("USB read error: {}", e);
+                            tracing::warn!("USB read error for {:?}: {}", device_id, e);
+                            is_connected.store(false, Ordering::SeqCst);
+                            has_control.store(false, Ordering::SeqCst);
+
+                            // Gracefully release any held inputs on disconnect, exactly like
+                            // when losing control via the instance button!
+                            event_buf.clear();
+                            parser.set_active(false, &mut event_buf);
+                            for event in event_buf.drain(..) {
+                                event_tx.send(event).ok();
+                            }
+
                             event_tx.send(Event::DeviceDisconnected { id: device_id }).ok();
+
+                            // Signal worker threads to terminate without deadlocking
+                            if let Some(ref tx) = screen_ctl_tx {
+                                tx.try_send(DeviceCmd::Disconnect).ok();
+                            }
+                            if let Some(ref tx) = led_ctl_tx {
+                                tx.try_send(DeviceCmd::Disconnect).ok();
+                            }
+
                             running = false;
                             break;
                         }
@@ -1117,6 +1177,7 @@ fn run_screens(
     input_ctl_tx: async_channel::Sender<DeviceCmd>,
     led_ctl_tx: Option<async_channel::Sender<DeviceCmd>>,
     has_control: Arc<AtomicBool>,
+    is_connected: Arc<AtomicBool>,
     gpu: Option<Arc<crate::screen::GpuContext>>,
 ) {
     use crate::screen::protocol;
@@ -1127,7 +1188,7 @@ fn run_screens(
             Iface::Service(session) => Some(session.control_events()),
             _ => None,
         });
-        let mut control = ScreenControl::new(input_ctl_tx, led_ctl_tx, changes, has_control);
+        let mut control = ScreenControl::new(input_ctl_tx.clone(), led_ctl_tx, changes, has_control);
         let mut endpoints: HashMap<(String, u8), OutEndpoint> = HashMap::new();
         let mut screen_to_ep: HashMap<String, (String, u8)> = HashMap::new();
 
@@ -1221,6 +1282,7 @@ fn run_screens(
             screen_to_ep: &HashMap<String, (String, u8)>,
             endpoints: &mut HashMap<(String, u8), OutEndpoint>,
             control: &mut ScreenControl,
+            input_ctl_tx: &async_channel::Sender<DeviceCmd>,
         ) {
             let Some(sm) = screen_managers.get_mut(screen) else {
                 tracing::warn!("ScreenManager for '{}' not found", screen);
@@ -1246,7 +1308,10 @@ fn run_screens(
             match ep.write_each(protocol::frame_transfers(screen_desc, blit_data)).await {
                 Ok(()) => tracing::debug!("Bulk out completed for screen '{}'", screen),
                 Err(e) if ni_service::is_rejected_frame(&e) => control.lose().await,
-                Err(e) => tracing::warn!("Screen transfer for '{}' failed: {}", screen, e),
+                Err(e) => {
+                    tracing::warn!("Screen transfer for '{}' failed: {}", screen, e);
+                    input_ctl_tx.try_send(DeviceCmd::Disconnect).ok();
+                }
             }
         }
 
@@ -1319,6 +1384,7 @@ fn run_screens(
                         &screen_to_ep,
                         &mut endpoints,
                         &mut control,
+                        &input_ctl_tx,
                     )
                     .await;
                 }
@@ -1404,6 +1470,7 @@ fn run_screens(
                         &screen_to_ep,
                         &mut endpoints,
                         &mut control,
+                        &input_ctl_tx,
                     )
                     .await;
 
@@ -1416,6 +1483,7 @@ fn run_screens(
                         &screen_to_ep,
                         &mut endpoints,
                         &mut control,
+                        &input_ctl_tx,
                     )
                     .await;
                 }
@@ -1428,6 +1496,12 @@ fn run_screens(
         // Another client has the screens; leave them alone rather than draw over its picture.
         if control.lost {
             tracing::debug!("Not drawing the exit screensaver: another application has the screens");
+            return;
+        }
+
+        // If the device is physically disconnected, do not attempt to write screensaver to dead USB
+        if !is_connected.load(Ordering::Relaxed) {
+            tracing::debug!("Controller disconnected physically: skipping exit screensaver transfer");
             return;
         }
 
@@ -1482,6 +1556,7 @@ fn run_leds(
     mut led_builders: Vec<LedBuilder>,
     feature_report_leds: Option<FeatureReportLedsQuirkDesc>,
     led_rx: async_channel::Receiver<DeviceCmd>,
+    is_connected: Arc<AtomicBool>,
 ) {
     block_on(async {
         let mut led_endpoints: HashMap<u8, OutEndpoint> = HashMap::new();
@@ -1681,6 +1756,12 @@ fn run_leds(
 
         // Another client has the hardware; don't clear the LEDs it is showing.
         if held {
+            return;
+        }
+
+        // If the device is physically disconnected, skip attempting to clear LEDs
+        if !is_connected.load(Ordering::Relaxed) {
+            tracing::debug!("Controller disconnected physically: skipping LED clear");
             return;
         }
 

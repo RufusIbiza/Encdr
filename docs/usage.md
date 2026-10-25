@@ -63,9 +63,49 @@ use encdr::{Encdr, EncdrConfig};
 let mut encdr = Encdr::new(EncdrConfig::default()).unwrap();
 ```
 
+### Device Scanning & Controller Connection Handling
+
+#### Waiting for Compatible Controllers (`wait_for_controller`)
+
+Rather than scanning once and crashing if a controller is not yet plugged in, programs can specify supported hardware using `wait_for_controller`:
+
+```rust
+// Wait for a specific model (name, substring, or normalized identifier):
+let device_id = encdr.wait_for_controller(&["Maschine Mk3"]).unwrap();
+
+// Or support a subset of controllers:
+let device_id = encdr.wait_for_controller(&["Maschine Mk3", "Maschine Plus"]).unwrap();
+
+// Or wait for any supported controller:
+let device_id = encdr.wait_for_any_controller().unwrap();
+```
+
+If the controller is already connected, `wait_for_controller` returns immediately. If it is not yet connected, Encdr prints a console message:
+
+```text
+Waiting for a compatible controller to be connected (supported: NI Maschine Mk3)...
+```
+
+Once the user plugs in the controller, Encdr detects it, prints:
+
+```text
+Controller connected: NI Maschine Mk3 (0x17cc:0x1600)
+```
+
+emits `Event::DeviceConnected` on `encdr.events()`, and returns the `DeviceId` to the calling program.
+
+#### Graceful Disconnection & Reconnection
+
+Encdr handles controller disconnection gracefully in the same manner as the Maschine instance button:
+- When a controller is unplugged, held buttons, touch sensors, and pads emit clean release events (`pressed: false`, `pressure: 0.0`) so no controls stay stuck down.
+- `encdr.has_control(device_id)` and `encdr.is_connected(device_id)` return `false`.
+- Calling `submit_screen()` or `set_led()` while disconnected is completely safe: commands are ignored without panics, backlogs, or USB errors.
+- `Event::DeviceDisconnected { id }` is sent to the event channel.
+- With background hotplug enabled (default), when the user plugs the controller back in, Encdr reconnects it and sends `Event::DeviceConnected { id, descriptor }` to notify the program that screen and state signals can resume.
+
 ### Device Scanning
 
-Call `scan()` to detect connected devices. This matches USB VID:PID against loaded descriptors, spawns per-device I/O threads, and emits `DeviceConnected` events.
+Call `scan()` to manually detect currently connected devices. This matches USB VID:PID against loaded descriptors, spawns per-device I/O threads, and emits `DeviceConnected` events.
 
 ```rust
 let device_ids = encdr.scan().unwrap();

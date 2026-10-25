@@ -68,14 +68,9 @@ fn main() {
     println!("Scanning for connected devices...\n");
 
     let mut encdr = Encdr::new(EncdrConfig::default()).expect("Failed to initialize encdr");
-    let ids = encdr.scan().expect("Scan failed");
-
-    let device_id = ids.into_iter().find(|&id| {
-        encdr.device_descriptor(id).map(|d| d.vendor_id.0 == 0x17cc && d.product_id.0 == 0x1600).unwrap_or(false)
-    }).unwrap_or_else(|| {
-        eprintln!("❌ NI Maschine Mk3 (0x17cc:0x1600) not found.");
-        std::process::exit(1);
-    });
+    let mut device_id = encdr
+        .wait_for_controller(&["Maschine Mk3"])
+        .expect("Failed to connect to Maschine Mk3");
 
     let desc = encdr.device_descriptor(device_id).unwrap().clone();
     println!(" Connected: {} (VID:PID 0x{:04x}:0x{:04x})", desc.name, desc.vendor_id.0, desc.product_id.0);
@@ -144,11 +139,13 @@ fn main() {
                     input_events += 1;
                     writeln!(input_log, "[{:8.3}s] [ENCODER FINE] {} delta: {:+.3}", elapsed, name.to_uppercase(), delta).ok();
                 }
-                Event::DeviceDisconnected { .. } => {
-                    eprintln!("Device disconnected.");
-                    return;
+                Event::DeviceConnected { id, descriptor } => {
+                    println!("\n✨ Controller reconnected: {} ({})", descriptor.name, id);
+                    device_id = id;
                 }
-                _ => {}
+                Event::DeviceDisconnected { id } => {
+                    println!("\n⚠️ Controller disconnected ({}). Encdr is waiting for reconnection...", id);
+                }
             }
         }
 

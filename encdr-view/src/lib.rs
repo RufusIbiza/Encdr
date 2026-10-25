@@ -112,6 +112,11 @@ impl ScreenView {
         })
     }
 
+    /// Update the target DeviceId (e.g. after a controller reconnects at a new USB address).
+    pub fn set_device_id(&mut self, device_id: DeviceId) {
+        self.device_id = device_id;
+    }
+
     /// Push a state update to the WebView.
     ///
     /// Calls `window.encdr.onMessage(channel, data)` in the WebView's JS context.
@@ -311,6 +316,11 @@ impl DualScreenView {
             left_screen: left_screen.to_string(),
             right_screen: right_screen.to_string(),
         })
+    }
+
+    /// Update the target DeviceId (e.g. after a controller reconnects at a new USB address).
+    pub fn set_device_id(&mut self, device_id: DeviceId) {
+        self.device_id = device_id;
     }
 
     /// Push a state update to the WebView.

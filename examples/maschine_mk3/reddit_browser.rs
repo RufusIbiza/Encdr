@@ -74,25 +74,9 @@ fn main() {
 
     let mut encdr = Encdr::new(EncdrConfig::default()).expect("Failed to initialize encdr");
 
-    println!("Scanning for Maschine Mk3...");
-    let ids = encdr.scan().expect("Device scan failed");
-    if ids.is_empty() {
-        eprintln!("No devices found. Is your Maschine Mk3 plugged in?");
-        return;
-    }
-
-    let device_id = ids
-        .into_iter()
-        .find(|&id| {
-            encdr
-                .device_descriptor(id)
-                .map(|d| d.vendor_id.0 == 0x17cc && d.product_id.0 == 0x1600)
-                .unwrap_or(false)
-        })
-        .unwrap_or_else(|| {
-            eprintln!("Maschine Mk3 (17cc:1600) not found among connected devices.");
-            std::process::exit(1);
-        });
+    let mut device_id = encdr
+        .wait_for_controller(&["Maschine Mk3"])
+        .expect("Failed to connect to Maschine Mk3");
 
     let desc = encdr.device_descriptor(device_id).unwrap().clone();
     println!("Connected to: {}", desc.name);
@@ -116,7 +100,7 @@ fn main() {
     let left_html = include_str!("../../screens/mk3_reddit_left.html");
     let right_html = include_str!("../../screens/mk3_reddit_right.html");
 
-    let left_view = match ScreenView::new(
+    let mut left_view = match ScreenView::new(
         &encdr,
         device_id,
         "left",
@@ -133,7 +117,7 @@ fn main() {
         }
     };
 
-    let right_view = match ScreenView::new(
+    let mut right_view = match ScreenView::new(
         &encdr,
         device_id,
         "right",
@@ -388,6 +372,21 @@ fn main() {
                             _ => {}
                         }
                     }
+                }
+                Event::DeviceConnected { id, descriptor } => {
+                    println!("Controller reconnected: {} ({})", descriptor.name, id);
+                    device_id = id;
+                    if let Some(ref mut view) = left_view {
+                        view.set_device_id(id);
+                    }
+                    if let Some(ref mut view) = right_view {
+                        view.set_device_id(id);
+                    }
+                    dirty_left = true;
+                    dirty_right = true;
+                }
+                Event::DeviceDisconnected { id } => {
+                    println!("Controller disconnected ({}). Encdr will handle gracefully and wait for reconnection.", id);
                 }
                 _ => {}
             }

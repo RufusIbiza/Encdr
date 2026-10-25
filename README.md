@@ -344,6 +344,31 @@ encdr/
 
 ## Changelog
 
+### v0.8.2
+- **Controller Connection & Disconnection Lifecycle Handling**:
+  - Graceful connection waiting: programs can now specify supported controllers and wait gracefully if not yet connected, rather than exiting or failing:
+    - [`Encdr::wait_for_controller(filter)`](docs/api_reference.md#pub-fn-wait_for_controllerfilter---resultdeviceid-encdrerror): prints a friendly console notice (`Waiting for a compatible controller to be connected (supported: ...)...`), monitors the USB bus, and returns the connected `DeviceId` once available.
+    - [`Encdr::wait_for_controller_timeout(filter, timeout)`](docs/api_reference.md#pub-fn-wait_for_controller_timeoutfilter-timeout---resultdeviceid-encdrerror): waits up to a specified duration.
+    - [`Encdr::wait_for_any_controller()`](docs/api_reference.md#pub-fn-wait_for_any_controllerself---resultdeviceid-encdrerror): waits for any recognized hardware controller.
+  - **Flexible Controller Filtering (`ControllerFilter`)**:
+    - Match by controller name, substring, or normalized alphanumeric name (`"Maschine Mk3"`, `"mk3"`).
+    - Match by USB Vendor and Product ID (`(0x17cc, 0x1600)`).
+    - Match across multiple controllers (`&["Maschine Mk3", "Maschine Studio"]`).
+    - Custom predicate closure (`ControllerFilter::Custom`).
+  - **Automatic Hotplug Background Monitoring**:
+    - Automatically discovers reconnected controllers and emits `Event::DeviceConnected { id, descriptor }`.
+    - Automatically detects disconnection and emits `Event::DeviceDisconnected { id }`.
+    - Can be configured or toggled via `EncdrConfig::auto_hotplug` and `set_supported_controllers()`.
+  - **Graceful Hardware Disconnection Handling**:
+    - **Stuck Input Prevention**: On USB disconnect, immediately synthesizes release events for all held buttons, capacitive touch sensors, and pads so musical notes and UI controls never get stuck down in downstream applications.
+    - **Safe Frame and LED Swallowing**: Screen and LED submissions (`submit_screen`, `submit_dual_screen`, `set_led`) are safely dropped while disconnected or when control is surrendered (matching the Maschine instance button handoff), preventing deadlocks or unbounded queue growth.
+    - **View Re-targeting**: Added `set_device_id(id)` on `ScreenView` and `DualScreenView` in `encdr-view` to easily re-bind active WebView rendering contexts when a controller reconnects under a new USB bus address.
+    - Added [`Encdr::is_connected(device_id)`](docs/api_reference.md#pub-fn-is_connectedself-device_id-deviceid---bool) query method.
+- **Ordered 4x4 Bayer Dithering for 16-bit Displays**:
+  - Added spatial ordered Bayer dithering to eliminate color banding and posterization artifacts on 16-bit color screens (`BGR565` / `RGB565`).
+  - Implemented across both CPU format conversion and GPU compute shaders (`convert.wgsl` and `split_convert.wgsl`).
+  - Configurable via `set_dithering(bool)` and `dithering()` across `ScreenManager`, `GpuContext`, and `GpuScreenPipeline`.
+
 ### v0.8.1
 - **Frame Queue Limiting & Latency Control (`screen_backlog`)**:
   - Added [`Encdr::screen_backlog(device_id)`](docs/api_reference.md#pub-fn-screen_backlogself-device_id-deviceid---usize) and `DeviceHandle::screen_backlog()` reporting the count of submitted frames pending transfer in the screen worker queue.
