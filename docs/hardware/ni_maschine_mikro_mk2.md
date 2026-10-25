@@ -11,7 +11,7 @@
 | Interfaces   | 1 (HID Control interface 0)              |
 | Screens      | 1 (128×64 monochrome graphic LCD)        |
 
-The Maschine Mikro Mk2 upgrades the Mikro platform with full multi-color RGB backlighting for all 16 velocity- and pressure-sensitive pads, enhanced button backlighting, a 128×64 high-contrast monochrome graphic display, and an endless push-rotary encoder.
+The Maschine Mikro Mk2 features multi-color RGB backlighting for all 16 velocity- and pressure-sensitive pads, function button backlighting, an RGB `GROUP` LED, a 128×64 high-contrast monochrome graphic display, and an endless push-rotary encoder.
 
 ---
 
@@ -43,8 +43,12 @@ The Maschine Mikro Mk2 upgrades the Mikro platform with full multi-color RGB bac
 ## USB Endpoints & Reports
 
 * **Interface 0 (Control):** Interrupt IN `0x81`, Interrupt OUT `0x01`
+  - *Note:* Because both screens and LEDs output over Interrupt OUT endpoint `0x01` on Interface 0, Encdr automatically multiplexes OUT transfers through an endpoint worker so that concurrent screen updates and LED updates never collide.
 * **Input Packets:**
-  - `buttons` (16 bytes): Rotary encoder and 28 function/transport buttons.
-  - `pads` (64 bytes): Velocity and polyphonic pressure data for the 16 pads.
-* **Output Packet:** 80 bytes controlling all 16 RGB pad backlights (via 3-byte RGB offsets) and function button LEDs.
-* **Screen Protocol:** 128×64 1-bit monochrome display using custom NI frame header (`0xe0 0x00 0x00 0x00 0x00 0x80 0x00 0x02`).
+  - `buttons` (Report ID `0x01`, 6 bytes): 32 button bits across bytes 1–4, and rotary push encoder (low nibble, 4-bit `wrap16`) in byte 5.
+  - `pads` (Report ID `0x20`, 64 bytes): Continuous 16-channel 12-bit ADC pad pressure stream (`PadStreamState` with sliding median filter and active hold tracking).
+* **Output Packet:**
+  - Report ID `0x80`, 78 bytes payload (`linear_7bit`, `0..127`): 30 button LED bytes (including RGB `GROUP` LED at offsets 8, 9, 10), followed by 16 RGB pad triples from offset 30 in hardware pad-index order (`pad_13` .. `pad_4`).
+* **Screen Protocol:**
+  - Report ID `0xE0`, 128×64 1-bit monochrome display using `ScreenProtocol::NiMikroMk2`.
+  - Sent as four 265-byte page transfers (`0xE0` report ID + 8-byte LE header `[x=0, y_page, width=128, height_pages=2]` with `y_page` $\in \{0, 2, 4, 6\}$ + 256 column-page data bytes).

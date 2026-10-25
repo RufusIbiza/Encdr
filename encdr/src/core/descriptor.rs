@@ -481,6 +481,12 @@ pub enum ScreenProtocol {
     /// The controller is initialised on connect and frames are sent as a
     /// RAMWR command followed by ≤502-byte data chunks.
     NiSt7529 { display: u8 },
+
+    /// NI Maschine Mikro Mk2 128×64 monochrome display.
+    /// Frames are sent as four 265-byte page transfers with Report ID 0xE0, an
+    /// 8-byte LE header (`[x=0, y_page, width=128, height_pages=2]`), and 256
+    /// page-formatted data bytes.
+    NiMikroMk2,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]

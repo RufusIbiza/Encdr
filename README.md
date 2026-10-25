@@ -344,6 +344,21 @@ encdr/
 
 ## Changelog
 
+### v0.8.3
+- **Maschine Mikro Mk2 Hardware Fixes & Shared Endpoint Multiplexing** (reported, measured, and contributed by [@lockstock73](https://github.com/lockstock73) in [#4](https://github.com/RufusIbiza/Encdr/issues/4)):
+  - **Continuous Pad Stream Timing & Chatter Fix**:
+    - Fixed pad chatter across all controllers using the continuous 16-channel 12-bit ADC pad stream (Report `0x20`): **Maschine Mikro Mk2**, **Maschine Mk2**, and **Maschine Studio**.
+    - Actively held pads now update `last_update` and increment `aftertouch_count`, preventing `check_pad_timeouts` from falsely force-releasing held pads during periodic 40 ms sweeps.
+  - **Shared OUT Endpoint Multiplexing**:
+    - Resolved concurrent endpoint claim collision (`endpoint already in use`) where both screen transfers and LED reports share OUT endpoint `0x01` on the same physical USB interface.
+    - Added an actor-based shared endpoint worker in `device_thread.rs` that multiplexes writes safely across threads while preserving atomic frame blit delivery.
+    - Fixes startup crashes across 9 controllers sharing an OUT endpoint between displays and LEDs: **Maschine Mikro Mk1/Mk2/Mk3**, **Maschine Mk2**, **Komplete Kontrol S-Series Mk1 (S25/S49/S61/S88)**, and **Traktor Kontrol X1 Mk3**.
+  - **Descriptor Corrections for Maschine Mikro Mk2 (`17cc:1200`)**:
+    - **Buttons & Encoder**: Corrected input packet size to 6 bytes (Report `0x01`), fixing dropped button and encoder events. Corrected byte/mask mappings for all 29 buttons and mapped the push encoder to byte 5 (low nibble, `wrap16`).
+    - **LEDs**: Updated to Report `0x80`, 78 bytes payload (`linear_7bit`), mapped `group` as an RGB LED at offsets 8, 9, 10, and arranged the 16 pad RGB triples starting at offset 30 in hardware pad-index order (`pad_13` .. `pad_4`).
+    - **Monochrome Display**: Implemented `ScreenProtocol::NiMikroMk2` in `encdr::screen::protocol` to re-packetize the 128×64 1bpp mono framebuffer into four 265-byte page transfers (`0xE0` report ID + 8-byte LE header + 256 data bytes).
+  - Special thanks to [@lockstock73](https://github.com/lockstock73) for detailed hardware measurements, root cause analysis, and report descriptor captures!
+
 ### v0.8.2
 - **Controller Connection & Disconnection Lifecycle Handling**:
   - Graceful connection waiting: programs can now specify supported controllers and wait gracefully if not yet connected, rather than exiting or failing:

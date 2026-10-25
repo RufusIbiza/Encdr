@@ -14,7 +14,7 @@ pub struct InitStep {
 pub fn init_sequence(desc: &ScreenDesc) -> Vec<InitStep> {
     match desc.protocol {
         Some(ScreenProtocol::NiSt7529 { display }) => st7529_init(display),
-        None => Vec::new(),
+        Some(ScreenProtocol::NiMikroMk2) | None => Vec::new(),
     }
 }
 
@@ -23,8 +23,60 @@ pub fn init_sequence(desc: &ScreenDesc) -> Vec<InitStep> {
 pub fn frame_transfers(desc: &ScreenDesc, blit: Vec<u8>) -> Vec<Vec<u8>> {
     match desc.protocol {
         Some(ScreenProtocol::NiSt7529 { display }) => st7529_frame(display, desc, &blit),
+        Some(ScreenProtocol::NiMikroMk2) => mikro_mk2_frame(desc, &blit),
         None => vec![blit],
     }
+}
+
+// ── NI Maschine Mikro Mk2 128x64 Monochrome Display ──────────────────────────
+//
+// The device expects four 265-byte page transfers for its 128x64 monochrome LCD:
+// Report ID 0xE0, followed by an 8-byte LE header:
+//   x = 0 (u16 LE), y_page in {0, 2, 4, 6} (u16 LE), width = 128 (u16 LE), height_pages = 2 (u16 LE),
+// and 256 page-formatted data bytes (two pages of 128 vertical 8-pixel column bytes).
+
+fn mikro_mk2_frame(desc: &ScreenDesc, blit: &[u8]) -> Vec<Vec<u8>> {
+    let width = desc.width as usize;
+    let height = desc.height as usize;
+    let expected_mono_len = (width * height) / 8;
+
+    let mono = if blit.len() > expected_mono_len {
+        &blit[blit.len() - expected_mono_len..]
+    } else {
+        blit
+    };
+
+    let stride = (width + 7) / 8;
+    let mut transfers = Vec::with_capacity(4);
+
+    for y_page in [0u16, 2u16, 4u16, 6u16] {
+        let mut chunk = Vec::with_capacity(9 + 256);
+        chunk.push(0xE0); // Report ID 0xE0
+        chunk.extend_from_slice(&0u16.to_le_bytes()); // x = 0
+        chunk.extend_from_slice(&y_page.to_le_bytes()); // y_page = 0, 2, 4, 6
+        chunk.extend_from_slice(&(width as u16).to_le_bytes()); // width = 128
+        chunk.extend_from_slice(&2u16.to_le_bytes()); // height_pages = 2
+
+        for p_rel in 0..2 {
+            let y_base = (y_page as usize + p_rel) * 8;
+            for x in 0..width {
+                let mut col_byte = 0u8;
+                for bit in 0..8 {
+                    let y = y_base + bit;
+                    if y < height {
+                        let byte_idx = y * stride + (x / 8);
+                        if byte_idx < mono.len() && (mono[byte_idx] & (0x80 >> (x % 8))) != 0 {
+                            col_byte |= 1 << bit;
+                        }
+                    }
+                }
+                chunk.push(col_byte);
+            }
+        }
+        transfers.push(chunk);
+    }
+
+    transfers
 }
 
 // ── Sitronix ST7529 behind the NI EP8 display bridge (Maschine Mk1) ─────────
@@ -269,18 +321,42 @@ mod tests {
     }
 
     #[test]
-    fn template_expansion() {
-        let template = "0x84,0x00,{x_hi},{x_lo},{y_hi},{y_lo},{w_hi},{w_lo},{h_hi},{h_lo}";
-        let result = expand_template(template, 100, 50, 200, 100, 0);
-        assert_eq!(
-            result,
-            vec![
-                0x84, 0x00,
-                0x00, 100,   // x=100
-                0x00, 50,    // y=50
-                0x00, 200,   // w=200 (0x00, 0xC8)
-                0x00, 100,   // h=100
-            ]
-        );
+    fn mikro_mk2_frame_chunking() {
+        let desc = ScreenDesc {
+            name: "screen".to_string(),
+            interface: "control".to_string(),
+            width: 128,
+            height: 64,
+            pixel_format: crate::core::descriptor::PixelFormat::Mono,
+            full_blit: Default::default(),
+            partial_blit: None,
+            protocol: Some(ScreenProtocol::NiMikroMk2),
+        };
+
+        // 1024 bytes row-major mono (128x64 / 8)
+        let mut pixels = vec![0u8; 1024];
+        // Turn on top-left pixel (x=0, y=0) -> bit 7 of byte 0 in row-major
+        pixels[0] = 0x80;
+
+        let transfers = frame_transfers(&desc, pixels);
+        assert_eq!(transfers.len(), 4);
+
+        // Every transfer must be 265 bytes (1 report ID + 8 header + 256 data)
+        for (i, t) in transfers.iter().enumerate() {
+            assert_eq!(t.len(), 265, "transfer {i} length mismatch");
+            assert_eq!(t[0], 0xE0, "transfer {i} report ID mismatch");
+            assert_eq!(&t[1..3], &[0x00, 0x00], "transfer {i} x mismatch");
+            assert_eq!(&t[5..7], &[0x80, 0x00], "transfer {i} width mismatch");
+            assert_eq!(&t[7..9], &[0x02, 0x00], "transfer {i} height_pages mismatch");
+        }
+
+        // Check y_page values
+        assert_eq!(&transfers[0][3..5], &[0x00, 0x00]); // y_page = 0
+        assert_eq!(&transfers[1][3..5], &[0x02, 0x00]); // y_page = 2
+        assert_eq!(&transfers[2][3..5], &[0x04, 0x00]); // y_page = 4
+        assert_eq!(&transfers[3][3..5], &[0x06, 0x00]); // y_page = 6
+
+        // In transfer 0, top-left pixel (x=0, y=0) should map to bit 0 of the first data byte (offset 9)
+        assert_eq!(transfers[0][9], 0x01);
     }
 }

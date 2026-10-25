@@ -864,6 +864,8 @@ impl PacketParser {
                         if pressure >= MK2_PRESS_THRESHOLD {
                             state.pad_states[p] = true;
                             state.pad_pressures[p] = pressure;
+                            state.last_update[p] = Instant::now();
+                            state.aftertouch_count[p] = 1;
                             events.push(Event::Button {
                                 device: self.device_id,
                                 name: pad_name,
@@ -880,6 +882,7 @@ impl PacketParser {
                         if pressure < MK2_RELEASE_THRESHOLD {
                             state.pad_states[p] = false;
                             state.pad_pressures[p] = 0.0;
+                            state.aftertouch_count[p] = 0;
                             events.push(Event::Button {
                                 device: self.device_id,
                                 name: pad_name,
@@ -892,6 +895,12 @@ impl PacketParser {
                                 pressure: 0.0,
                             });
                         } else {
+                            // The ADC stream is continuous, so every incoming packet while held counts as an update.
+                            // Without updating last_update and aftertouch_count, check_pad_timeouts treats held pads
+                            // as an abandoned tap and forces false release on every sweep.
+                            state.last_update[p] = Instant::now();
+                            state.aftertouch_count[p] = state.aftertouch_count[p].saturating_add(1);
+
                             let pressure_changed = (pressure - state.pad_pressures[p]).abs() > 0.02;
                             if pressure_changed {
                                 state.pad_pressures[p] = pressure;
@@ -1943,6 +1952,73 @@ mod tests {
         assert!(events.iter().any(|e| matches!(e, Event::Button { name: "top_1", pressed: true, .. })));
         assert!(events.iter().any(|e| matches!(e, Event::Encoder { name: "main_encoder", delta: 1, .. })));
         assert!(events.iter().any(|e| matches!(e, Event::EncoderFine { name: "screen_encoder_1", delta, .. } if (*delta - 0.05).abs() < 1e-5)));
+    }
+
+    #[test]
+    fn test_mk2_continuous_pad_stream_held_does_not_chatter() {
+        let mut parser = mk2_parser();
+        let mut events: Vec<Event> = Vec::new();
+
+        // 1. Send report 0x20 with pad 0 pressed (raw value 800)
+        let mut pkt = [0u8; 65];
+        pkt[0] = 0x20;
+        // Pad 0: 800 (0x0320)
+        pkt[1] = 0x20;
+        pkt[2] = 0x03;
+
+        // Push enough identical samples to fill the median filter
+        for _ in 0..5 {
+            parser.parse(&pkt, &mut events);
+        }
+
+        assert!(events.iter().any(|e| matches!(e, Event::Button { name: "pad_13", pressed: true, .. })));
+        events.clear();
+
+        // 2. Pad remains pressed in the continuous ADC stream
+        for _ in 0..5 {
+            parser.parse(&pkt, &mut events);
+        }
+
+        // 3. check_pad_timeouts should NOT fire a false release
+        parser.check_pad_timeouts(&mut events);
+        assert!(
+            !events.iter().any(|e| matches!(e, Event::Button { pressed: false, .. })),
+            "continuous ADC stream must not trigger pad chatter/timeout releases while held: {events:?}"
+        );
+
+        // 4. Send release (pressure = 0)
+        pkt[1] = 0x00;
+        pkt[2] = 0x00;
+        for _ in 0..5 {
+            parser.parse(&pkt, &mut events);
+        }
+
+        assert!(events.iter().any(|e| matches!(e, Event::Button { name: "pad_13", pressed: false, .. })));
+    }
+
+    #[test]
+    fn test_mikro_mk2_button_and_encoder_parsing() {
+        let mut reg = DescriptorRegistry::new();
+        reg.load_builtins().unwrap();
+        let desc = reg.find(0x17cc, 0x1200).expect("Mikro Mk2 descriptor missing").clone();
+        let names = reg.intern_descriptor_names(&desc);
+        let mut parser = PacketParser::new(DeviceId::from_usb(0, 0, 0x17cc, 0x1200), &desc, names);
+        let mut events: Vec<Event> = Vec::new();
+
+        // 6-byte Report 0x01:
+        // Byte 0: 0x01
+        // Byte 1: 0x08 (play)
+        // Byte 2: 0x08 (encoder_press)
+        // Byte 3: 0x80 (f1)
+        // Byte 4: 0x01 (mute)
+        // Byte 5: 0x03 (encoder = 3)
+        let pkt = [0x01, 0x08, 0x08, 0x80, 0x01, 0x03];
+        parser.parse(&pkt, &mut events);
+
+        assert!(events.iter().any(|e| matches!(e, Event::Button { name: "play", pressed: true, .. })));
+        assert!(events.iter().any(|e| matches!(e, Event::Button { name: "encoder_press", pressed: true, .. })));
+        assert!(events.iter().any(|e| matches!(e, Event::Button { name: "f1", pressed: true, .. })));
+        assert!(events.iter().any(|e| matches!(e, Event::Button { name: "mute", pressed: true, .. })));
     }
 }
 

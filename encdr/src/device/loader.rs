@@ -738,6 +738,10 @@ mod tests {
         let mm2 = reg.find(0x17cc, 0x1200).expect("Mikro Mk2 not found");
         assert_eq!(mm2.name, "NI Maschine Mikro Mk2");
         assert_eq!(mm2.screens.len(), 1);
+        assert_eq!(mm2.screens[0].protocol, Some(crate::core::descriptor::ScreenProtocol::NiMikroMk2));
+        assert_eq!(mm2.input_packets[0].size, 6);
+        assert_eq!(mm2.leds[0].buffer_size, 78);
+        assert_eq!(mm2.leds[0].protocol, Some(crate::core::descriptor::LedProtocol::Linear7Bit));
 
         // 8. Maschine Mikro Mk3
         let mm3 = reg.find(0x17cc, 0x1700).expect("Mikro Mk3 not found");

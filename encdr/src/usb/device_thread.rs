@@ -506,6 +506,61 @@ fn run_device(
         }
     }
 
+    // Check for OUT endpoints shared between screens and LEDs on the same physical interface.
+    // In nusb, an endpoint on an interface cannot be opened by multiple Endpoint handles simultaneously,
+    // so shared endpoints are opened once and multiplexed safely across threads.
+    let mut shared_screen_eps: HashMap<(String, u8), OutEndpoint> = HashMap::new();
+    let mut shared_led_eps: HashMap<u8, OutEndpoint> = HashMap::new();
+
+    let mut screen_out_eps = Vec::new();
+    for s in &descriptor.screens {
+        if let Some(iface_desc) = descriptor.interface_by_id(&s.interface) {
+            if let Some(out_ep) = &iface_desc.endpoints.out {
+                screen_out_eps.push((
+                    iface_desc.number,
+                    s.interface.clone(),
+                    out_ep.address.0 as u8,
+                    out_ep.transfer_type,
+                ));
+            }
+        }
+    }
+
+    for lb in &led_builders {
+        let ep_addr = lb.endpoint();
+        let iface_desc = descriptor.interface_by_id("control");
+        let physical_num = iface_desc.map(|i| i.number).unwrap_or(0);
+
+        if let Some((_, screen_iface_id, _, transfer_type)) = screen_out_eps
+            .iter()
+            .find(|(num, _, addr, _)| *num == physical_num && *addr == ep_addr)
+        {
+            if !shared_led_eps.contains_key(&ep_addr) {
+                if let Some(iface) = interfaces.get(screen_iface_id) {
+                    match OutEndpoint::open(iface, ep_addr, *transfer_type) {
+                        Ok(raw_ep) => {
+                            tracing::info!(
+                                "Multiplexing shared OUT endpoint 0x{:02x} on interface '{}' between screen and LEDs",
+                                ep_addr, screen_iface_id
+                            );
+                            let shared_ep = spawn_shared_endpoint(raw_ep);
+                            if let Some(screen_clone) = shared_ep.try_clone() {
+                                shared_screen_eps.insert((screen_iface_id.clone(), ep_addr), screen_clone);
+                                shared_led_eps.insert(ep_addr, shared_ep);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                "Failed to open shared OUT endpoint 0x{:02x} on interface '{}': {}",
+                                ep_addr, screen_iface_id, e
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // If device has screens, delegate them entirely to a dedicated screen thread
     // so that screen bulk transfers never stall the interrupt input loop.
     let screen_thread = if !descriptor.screens.is_empty() && screen_rx.is_some() {
@@ -541,6 +596,7 @@ fn run_device(
                     screen_has_control,
                     screen_is_connected,
                     screen_gpu,
+                    shared_screen_eps,
                 );
             })
             .ok()
@@ -558,7 +614,7 @@ fn run_device(
         thread::Builder::new()
             .name(format!("encdr-led-{}", descriptor.name.replace(' ', "-").to_lowercase()))
             .spawn(move || {
-                run_leds(led_iface, led_builders, feature_leds, led_rx, led_is_connected);
+                run_leds(led_iface, led_builders, feature_leds, led_rx, led_is_connected, shared_led_eps);
             })
             .ok()
     } else {
@@ -1006,6 +1062,41 @@ impl InEndpoint {
     }
 }
 
+enum EndpointWrite {
+    Single(Vec<u8>, async_channel::Sender<Result<(), String>>),
+    Batch(Vec<Vec<u8>>, async_channel::Sender<Result<(), String>>),
+}
+
+fn spawn_shared_endpoint(mut ep: OutEndpoint) -> OutEndpoint {
+    let (tx, rx) = async_channel::bounded::<EndpointWrite>(64);
+    thread::Builder::new()
+        .name("encdr-shared-ep".to_string())
+        .spawn(move || {
+            block_on(async {
+                while let Ok(cmd) = rx.recv().await {
+                    match cmd {
+                        EndpointWrite::Single(data, reply) => {
+                            let res = ep.write(data).await;
+                            let _ = reply.send(res).await;
+                        }
+                        EndpointWrite::Batch(transfers, reply) => {
+                            let mut res = Ok(());
+                            for data in transfers {
+                                if let Err(e) = ep.write(data).await {
+                                    res = Err(e);
+                                    break;
+                                }
+                            }
+                            let _ = reply.send(res).await;
+                        }
+                    }
+                }
+            });
+        })
+        .expect("failed to spawn shared endpoint thread");
+    OutEndpoint::Shared(tx)
+}
+
 /// OUT endpoint of either transfer type (or an HID interface), used for
 /// screen and LED writes.
 enum OutEndpoint {
@@ -1014,9 +1105,18 @@ enum OutEndpoint {
     Hid(Arc<HidInterface>),
     /// One screen drawn through the NI hardware service.
     Service { session: Arc<ServiceSession>, display: u8, width: u16, height: u16 },
+    Shared(async_channel::Sender<EndpointWrite>),
 }
 
 impl OutEndpoint {
+    fn try_clone(&self) -> Option<Self> {
+        match self {
+            Self::Shared(tx) => Some(Self::Shared(tx.clone())),
+            Self::Hid(hid) => Some(Self::Hid(hid.clone())),
+            _ => None,
+        }
+    }
+
     fn open(iface: &Iface, address: u8, transfer_type: TransferType) -> Result<Self, String> {
         Ok(match iface {
             Iface::Hid(hid) => Self::Hid(hid.clone()),
@@ -1031,6 +1131,16 @@ impl OutEndpoint {
     /// Submit one transfer and wait for it to complete.
     async fn write(&mut self, data: Vec<u8>) -> Result<(), String> {
         match self {
+            Self::Shared(tx) => {
+                let (reply_tx, reply_rx) = async_channel::bounded(1);
+                if tx.send(EndpointWrite::Single(data, reply_tx)).await.is_err() {
+                    return Err("shared endpoint closed".to_string());
+                }
+                match reply_rx.recv().await {
+                    Ok(res) => res,
+                    Err(_) => Err("shared endpoint dropped reply".to_string()),
+                }
+            }
             Self::Bulk(ep) => {
                 ep.submit(data.into());
                 ep.next_complete().await.status.map_err(|e| e.to_string())
@@ -1049,6 +1159,16 @@ impl OutEndpoint {
         // The service takes a frame as one message, not as USB-sized pieces.
         if matches!(self, Self::Service { .. }) {
             return self.write(transfers.concat()).await;
+        }
+        if let Self::Shared(tx) = self {
+            let (reply_tx, reply_rx) = async_channel::bounded(1);
+            if tx.send(EndpointWrite::Batch(transfers, reply_tx)).await.is_err() {
+                return Err("shared endpoint closed".to_string());
+            }
+            return match reply_rx.recv().await {
+                Ok(res) => res,
+                Err(_) => Err("shared endpoint dropped reply".to_string()),
+            };
         }
         for data in transfers {
             self.write(data).await?;
@@ -1179,6 +1299,7 @@ fn run_screens(
     has_control: Arc<AtomicBool>,
     is_connected: Arc<AtomicBool>,
     gpu: Option<Arc<crate::screen::GpuContext>>,
+    shared_endpoints: HashMap<(String, u8), OutEndpoint>,
 ) {
     use crate::screen::protocol;
 
@@ -1220,14 +1341,18 @@ fn run_screens(
                 screen_to_ep.insert(s.name.clone(), key.clone());
 
                 if !endpoints.contains_key(&key) {
-                    match OutEndpoint::open(iface, ep_addr, transfer_type) {
-                        Ok(ep) => {
-                            endpoints.insert(key, ep);
+                    if let Some(shared) = shared_endpoints.get(&key).and_then(|e| e.try_clone()) {
+                        endpoints.insert(key, shared);
+                    } else {
+                        match OutEndpoint::open(iface, ep_addr, transfer_type) {
+                            Ok(ep) => {
+                                endpoints.insert(key, ep);
+                            }
+                            Err(e) => tracing::error!(
+                                "Failed to open screen OUT ep 0x{:02x} for '{}': {}",
+                                ep_addr, s.name, e
+                            ),
                         }
-                        Err(e) => tracing::error!(
-                            "Failed to open screen OUT ep 0x{:02x} for '{}': {}",
-                            ep_addr, s.name, e
-                        ),
                     }
                 }
             }
@@ -1557,17 +1682,22 @@ fn run_leds(
     feature_report_leds: Option<FeatureReportLedsQuirkDesc>,
     led_rx: async_channel::Receiver<DeviceCmd>,
     is_connected: Arc<AtomicBool>,
+    shared_endpoints: HashMap<u8, OutEndpoint>,
 ) {
     block_on(async {
         let mut led_endpoints: HashMap<u8, OutEndpoint> = HashMap::new();
         for lb in &led_builders {
             let ep = lb.endpoint();
             if !led_endpoints.contains_key(&ep) {
-                match OutEndpoint::open(&iface, ep, lb.transfer_type()) {
-                    Ok(endpoint) => {
-                        led_endpoints.insert(ep, endpoint);
+                if let Some(shared) = shared_endpoints.get(&ep).and_then(|e| e.try_clone()) {
+                    led_endpoints.insert(ep, shared);
+                } else {
+                    match OutEndpoint::open(&iface, ep, lb.transfer_type()) {
+                        Ok(endpoint) => {
+                            led_endpoints.insert(ep, endpoint);
+                        }
+                        Err(e) => tracing::error!("Failed to open LED OUT ep 0x{:02x}: {}", ep, e),
                     }
-                    Err(e) => tracing::error!("Failed to open LED OUT ep 0x{:02x}: {}", ep, e),
                 }
             }
         }
