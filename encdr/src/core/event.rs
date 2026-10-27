@@ -4,7 +4,7 @@ use crate::core::descriptor::DeviceDescriptor;
 
 /// Unique identifier for a connected device instance.
 /// Combines bus/address info to survive reconnects at different addresses.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Default)]
 pub struct DeviceId(pub(crate) u64);
 
 impl DeviceId {
