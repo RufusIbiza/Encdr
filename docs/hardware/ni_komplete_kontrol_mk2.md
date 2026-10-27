@@ -75,6 +75,13 @@ Under Linux, the kernel's generic USB HID driver automatically claims Interface 
 | Screen    | `screen`  | 3      | —                  | `0x03` (bulk)      | Vendor Specific    | Dual 480x272 BGR565 display frames |
 | DFU       | `dfu`     | 4      | —                  | —                  | Application DFU    | Firmware upgrade                   |
 
+### Windows & macOS: NI Hardware Service & Instance Switching
+
+The Komplete Kontrol S-Series Mk2 uses `quirks.ni_service` (`product_id: "0x1610"` / `0x1620` / `0x1630`, `screen_interface: "screen"`):
+- **Control Interface (Interface 2)**: Opened via the OS HID stack (`hidapi`) on Windows and macOS.
+- **Screen Interface (Interface 3)**: When raw USB interface 3 cannot be claimed directly (or `ENCDR_FORCE_SERVICE=1` is set), Encdr routes full and partial screen blits through the running NI hardware service (`NIHostIntegrationAgent` on Windows named pipes, `NIHostIntegrationAgent` on macOS `CFMessagePort`s).
+- **Instance Button Hand-off**: Pressing the controller's `SETUP` / `INSTANCE` button switches hardware ownership (`Encdr::has_control`) between Komplete Kontrol software and Encdr, automatically releasing held inputs and pausing input/LED/screen output while NI software owns the hardware, and restoring both screens and all LEDs in full when control returns.
+
 ---
 
 ## Input Reports (Interface 2, Endpoint `0x82`)

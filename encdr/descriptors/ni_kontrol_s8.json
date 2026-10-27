@@ -410,6 +410,10 @@
   "quirks": {
     "dual_handle": true,
     "detach_kernel_driver": true,
+    "ni_service": {
+      "product_id": "0x1370",
+      "screen_interface": "screen"
+    },
     "touchstrip": {
       "heartbeat_bytes": {
         "left_touchstrip": [26, 27],

@@ -231,6 +231,17 @@ mod tests {
     }
 
     #[test]
+    fn display_message_handles_traktor_s4_mk3_dimensions() {
+        let m = display_message(0, 320, 240, &[0x84, 0x00, 0x00, 0x60]);
+        assert_eq!(
+            &m[..20],
+            [0x44, 0x73, 0x64, 0x03, 0, 0, 0, 0, 0, 0, 0, 0, 0xf0, 0x00, 0x40, 0x01, 4, 0, 0, 0]
+        );
+        assert_eq!(&m[20..], [0x84, 0x00, 0x00, 0x60]);
+        assert_eq!(display_message(1, 320, 240, &[])[4], 1, "second screen");
+    }
+
+    #[test]
     fn parses_a_connect_reply() {
         let mut reply = words(&[TRUE_WORD, 21]);
         reply.extend_from_slice(b"NIHWS16000019Request\0");

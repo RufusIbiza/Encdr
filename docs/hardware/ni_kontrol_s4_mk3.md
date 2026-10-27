@@ -142,3 +142,10 @@ encdr.set_jog_ring_off(device_id, JogDeck::Left);
 - **Footer (8 bytes)**:
   - Left screen: `0x03, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00`
   - Right screen: `0x03, 0x00, 0x00, 0x00, 0x40, 0x00, 0x01, 0x00`
+
+### Windows & macOS: NI Hardware Service & Instance Switching
+
+The Kontrol S4 Mk3 uses `quirks.ni_service` (`product_id: "0x1720"`, `screen_interface: "screen"`):
+- **Control Interface (Interface 3)**: Opened via the OS HID stack (`hidapi`) on Windows and macOS.
+- **Screen Interface (Interface 4)**: When raw USB interface 4 cannot be claimed directly (or `ENCDR_FORCE_SERVICE=1` is set), Encdr routes screen blits through the running NI hardware service (`NIHWMainHandler` on Windows named pipes, `NIHWMainHandler` on macOS `CFMessagePort`s).
+- **Instance Hand-off**: Switching between Traktor software and Encdr automatically releases held inputs and pauses input/LED/screen output while NI software owns the hardware, and restores both displays and all LEDs in full when control returns.

@@ -51,6 +51,13 @@ The S5 shares its core deck architecture with the Kontrol D2 and S8, paired with
 | Control   | Traktor Kontrol S5 HID | 3      | `0x83` (interrupt) | `0x02` (interrupt) | Buttons, sliders, encoders, LEDs |
 | Screen    | Traktor Kontrol S5 BD  | 4      | —                  | `0x03` (bulk)      | Dual screen pixel data           |
 
+### Windows & macOS: NI Hardware Service & Instance Switching
+
+The Kontrol S5 uses `quirks.ni_service` (`product_id: "0x1420"`, `screen_interface: "screen"`):
+- **Control Interface (Interface 3)**: Opened via the OS HID stack (`hidapi`) on Windows and macOS.
+- **Screen Interface (Interface 4)**: When raw USB interface 4 cannot be claimed directly (or `ENCDR_FORCE_SERVICE=1` is set), Encdr routes screen blits through the running NI hardware service (`NIHWMainHandler` on Windows named pipes, `NIHWMainHandler` on macOS `CFMessagePort`s).
+- **Instance Hand-off**: Switching between Traktor software and Encdr automatically releases held inputs and pauses input/LED/screen output while NI software owns the hardware, and restores both screens and all LEDs in full when control returns.
+
 ---
 
 ## Input Packets

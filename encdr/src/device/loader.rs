@@ -197,6 +197,9 @@ mod tests {
         assert_eq!(desc.screens[0].width, 480);
         assert_eq!(desc.screens[0].height, 272);
         assert!(desc.quirks.dual_handle);
+        let ni_service = desc.quirks.ni_service.as_ref().expect("ni_service quirk missing on D2");
+        assert_eq!(ni_service.product_id.0, 0x1400);
+        assert_eq!(ni_service.screen_interface, "screen");
     }
 
     #[test]
@@ -236,12 +239,21 @@ mod tests {
         assert_eq!(s49.screens.len(), 2);
         assert_eq!(s49.screens[0].width, 480);
         assert_eq!(s49.screens[0].height, 272);
+        let s49_ni = s49.quirks.ni_service.as_ref().expect("ni_service quirk missing on S49 Mk2");
+        assert_eq!(s49_ni.product_id.0, 0x1610);
+        assert_eq!(s49_ni.screen_interface, "screen");
 
         let s61 = reg.find(0x17cc, 0x1620).expect("S61 Mk2 not found");
         assert_eq!(s61.name, "NI Komplete Kontrol S61 Mk2");
+        let s61_ni = s61.quirks.ni_service.as_ref().expect("ni_service quirk missing on S61 Mk2");
+        assert_eq!(s61_ni.product_id.0, 0x1620);
+        assert_eq!(s61_ni.screen_interface, "screen");
 
         let s88 = reg.find(0x17cc, 0x1630).expect("S88 Mk2 not found");
         assert_eq!(s88.name, "NI Komplete Kontrol S88 Mk2");
+        let s88_ni = s88.quirks.ni_service.as_ref().expect("ni_service quirk missing on S88 Mk2");
+        assert_eq!(s88_ni.product_id.0, 0x1630);
+        assert_eq!(s88_ni.screen_interface, "screen");
     }
 
     #[test]
@@ -279,6 +291,10 @@ mod tests {
 
         let s8 = reg.find(0x17cc, 0x1370).expect("S8 not found");
         assert_eq!(s8.name, "NI Kontrol S8");
+
+        let ni_service = s8.quirks.ni_service.as_ref().expect("ni_service quirk missing on S8");
+        assert_eq!(ni_service.product_id.0, 0x1370);
+        assert_eq!(ni_service.screen_interface, "screen");
 
         // Verify feature_report_leds quirk
         let feature_leds = s8.quirks.feature_report_leds.as_ref().expect("feature_report_leds quirk missing");
@@ -500,6 +516,9 @@ mod tests {
 
         let desc = reg.find(0x17cc, 0x1420).expect("Kontrol S5 should be registered").clone();
         assert_eq!(desc.name, "NI Kontrol S5");
+        let ni_service = desc.quirks.ni_service.as_ref().expect("ni_service quirk missing on S5");
+        assert_eq!(ni_service.product_id.0, 0x1420);
+        assert_eq!(ni_service.screen_interface, "screen");
         assert_eq!(desc.screens.len(), 2);
         for screen in &desc.screens {
             assert_eq!(screen.width, 480);
@@ -594,6 +613,9 @@ mod tests {
 
         let desc = reg.find(0x17cc, 0x1720).expect("Kontrol S4 MK3 should be registered").clone();
         assert_eq!(desc.name, "NI Kontrol S4 Mk3");
+        let ni_service = desc.quirks.ni_service.as_ref().expect("ni_service quirk missing on S4 Mk3");
+        assert_eq!(ni_service.product_id.0, 0x1720);
+        assert_eq!(ni_service.screen_interface, "screen");
         assert_eq!(desc.screens.len(), 2);
         for screen in &desc.screens {
             assert_eq!(screen.width, 320);

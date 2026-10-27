@@ -365,6 +365,13 @@ The header template uses coordinate substitution:
 
 Coordinates must be aligned to 4 pixels horizontally and 2 pixels vertically.
 
+### Windows & macOS: NI Hardware Service & Instance Switching
+
+The Kontrol D2 uses `quirks.ni_service` (`product_id: "0x1400"`, `screen_interface: "screen"`):
+- **Control Interface (Interface 0)**: Opened via the OS HID stack (`hidapi`) on Windows and macOS.
+- **Screen Interface (Interface 1)**: When raw USB interface 1 cannot be claimed directly (or `ENCDR_FORCE_SERVICE=1` is set), Encdr routes full and partial screen blits through the running NI hardware service (`NIHWMainHandler` on Windows named pipes, `NIHWMainHandler` on macOS `CFMessagePort`s).
+- **Instance Hand-off**: Switching between Traktor software and Encdr automatically releases held inputs and pauses input/LED/screen output while NI software owns the hardware, and restores the display and all LEDs in full when control returns.
+
 ---
 
 ## Controls Grouped by Screen Proximity

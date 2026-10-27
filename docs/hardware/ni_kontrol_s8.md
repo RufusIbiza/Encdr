@@ -59,6 +59,13 @@ The S8 is effectively two D2-style deck controllers flanking a central 4-channel
 | Control   | Traktor Kontrol S8 HID    | 5      | `0x84` (interrupt)   | `0x03` (interrupt)   | Buttons, sliders, encoders, LEDs |
 | Screen    | Traktor Kontrol S8 BD     | 6      | —                    | `0x04` (bulk)        | Screen pixel data (both screens) |
 
+### Windows & macOS: NI Hardware Service & Instance Switching
+
+The Kontrol S8 uses `quirks.ni_service` (`product_id: "0x1370"`, `screen_interface: "screen"`):
+- **Control Interface (Interface 5)**: Opened via the OS HID stack (`hidapi`) on Windows and macOS.
+- **Screen Interface (Interface 6)**: When raw USB interface 6 cannot be claimed directly (or `ENCDR_FORCE_SERVICE=1` is set), Encdr routes screen blits through the running NI hardware service (`NIHWMainHandler` on Windows named pipes, `NIHWMainHandler` on macOS `CFMessagePort`s).
+- **Instance Hand-off**: Switching between Traktor software and Encdr automatically releases held inputs and pauses input/LED/screen output while NI software owns the hardware, and restores both screens and all LEDs in full when control returns.
+
 ---
 
 ## Input Controls

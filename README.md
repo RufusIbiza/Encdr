@@ -344,6 +344,25 @@ encdr/
 
 ## Changelog
 
+### v0.8.4
+- **Traktor & Komplete Kontrol NI Hardware Service Screen Route (Windows & macOS)**:
+  - Extended the `quirks.ni_service` background screen pathway to support **Komplete Kontrol S-Series Mk2** and **Traktor Kontrol** color screen controllers:
+    - **Komplete Kontrol S49 Mk2** (`0x17cc:0x1610`)
+    - **Komplete Kontrol S61 Mk2** (`0x17cc:0x1620`)
+    - **Komplete Kontrol S88 Mk2** (`0x17cc:0x1630`)
+    - **Traktor Kontrol S8** (`0x17cc:0x1370`)
+    - **Traktor Kontrol S5** (`0x17cc:0x1420`)
+    - **Traktor Kontrol D2** (`0x17cc:0x1400`)
+    - **Traktor Kontrol S4 Mk3** (`0x17cc:0x1720`)
+  - **Zero Driver Swap Requirement**:
+    - On Windows, Native Instruments' kernel drivers own the bulk screen interface on these devices. Encdr automatically routes screen frames through NI's running hardware services (`com.native-instruments.NIHostIntegrationAgent` or `NIHWMainHandler`) via named pipes on Windows and `CFMessagePort`s on macOS, eliminating any need for WinUSB driver replacement (Zadig) or stopping background services.
+  - **Multi-Resolution & Multi-Display Packaging**:
+    - Validated and tested screen command packaging across dual 480×272 BGR565-BE displays (KK Mk2, S8, S5), single 480×272 displays (D2), and dual 320×240 BGR565-BE displays (Traktor S4 Mk3).
+  - **Hardware Instance Switching & Exclusive Input Ownership**:
+    - Full support for Native Instruments instance switching: pressing the controller's instance or setup button smoothly transfers hardware ownership between NI software (Komplete Kontrol, Traktor Pro) and Encdr. Encdr safely releases held inputs, pauses display/LED updates while NI software is active, and restores both screens and all LEDs in full when control returns.
+  - **Hardware Documentation Updates**:
+    - Updated hardware guides for Komplete Kontrol Mk2, Traktor S8, Traktor S5, Traktor D2, and Traktor S4 Mk3 documenting the NI hardware service screen route and instance switching.
+
 ### v0.8.3
 - **Maschine Mikro Mk2 Hardware Fixes & Shared Endpoint Multiplexing** (reported, measured, and contributed by [@lockstock73](https://github.com/lockstock73) in [#4](https://github.com/RufusIbiza/Encdr/issues/4)):
   - **Continuous Pad Stream Timing & Chatter Fix**:
