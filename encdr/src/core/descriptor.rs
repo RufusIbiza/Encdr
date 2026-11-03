@@ -284,6 +284,10 @@ pub enum EncoderEncoding {
     /// Reports delta via shortest-path around the 65536-step ring, scaled by the
     /// encoder's `scale` factor.
     Wrap16Wide,
+    /// Direct absolute position on a 0..999 ring. Unlike `Erp`, the two bytes
+    /// already contain the decoded little-endian position rather than two
+    /// analog wiper taps (NI Maschine Mk3 screen encoders).
+    Wrap1000,
     /// Endless rotary potentiometer: two 8-bit analog taps 90° apart
     /// (`bytes: [b, a]`), decoded to an absolute 0..999 position per turn.
     /// Reports delta via shortest path around the 1000-step ring, scaled by

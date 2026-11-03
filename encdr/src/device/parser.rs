@@ -1091,6 +1091,21 @@ impl PacketParser {
                                     }
                                 }
                             }
+                            EncoderEncoding::Wrap1000 => {
+                                let deadband = if active { desc.deadband } else { 0 };
+                                if let Some(raw_delta) = enc_state.update_erp(val, deadband) {
+                                    if active {
+                                        let delta = raw_delta as f32 / desc.scale;
+                                        if let Some(&name) = names.get(&desc.name) {
+                                            events.push(Event::EncoderFine {
+                                                device: device_id,
+                                                name,
+                                                delta,
+                                            });
+                                        }
+                                    }
+                                }
+                            }
                             EncoderEncoding::Erp => {
                                 // bytes: [b, a] — the two wiper taps
                                 let pos = decode_erp(buf[desc.bytes[1]], buf[desc.bytes[0]]);
@@ -2019,6 +2034,43 @@ mod tests {
         assert!(events.iter().any(|e| matches!(e, Event::Button { name: "encoder_press", pressed: true, .. })));
         assert!(events.iter().any(|e| matches!(e, Event::Button { name: "f1", pressed: true, .. })));
         assert!(events.iter().any(|e| matches!(e, Event::Button { name: "mute", pressed: true, .. })));
+    }
+
+    #[test]
+    fn maschine_mk3_screen_encoder_wraps_without_direction_reversal() {
+        let mut parser = mk3_parser();
+        let mut events = Vec::new();
+        let mut pkt = [0u8; 42];
+        pkt[0] = 0x01;
+
+        // The hardware reports a direct absolute position on a 0..999 ring.
+        // Establish a baseline near the upper edge, then turn forward through
+        // zero. This must remain a +17 step movement, not -983.
+        pkt[12..14].copy_from_slice(&990u16.to_le_bytes());
+        parser.parse(&pkt, &mut events);
+        events.clear();
+
+        pkt[12..14].copy_from_slice(&7u16.to_le_bytes());
+        parser.parse(&pkt, &mut events);
+        assert!(
+            events.iter().any(|e| matches!(e,
+                Event::EncoderFine { name: "screen_encoder_1", delta, .. }
+                    if (*delta - 0.017).abs() < 1e-6
+            )),
+            "expected +0.017 across forward wrap, got {events:?}"
+        );
+        events.clear();
+
+        // Reverse through zero: 7 -> 995 is -12 steps, not +988.
+        pkt[12..14].copy_from_slice(&995u16.to_le_bytes());
+        parser.parse(&pkt, &mut events);
+        assert!(
+            events.iter().any(|e| matches!(e,
+                Event::EncoderFine { name: "screen_encoder_1", delta, .. }
+                    if (*delta + 0.012).abs() < 1e-6
+            )),
+            "expected -0.012 across backward wrap, got {events:?}"
+        );
     }
 }
 

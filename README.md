@@ -344,6 +344,14 @@ encdr/
 
 ## Changelog
 
+### v0.8.5 (contributed by [TVbene](https://github.com/TVBene))
+- **Maschine Mk3 & Maschine Plus Screen Encoder Wrap-around Fix** (reported, analyzed, and contributed by [TVbene](https://github.com/TVBene)):
+  - Fixed an issue where continuous rotation of screen encoders 1 through 8 caused parameter values to jump to opposite endpoints when passing through 0 / 999.
+  - The hardware reports a direct little-endian position on a 1,000-step ring (`0..999`). Previously configured with `signed16`, crossing the boundary produced large opposite-direction deltas (~ `-0.98` or `+0.98`) rather than smooth continuous movement.
+  - Added `EncoderEncoding::Wrap1000` to `encdr::core::descriptor` to handle direct 16-bit positions on a 1,000-step ring via shortest-path wrap arithmetic (`wrap_delta_erp`).
+  - Updated all 8 screen encoders in both `ni_maschine_mk3.json` and `ni_maschine_plus.json` descriptors from `signed16` to `wrap1000`.
+  - Added regression test `maschine_mk3_screen_encoder_wraps_without_direction_reversal` verifying continuous forward and reverse wrapping across the boundary.
+
 ### v0.8.4
 - **Traktor & Komplete Kontrol NI Hardware Service Screen Route (Windows & macOS)**:
   - Extended the `quirks.ni_service` background screen pathway to support **Komplete Kontrol S-Series Mk2** and **Traktor Kontrol** color screen controllers:

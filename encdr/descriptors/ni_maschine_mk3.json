@@ -482,7 +482,7 @@
             12,
             13
           ],
-          "encoding": "signed16",
+          "encoding": "wrap1000",
           "scale": 1000.0
         },
         {
@@ -492,7 +492,7 @@
             14,
             15
           ],
-          "encoding": "signed16",
+          "encoding": "wrap1000",
           "scale": 1000.0
         },
         {
@@ -502,7 +502,7 @@
             16,
             17
           ],
-          "encoding": "signed16",
+          "encoding": "wrap1000",
           "scale": 1000.0
         },
         {
@@ -512,7 +512,7 @@
             18,
             19
           ],
-          "encoding": "signed16",
+          "encoding": "wrap1000",
           "scale": 1000.0
         },
         {
@@ -522,7 +522,7 @@
             20,
             21
           ],
-          "encoding": "signed16",
+          "encoding": "wrap1000",
           "scale": 1000.0
         },
         {
@@ -532,7 +532,7 @@
             22,
             23
           ],
-          "encoding": "signed16",
+          "encoding": "wrap1000",
           "scale": 1000.0
         },
         {
@@ -542,7 +542,7 @@
             24,
             25
           ],
-          "encoding": "signed16",
+          "encoding": "wrap1000",
           "scale": 1000.0
         },
         {
@@ -552,7 +552,7 @@
             26,
             27
           ],
-          "encoding": "signed16",
+          "encoding": "wrap1000",
           "scale": 1000.0
         },
         {
