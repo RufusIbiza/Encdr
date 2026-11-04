@@ -1,0 +1,15 @@
+# udev rules for Native Instruments hardware controllers used with Encdr.
+#
+# To install:
+#   sudo cp 50-encdr.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+#
+# Grants unprivileged access to the active desktop session (systemd uaccess)
+# and falls back to plugdev group permissions.
+
+# Native Instruments USB Devices (VID 0x17cc)
+# Covers Maschine (Mk1, Mk2, Mk3, Plus, Studio, Jam, Mikro),
+# Komplete Kontrol (S-Series Mk1, Mk2, Mk3, A-Series, M32),
+# Traktor Kontrol (S2, S4, S5, S8, D2, F1, X1, Z1, Z2)
+SUBSYSTEM=="usb", ATTRS{idVendor}=="17cc", MODE="0660", TAG+="uaccess"
+KERNEL=="hidraw*", ATTRS{idVendor}=="17cc", MODE="0660", TAG+="uaccess"

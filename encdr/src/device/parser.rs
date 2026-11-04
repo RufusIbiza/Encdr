@@ -73,6 +73,11 @@ struct PadStreamState {
     /// Last time a NoteOn strike (0x10) occurred, used to debounce mechanical
     /// rebound/vibration in aftertouch immediately after strike.
     last_strike: [Option<Instant>; 16],
+    /// Strike velocity peak window: (peak_raw, report_count, strike_start_time).
+    /// Tracks first 3 reports or 4 ms to capture peak physical deceleration force.
+    pending_strike: [Option<(u16, u8, Instant)>; 16],
+    /// Last time this pad was released, used to reject mechanical silicone spring-back.
+    last_release: [Option<Instant>; 16],
     /// Number of consecutive aftertouch reports seen while pressed.
     /// Used to distinguish sustained holds from single-packet quick taps.
     aftertouch_count: [u32; 16],
@@ -90,6 +95,8 @@ impl Default for PadStreamState {
             pad_pressures: [0.0; 16],
             last_update: [now; 16],
             last_strike: [None; 16],
+            pending_strike: [None; 16],
+            last_release: [None; 16],
             aftertouch_count: [0; 16],
             mk2_history: [[0u16; MK2_MEDIAN_WINDOW]; 16],
             mk2_history_idx: [0usize; 16],
@@ -470,6 +477,7 @@ impl PacketParser {
 
                 if is_all_zeros {
                     for p in 0..16 {
+                        state.pending_strike[p] = None;
                         if state.pad_states[p] {
                             state.pad_states[p] = false;
                             state.pad_pressures[p] = 0.0;
@@ -576,7 +584,9 @@ impl PacketParser {
                                             pressed: true,
                                         });
                                     }
-                                    state.last_strike[p_usize] = Some(Instant::now());
+                                    let now = Instant::now();
+                                    state.last_strike[p_usize] = Some(now);
+                                    state.pending_strike[p_usize] = Some((pressure_raw, 1, now));
                                     state.pad_pressures[p_usize] = pressure;
                                     events.push(Event::Grid {
                                         device: self.device_id,
@@ -589,10 +599,12 @@ impl PacketParser {
                                 // NoteOff (0x30) or PressOff (0x20): Pad released unconditionally,
                                 // ignoring any residual baseline ADC capacitance/charge.
                                 0x30 | 0x20 => {
+                                    state.pending_strike[p_usize] = None;
                                     if prev_pressed {
                                         state.pad_states[p_usize] = false;
                                         state.pad_pressures[p_usize] = 0.0;
                                         state.last_strike[p_usize] = None;
+                                        state.last_release[p_usize] = Some(Instant::now());
                                         state.aftertouch_count[p_usize] = 0;
                                         tracing::trace!(
                                             "[{:.4}s][PARSER-EVT] => Event::Button {{ name: {}, pressed: false }} (explicit NoteOff/0x{:02x})",
@@ -618,10 +630,12 @@ impl PacketParser {
                                 // - Release threshold: 16 (clean release above idle noise)
                                 // - Debounce: ignore release for 30ms after NoteOn to prevent
                                 //   mechanical strike vibration from falsely chattering release.
+                                // - Spring-back rejection: unheld pads ignore 0x40 within 50ms of release.
                                 0x40 => {
                                     const PAD_PRESS_THRESHOLD: u16 = 32;
                                     const PAD_RELEASE_THRESHOLD: u16 = 16;
                                     const STRIKE_DEBOUNCE_WINDOW: Duration = Duration::from_millis(30);
+                                    const SPRING_BACK_WINDOW: Duration = Duration::from_millis(50);
 
                                     let in_strike_window = state.last_strike[p_usize]
                                         .map_or(false, |t| t.elapsed() < STRIKE_DEBOUNCE_WINDOW);
@@ -631,6 +645,8 @@ impl PacketParser {
                                             state.pad_states[p_usize] = false;
                                             state.pad_pressures[p_usize] = 0.0;
                                             state.last_strike[p_usize] = None;
+                                            state.pending_strike[p_usize] = None;
+                                            state.last_release[p_usize] = Some(Instant::now());
                                             state.aftertouch_count[p_usize] = 0;
                                             tracing::trace!(
                                                 "[{:.4}s][PARSER-EVT] => Event::Button {{ name: {}, pressed: false }} (pressure {} <= {})",
@@ -649,10 +665,23 @@ impl PacketParser {
                                             });
                                         }
                                     } else if pressure_raw >= PAD_PRESS_THRESHOLD {
-                                        let pressure = pressure_raw as f32 / 4095.0;
                                         if !prev_pressed {
+                                            let in_spring_back = state.last_release[p_usize]
+                                                .map_or(false, |t| t.elapsed() < SPRING_BACK_WINDOW);
+                                            if in_spring_back {
+                                                // Spring-back rejection: mechanical silicone rebound after release
+                                                // must never trigger a new note press via aftertouch 0x40.
+                                                tracing::trace!(
+                                                    "[{:.4}s][PARSER-USB] rejecting spring-back bounce 0x40 on pad {} (raw_p={})",
+                                                    t, pad_name, pressure_raw
+                                                );
+                                                continue;
+                                            }
+
                                             state.pad_states[p_usize] = true;
                                             state.aftertouch_count[p_usize] = 1;
+                                            let now = Instant::now();
+                                            state.pending_strike[p_usize] = Some((pressure_raw, 1, now));
                                             tracing::trace!(
                                                 "[{:.4}s][PARSER-EVT] => Event::Button {{ name: {}, pressed: true }} (0x40 press, raw_p={})",
                                                 t, pad_name, pressure_raw
@@ -666,8 +695,34 @@ impl PacketParser {
                                             state.aftertouch_count[p_usize] =
                                                 state.aftertouch_count[p_usize].saturating_add(1);
                                         }
+
+                                        // Strike peak window: track peak across first 3 reports or 4 ms
+                                        if let Some((ref mut peak, ref mut n, start_time)) = state.pending_strike[p_usize] {
+                                            if start_time.elapsed() <= Duration::from_millis(4) && *n < 3 {
+                                                *peak = (*peak).max(pressure_raw);
+                                                *n += 1;
+                                                let peak_pressure = (*peak as f32 / 4095.0).max(0.01);
+                                                if peak_pressure > state.pad_pressures[p_usize] {
+                                                    state.pad_pressures[p_usize] = peak_pressure;
+                                                    events.push(Event::Grid {
+                                                        device: self.device_id,
+                                                        name: pad_name,
+                                                        index: p,
+                                                        pressure: peak_pressure,
+                                                    });
+                                                }
+                                                if *n >= 3 {
+                                                    state.pending_strike[p_usize] = None;
+                                                }
+                                                continue;
+                                            } else {
+                                                state.pending_strike[p_usize] = None;
+                                            }
+                                        }
+
+                                        let pressure = pressure_raw as f32 / 4095.0;
                                         let pressure_changed = (pressure - state.pad_pressures[p_usize]).abs() > 0.02;
-                                        if pressure_changed || !prev_pressed {
+                                        if pressure_changed {
                                             state.pad_pressures[p_usize] = pressure;
                                             events.push(Event::Grid {
                                                 device: self.device_id,
@@ -1178,6 +1233,7 @@ impl PacketParser {
             if is_isolated_tap && silence_duration >= Duration::from_millis(150) {
                 state.pad_states[p] = false;
                 state.pad_pressures[p] = 0.0;
+                state.pending_strike[p] = None;
                 state.aftertouch_count[p] = 0;
                 let pad_name = *self.names.get(PAD_MAP[p]).unwrap_or(&PAD_MAP[p]);
                 let t = self.created_at.elapsed().as_secs_f32();
@@ -2071,6 +2127,76 @@ mod tests {
             )),
             "expected -0.012 across backward wrap, got {events:?}"
         );
+    }
+
+    #[test]
+    fn mk3_spring_back_aftertouch_rejected_on_released_pad() {
+        let mut parser = mk3_parser();
+        let mut events = Vec::new();
+
+        // 1. Pad 1 (hardware index 12) strikes with 0x10 NoteOn
+        let mut buf = [0u8; 64];
+        buf[0] = 0x02;
+        buf[1] = 12; // pad 1
+        buf[2] = 0x18; // NoteOn, raw pressure 2048 (0x800)
+        buf[3] = 0x00;
+        parser.parse(&buf, &mut events);
+        assert!(events.iter().any(|e| matches!(e, Event::Button { name: "pad_1", pressed: true, .. })));
+        events.clear();
+
+        // 2. Pad 1 releases with 0x30 NoteOff
+        buf[2] = 0x30;
+        buf[3] = 0x00;
+        parser.parse(&buf, &mut events);
+        assert!(events.iter().any(|e| matches!(e, Event::Button { name: "pad_1", pressed: false, .. })));
+        events.clear();
+
+        // 3. Silicone spring-back creates mechanical bounce aftertouch 0x40 with high pressure (e.g. 0x4100 = 256)
+        // on a pad that is NOT held. This must be rejected and must NOT re-trigger a press.
+        buf[2] = 0x41;
+        buf[3] = 0x00;
+        parser.parse(&buf, &mut events);
+        assert!(
+            !events.iter().any(|e| matches!(e, Event::Button { name: "pad_1", pressed: true, .. })),
+            "Spring-back aftertouch on unheld pad must be rejected"
+        );
+    }
+
+    #[test]
+    fn mk3_strike_velocity_peak_window_tracks_deceleration() {
+        let mut parser = mk3_parser();
+        let mut events = Vec::new();
+
+        // 1. Initial contact strike: raw pressure 186 (0x0ba)
+        let mut buf = [0u8; 64];
+        buf[0] = 0x02;
+        buf[1] = 12; // pad 1
+        buf[2] = 0x10; // NoteOn, raw pressure 186
+        buf[3] = 0xba;
+        parser.parse(&buf, &mut events);
+        assert!(events.iter().any(|e| matches!(e, Event::Button { name: "pad_1", pressed: true, .. })));
+        events.clear();
+
+        // 2. Report 2: finger continues decelerating, pressure rises to 647 (0x287)
+        buf[2] = 0x42;
+        buf[3] = 0x87;
+        parser.parse(&buf, &mut events);
+        let p2 = events.iter().find_map(|e| match e {
+            Event::Grid { name: "pad_1", pressure, .. } => Some(*pressure),
+            _ => None,
+        });
+        assert!(p2.is_some() && (p2.unwrap() - 647.0 / 4095.0).abs() < 1e-4);
+        events.clear();
+
+        // 3. Report 3: peak pressure reached at 3091 (0xc13)
+        buf[2] = 0x4c;
+        buf[3] = 0x13;
+        parser.parse(&buf, &mut events);
+        let p3 = events.iter().find_map(|e| match e {
+            Event::Grid { name: "pad_1", pressure, .. } => Some(*pressure),
+            _ => None,
+        });
+        assert!(p3.is_some() && (p3.unwrap() - 3091.0 / 4095.0).abs() < 1e-4);
     }
 }
 

@@ -5,6 +5,10 @@ pub struct EncoderState {
     pub value: u16,
     /// Whether we've received at least one packet (skip first delta)
     pub initialized: bool,
+    /// Last direction moved (+1 clockwise, -1 counter-clockwise, 0 none yet)
+    pub dir: i32,
+    /// Counts moved back against last direction not yet emitted (for boundary anti-flicker)
+    pub back: i32,
 }
 
 impl Default for EncoderState {
@@ -12,6 +16,8 @@ impl Default for EncoderState {
         Self {
             value: 0,
             initialized: false,
+            dir: 0,
+            back: 0,
         }
     }
 }
@@ -68,9 +74,14 @@ impl EncoderState {
     }
 
     /// Update with a new absolute ERP position (0..999) and return the delta
-    /// via shortest path around the 1000-step ring. Movements smaller than
-    /// `deadband` are held back (not lost) until they accumulate past it, to
-    /// suppress analog wobble.
+    /// via shortest path around the 1000-step ring.
+    ///
+    /// Uses directional hysteresis to suppress 1-count boundary oscillation at rest
+    /// without adding latency to deliberate turns:
+    /// - Counts moving in the current direction pass immediately.
+    /// - Single-count oscillations in reverse are held back until at least 2 counts
+    ///   accumulate in the new direction.
+    /// - Movements smaller than `deadband` are held back until they accumulate past it.
     pub fn update_erp(&mut self, pos: u16, deadband: u16) -> Option<i32> {
         if !self.initialized {
             self.value = pos;
@@ -78,11 +89,44 @@ impl EncoderState {
             return None;
         }
         let delta = wrap_delta_erp(pos, self.value);
-        if delta == 0 || delta.unsigned_abs() < deadband as u32 {
+        if delta == 0 {
             return None;
         }
         self.value = pos;
-        Some(delta)
+
+        let d = delta;
+        let effective_reverse_threshold = (deadband as i32).max(2);
+
+        let dir = self.dir;
+        if dir == 0 || d.signum() == dir {
+            let net = d + self.back;
+            self.dir = d.signum();
+            self.back = 0;
+            if net.signum() == d.signum() {
+                if net.unsigned_abs() >= deadband as u32 {
+                    return Some(net);
+                } else {
+                    self.back = net;
+                    return None;
+                }
+            }
+            self.back = net;
+            return None;
+        }
+
+        self.back += d;
+        if self.back.abs() < effective_reverse_threshold {
+            return None;
+        }
+
+        let net = self.back;
+        self.back = 0;
+        self.dir = net.signum();
+        if net.unsigned_abs() >= deadband as u32 {
+            Some(net)
+        } else {
+            None
+        }
     }
 
     /// Update with a new raw value for a slider, return value if changed.
@@ -197,6 +241,27 @@ mod tests {
         assert_eq!(enc.update_erp(990, 0), None);
         assert_eq!(enc.update_erp(7, 0), Some(17));
         assert_eq!(enc.update_erp(995, 0), Some(-12));
+    }
+
+    #[test]
+    fn erp_boundary_flicker_suppression() {
+        let mut enc = EncoderState::default();
+        // Initial reading
+        assert_eq!(enc.update_erp(0, 0), None);
+        // Move forward to 3 (+3) and 5 (+2)
+        assert_eq!(enc.update_erp(3, 0), Some(3));
+        assert_eq!(enc.update_erp(5, 0), Some(2));
+        // Boundary flicker between 5 and 4: moves back by 1 count, then forward by 1 count.
+        // Single count in reverse must be suppressed.
+        for _ in 0..5 {
+            assert_eq!(enc.update_erp(4, 0), None, "1-count reverse oscillation must be suppressed");
+            assert_eq!(enc.update_erp(5, 0), None, "flicker recovery back to baseline must not emit spurious count");
+        }
+        // Deliberate reverse turn: 5 -> 4 -> 3
+        assert_eq!(enc.update_erp(4, 0), None);
+        assert_eq!(enc.update_erp(3, 0), Some(-2), "accumulated 2 counts reverse must emit -2");
+        // Continued deliberate reverse: 3 -> 2
+        assert_eq!(enc.update_erp(2, 0), Some(-1), "continuing in current direction passes immediately");
     }
 
     #[test]

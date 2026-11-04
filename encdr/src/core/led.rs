@@ -2,9 +2,11 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LedValue {
     Off,
-    /// Dim / half-brightness level (maps to 0xE4 / 228 on NI monochrome LEDs).
+    /// Faint backlight level so inactive buttons remain readable in the dark (0x09 / 9).
+    Backlight,
+    /// Dim level for buttons available to be pressed but not active (0x22 / 34).
     Dim,
-    /// Bright / active level (maps to 0x9E / 158 on NI monochrome LEDs).
+    /// Bright / active level for currently selected buttons (0x7F / 127).
     Bright,
     Single(u8),
     Rgb { r: u8, g: u8, b: u8 },
@@ -20,20 +22,26 @@ impl LedValue {
     /// Native Instruments standard OFF state (`0x00`).
     pub const OFF: LedValue = LedValue::Off;
 
-    /// Native Instruments standard DIM / half-brightness level (`0xE4` / 228).
+    /// Native Instruments faint backlight state (`0x09` / 9).
+    pub const BACKLIGHT: LedValue = LedValue::Backlight;
+
+    /// Native Instruments standard DIM / unselected level (`0x22` / 34).
     pub const DIM: LedValue = LedValue::Dim;
 
-    /// Native Instruments standard BRIGHT / active level (`0x9E` / 158).
+    /// Native Instruments standard BRIGHT / active level (`0x7F` / 127).
     pub const BRIGHT: LedValue = LedValue::Bright;
 
     /// Native Instruments maximum drive level (`0xFF` / 255: max drive / intensity 3).
     pub const MAX: LedValue = LedValue::Single(255);
 
-    /// Raw byte for NI single-color button DIM state (`0xE4` / 228).
-    pub const NI_DIM: u8 = 228;
+    /// Raw byte for NI single-color button BACKLIGHT state (`0x09` / 9).
+    pub const NI_BACKLIGHT: u8 = 0x09;
 
-    /// Raw byte for NI single-color button BRIGHT state (`0x9E` / 158).
-    pub const NI_BRIGHT: u8 = 158;
+    /// Raw byte for NI single-color button DIM state (`0x22` / 34).
+    pub const NI_DIM: u8 = 0x22;
+
+    /// Raw byte for NI single-color button BRIGHT state (`0x7F` / 127).
+    pub const NI_BRIGHT: u8 = 0x7F;
 
     /// Raw byte for NI single-color button MAX state (`0xFF` / 255).
     pub const NI_MAX: u8 = 255;
@@ -44,6 +52,7 @@ impl LedValue {
     pub fn brightness(&self) -> u8 {
         match self {
             LedValue::Off => 0,
+            LedValue::Backlight => Self::NI_BACKLIGHT,
             LedValue::Dim => Self::NI_DIM,
             LedValue::Bright => Self::NI_BRIGHT,
             LedValue::Single(b) => *b,
@@ -183,8 +192,9 @@ mod tests {
     #[test]
     fn test_led_value_brightness() {
         assert_eq!(LedValue::Off.brightness(), 0);
-        assert_eq!(LedValue::Dim.brightness(), 228);
-        assert_eq!(LedValue::Bright.brightness(), 158);
+        assert_eq!(LedValue::Backlight.brightness(), 0x09);
+        assert_eq!(LedValue::Dim.brightness(), 0x22);
+        assert_eq!(LedValue::Bright.brightness(), 0x7F);
         assert_eq!(LedValue::Single(42).brightness(), 42);
         assert_eq!(LedValue::Rgb { r: 10, g: 90, b: 30 }.brightness(), 90);
     }

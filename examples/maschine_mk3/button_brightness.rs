@@ -1,7 +1,8 @@
 //! NI Maschine Mk3 control button brightness & dimming test.
 //!
-//! All 47 monochrome control buttons illuminate at DIM brightness (half-brightness / 0xE4 / 228, 1 LED under each button).
-//! Pressing any button elevates it to BRIGHT (active / 0x9E / 158, both LEDs active).
+//! All 47 monochrome control buttons illuminate at DIM brightness (linear 7-bit 0x22 / 34).
+//! Pressing any button elevates it to BRIGHT (linear 7-bit 0x7F / 127).
+//! Backlight level is 0x09 (9).
 //! Pads, touchstrip, and group buttons remain OFF.
 //!
 //! Run with:
@@ -41,23 +42,9 @@ fn main() {
     println!("Scanning for connected devices...\n");
 
     let mut encdr = Encdr::new(EncdrConfig::default()).expect("Failed to initialize encdr");
-    let ids = encdr.scan().expect("Scan failed");
-
-    let device_id = ids
-        .into_iter()
-        .find(|&id| {
-            encdr
-                .device_descriptor(id)
-                .map(|d| {
-                    d.vendor_id.0 == 0x17cc
-                        && (d.product_id.0 == 0x1600 || d.product_id.0 == 0x1820)
-                })
-                .unwrap_or(false)
-        })
-        .unwrap_or_else(|| {
-            eprintln!("❌ NI Maschine Mk3 (0x17cc:0x1600) or Maschine Plus (0x17cc:0x1820) not found.");
-            std::process::exit(1);
-        });
+    let device_id = encdr
+        .wait_for_controller(&["Maschine Mk3"])
+        .expect("Failed to connect to Maschine Mk3");
 
     let desc = encdr.device_descriptor(device_id).unwrap().clone();
     println!(
@@ -85,11 +72,22 @@ fn main() {
     println!("Press any control button to test BRIGHT response. Release to return to DIM.");
     println!("Press Ctrl+C to quit.\n");
 
+    let max_duration = std::env::args()
+        .position(|a| a == "--duration")
+        .and_then(|i| std::env::args().nth(i + 1))
+        .and_then(|s| s.parse::<f32>().ok());
+
     let events = encdr.events().clone();
     let start_time = Instant::now();
 
     loop {
         let elapsed = start_time.elapsed().as_secs_f32();
+        if let Some(dur) = max_duration {
+            if elapsed >= dur {
+                println!("[{elapsed:6.1}s] Test duration reached. Exiting cleanly.");
+                break;
+            }
+        }
 
         while let Ok(event) = events.try_recv() {
             match event {
@@ -105,13 +103,13 @@ fn main() {
 
                         if pressed {
                             println!(
-                                "[{:7.3}s] [BUTTON PRESSED ] {:<12} -> \x1b[1;32mBRIGHT\x1b[0m (0x9E / 158, 2 LEDs lit)",
+                                "[{:7.3}s] [BUTTON PRESSED ] {:<12} -> \x1b[1;32mBRIGHT\x1b[0m (0x7F / 127)",
                                 elapsed,
                                 btn_name.to_uppercase()
                             );
                         } else {
                             println!(
-                                "[{:7.3}s] [BUTTON RELEASED] {:<12} -> \x1b[2;37mDIM\x1b[0m    (0xE4 / 228, half-brightness)",
+                                "[{:7.3}s] [BUTTON RELEASED] {:<12} -> \x1b[2;37mDIM\x1b[0m    (0x22 / 34)",
                                 elapsed,
                                 btn_name.to_uppercase()
                             );

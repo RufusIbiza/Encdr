@@ -74,6 +74,7 @@ impl JogRing {
     pub fn set_led(&mut self, index: usize, value: LedValue) {
         let b = match value {
             LedValue::Off => 0,
+            LedValue::Backlight => LedValue::NI_BACKLIGHT,
             LedValue::Dim => LedValue::NI_DIM,
             LedValue::Bright => LedValue::NI_BRIGHT,
             LedValue::Single(v) => v,

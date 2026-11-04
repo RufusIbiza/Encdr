@@ -181,7 +181,7 @@ fn main() {
                 let norm_x = x as f32 / 456.0;
                 let phase = elapsed * 3.5;
                 let y = center_y
-                    + (norm_x * freq_param * 6.283 + phase).sin()
+                    + (norm_x * freq_param * std::f32::consts::TAU + phase).sin()
                         * amp_param
                         * (1.0 - (norm_x - 0.5).abs() * 0.4);
                 let px = 12.0 + x as f32;
@@ -202,8 +202,8 @@ fn main() {
                 let norm_x = x as f32 / 456.0;
                 let phase = -elapsed * 2.2;
                 let y = center_y
-                    + ((norm_x * freq_param * 12.566 + phase).sin() * 0.5
-                        + (norm_x * freq_param * 3.141 + phase * 0.5).cos() * 0.5)
+                    + ((norm_x * freq_param * (2.0 * std::f32::consts::TAU) + phase).sin() * 0.5
+                        + (norm_x * freq_param * std::f32::consts::PI + phase * 0.5).cos() * 0.5)
                         * (amp_param * 0.6)
                         * touchstrip_val;
                 let px = 12.0 + x as f32;

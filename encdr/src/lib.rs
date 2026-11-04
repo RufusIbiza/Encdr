@@ -388,6 +388,18 @@ impl Encdr {
         }
     }
 
+    /// Sets the display backlight brightness for devices with adjustable screens
+    /// (e.g. Maschine MK3 displays via HID feature reports 0xf8/0xf9).
+    ///
+    /// - `level`: Brightness percentage (0..=100)
+    pub fn set_display_brightness(&self, device_id: DeviceId, level: u8) {
+        if let Some(handle) = self.devices.read().unwrap().get(&device_id) {
+            if handle.is_connected() {
+                handle.set_display_brightness(level);
+            }
+        }
+    }
+
     /// Set a 7-segment display control on a device by name.
     ///
     /// Writes the raw segment bitmask (bit 0=a .. bit 6=g, bit 7=dp) as a single LED value.

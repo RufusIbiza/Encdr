@@ -322,20 +322,29 @@ impl Default for LedProtocol {
 }
 
 impl LedProtocol {
+    /// Default byte value for faint backlight level under this protocol.
+    pub fn default_backlight_byte(&self) -> u8 {
+        match self {
+            LedProtocol::Nhl2 => 251,
+            LedProtocol::Linear7Bit => crate::core::led::LedValue::NI_BACKLIGHT, // 0x09 / 9
+            LedProtocol::Linear8Bit => 18,
+        }
+    }
+
     /// Default byte value for dim / half-brightness level under this protocol.
     pub fn default_dim_byte(&self) -> u8 {
         match self {
-            LedProtocol::Nhl2 => crate::core::led::LedValue::NI_DIM, // 228
-            LedProtocol::Linear7Bit => 38,
-            LedProtocol::Linear8Bit => 76,
+            LedProtocol::Nhl2 => 228,
+            LedProtocol::Linear7Bit => crate::core::led::LedValue::NI_DIM, // 0x22 / 34
+            LedProtocol::Linear8Bit => 68,
         }
     }
 
     /// Default byte value for bright / active level under this protocol.
     pub fn default_bright_byte(&self) -> u8 {
         match self {
-            LedProtocol::Nhl2 => crate::core::led::LedValue::NI_BRIGHT, // 158
-            LedProtocol::Linear7Bit => 127,
+            LedProtocol::Nhl2 => 158,
+            LedProtocol::Linear7Bit => crate::core::led::LedValue::NI_BRIGHT, // 0x7F / 127
             LedProtocol::Linear8Bit => 255,
         }
     }
@@ -358,6 +367,9 @@ pub struct LedLayoutDesc {
     /// LED brightness protocol used for single-color button LEDs in this layout.
     #[serde(default)]
     pub protocol: Option<LedProtocol>,
+    /// Explicit override byte for `LedValue::Backlight`.
+    #[serde(default)]
+    pub backlight_value: Option<u8>,
     /// Explicit override byte for `LedValue::Dim`.
     #[serde(default)]
     pub dim_value: Option<u8>,
@@ -375,6 +387,12 @@ impl LedLayoutDesc {
             .chain(&self.prefix)
             .map(|b| b.0 as u8)
             .collect()
+    }
+
+    /// Returns the resolved byte value for `LedValue::Backlight` on single-color LEDs in this group.
+    pub fn backlight_byte(&self) -> u8 {
+        self.backlight_value
+            .unwrap_or_else(|| self.protocol.unwrap_or_default().default_backlight_byte())
     }
 
     /// Returns the resolved byte value for `LedValue::Dim` on single-color LEDs in this group.
@@ -491,6 +509,17 @@ pub enum ScreenProtocol {
     /// 8-byte LE header (`[x=0, y_page, width=128, height_pages=2]`), and 256
     /// page-formatted data bytes.
     NiMikroMk2,
+
+    /// Native Instruments color screen command stream with RLE compression
+    /// (Maschine MK3, Maschine+, Komplete Kontrol S49/S61/S88 MK2, Traktor S8/S5/D2/S4 MK3).
+    /// Framing: 16-byte header `[0x84, 0x00, display, 0x60, 0,0,0,0, x_be, y_be, w_be, h_be]`,
+    /// followed by stream opcodes:
+    /// - `0x00 nn nn nn`: raw pixel pairs
+    /// - `0x01 nn nn nn [pair]`: repeat 1 pixel pair `nn` times (RLE)
+    /// - `0x02 nn nn nn`: skip `nn` pixel pairs
+    /// - `0x03, 0, 0, 0`: blit / swap buffer
+    /// - `0x40, 0, 0, 0`: end of transfer
+    NiColorRle { display: u8 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -557,10 +586,30 @@ pub struct QuirksDesc {
     /// device that stalls commands until replies are read cannot deadlock).
     #[serde(default)]
     pub init_writes: Vec<InitWriteDesc>,
+    /// Display backlight brightness settings via feature reports on connect.
+    #[serde(default)]
+    pub display_brightness: Option<DisplayBrightnessQuirkDesc>,
     /// Lets the NI hardware service draw this device's screens on Windows and
     /// macOS when their USB interface can't be claimed directly.
     #[serde(default)]
     pub ni_service: Option<NiServiceQuirkDesc>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DisplayBrightnessQuirkDesc {
+    pub interface: String,
+    #[serde(default = "default_display_brightness_reports")]
+    pub reports: Vec<HexU16>,
+    #[serde(default = "default_display_brightness_level")]
+    pub level: u8,
+}
+
+fn default_display_brightness_reports() -> Vec<HexU16> {
+    vec![HexU16(0xf8), HexU16(0xf9)]
+}
+
+fn default_display_brightness_level() -> u8 {
+    100
 }
 
 #[derive(Debug, Clone, Deserialize)]

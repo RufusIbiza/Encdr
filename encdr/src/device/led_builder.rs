@@ -10,6 +10,8 @@ pub struct LedBuilder {
     prefix: Vec<u8>,
     endpoint_address: u8,
     transfer_type: TransferType,
+    /// Byte written for `LedValue::Backlight` on single-color LEDs in this group
+    backlight_byte: u8,
     /// Byte written for `LedValue::Dim` on single-color LEDs in this group
     dim_byte: u8,
     /// Byte written for `LedValue::Bright` on single-color LEDs in this group
@@ -78,6 +80,7 @@ impl LedBuilder {
         let out_ep = interface.endpoints.out.as_ref();
         let endpoint_address = out_ep.map(|ep| ep.address.0 as u8).unwrap_or(0x01);
         let transfer_type = out_ep.map(|ep| ep.transfer_type).unwrap_or(TransferType::Interrupt);
+        let backlight_byte = desc.backlight_byte();
         let dim_byte = desc.dim_byte();
         let bright_byte = desc.bright_byte();
         // Push any non-zero defaults (e.g. a display backlight) on the first flush.
@@ -89,12 +92,18 @@ impl LedBuilder {
             prefix: desc.prefix_bytes(),
             endpoint_address,
             transfer_type,
+            backlight_byte,
             dim_byte,
             bright_byte,
             led_map,
             buffer,
             dirty,
         }
+    }
+
+    /// Returns the resolved byte value for `LedValue::Backlight` in this group.
+    pub fn backlight_byte(&self) -> u8 {
+        self.backlight_byte
     }
 
     /// Returns the resolved byte value for `LedValue::Dim` in this group.
@@ -116,6 +125,12 @@ impl LedBuilder {
             (LedMapping::Single { offset }, LedValue::Off) => {
                 if *offset < self.buffer.len() {
                     self.buffer[*offset] = 0;
+                    self.dirty = true;
+                }
+            }
+            (LedMapping::Single { offset }, LedValue::Backlight) => {
+                if *offset < self.buffer.len() {
+                    self.buffer[*offset] = self.backlight_byte;
                     self.dirty = true;
                 }
             }
@@ -153,6 +168,19 @@ impl LedBuilder {
                 }
                 if *b < self.buffer.len() {
                     self.buffer[*b] = 0;
+                }
+                self.dirty = true;
+            }
+            (LedMapping::Rgb { r: ro, g: go, b: bo }, LedValue::Backlight) => {
+                let val = 18;
+                if *ro < self.buffer.len() {
+                    self.buffer[*ro] = val;
+                }
+                if *go < self.buffer.len() {
+                    self.buffer[*go] = val;
+                }
+                if *bo < self.buffer.len() {
+                    self.buffer[*bo] = val;
                 }
                 self.dirty = true;
             }
@@ -209,6 +237,13 @@ impl LedBuilder {
             (LedMapping::Indexed { offset }, LedValue::Off) => {
                 if *offset < self.buffer.len() {
                     self.buffer[*offset] = 0;
+                    self.dirty = true;
+                }
+            }
+            (LedMapping::Indexed { offset }, LedValue::Backlight) => {
+                if *offset < self.buffer.len() {
+                    // White (index 17 in 1-based palette), intensity 0 (faint backlight / dimmest shade)
+                    self.buffer[*offset] = (17 << 2) | 0;
                     self.dirty = true;
                 }
             }
@@ -365,26 +400,32 @@ mod tests {
         )
         .unwrap();
         let mut lb_nhl2 = LedBuilder::new(&desc_nhl2, &iface);
+        assert_eq!(lb_nhl2.backlight_byte(), 251);
         assert_eq!(lb_nhl2.dim_byte(), 228);
         assert_eq!(lb_nhl2.bright_byte(), 158);
+        lb_nhl2.set("play", LedValue::Backlight);
+        assert_eq!(lb_nhl2.flush(), Some(vec![251, 0]));
         lb_nhl2.set("play", LedValue::Dim);
         assert_eq!(lb_nhl2.flush(), Some(vec![228, 0]));
         lb_nhl2.set("play", LedValue::Bright);
         assert_eq!(lb_nhl2.flush(), Some(vec![158, 0]));
 
-        // 2. Linear 7-bit (Maschine Jam)
+        // 2. Linear 7-bit (Maschine MK3 / Jam)
         let desc_7bit: LedLayoutDesc = serde_json::from_str(
             r#"{ "id": "buttons", "interface": "control", "buffer_size": 2, "protocol": "linear_7bit",
                  "items": [ { "type": "single", "name": "play", "offset": 0 } ] }"#,
         )
         .unwrap();
         let mut lb_7bit = LedBuilder::new(&desc_7bit, &iface);
-        assert_eq!(lb_7bit.dim_byte(), 38);
-        assert_eq!(lb_7bit.bright_byte(), 127);
+        assert_eq!(lb_7bit.backlight_byte(), 0x09);
+        assert_eq!(lb_7bit.dim_byte(), 0x22);
+        assert_eq!(lb_7bit.bright_byte(), 0x7F);
+        lb_7bit.set("play", LedValue::Backlight);
+        assert_eq!(lb_7bit.flush(), Some(vec![0x09, 0]));
         lb_7bit.set("play", LedValue::Dim);
-        assert_eq!(lb_7bit.flush(), Some(vec![38, 0]));
+        assert_eq!(lb_7bit.flush(), Some(vec![0x22, 0]));
         lb_7bit.set("play", LedValue::Bright);
-        assert_eq!(lb_7bit.flush(), Some(vec![127, 0]));
+        assert_eq!(lb_7bit.flush(), Some(vec![0x7F, 0]));
 
         // 3. Linear 8-bit (Maschine Studio / Mk2)
         let desc_8bit: LedLayoutDesc = serde_json::from_str(
@@ -393,22 +434,28 @@ mod tests {
         )
         .unwrap();
         let mut lb_8bit = LedBuilder::new(&desc_8bit, &iface);
-        assert_eq!(lb_8bit.dim_byte(), 76);
+        assert_eq!(lb_8bit.backlight_byte(), 18);
+        assert_eq!(lb_8bit.dim_byte(), 68);
         assert_eq!(lb_8bit.bright_byte(), 255);
+        lb_8bit.set("play", LedValue::Backlight);
+        assert_eq!(lb_8bit.flush(), Some(vec![18, 0]));
         lb_8bit.set("play", LedValue::Dim);
-        assert_eq!(lb_8bit.flush(), Some(vec![76, 0]));
+        assert_eq!(lb_8bit.flush(), Some(vec![68, 0]));
         lb_8bit.set("play", LedValue::Bright);
         assert_eq!(lb_8bit.flush(), Some(vec![255, 0]));
 
         // 4. Explicit override bytes
         let desc_custom: LedLayoutDesc = serde_json::from_str(
-            r#"{ "id": "buttons", "interface": "control", "buffer_size": 2, "dim_value": 50, "bright_value": 200,
+            r#"{ "id": "buttons", "interface": "control", "buffer_size": 2, "backlight_value": 15, "dim_value": 50, "bright_value": 200,
                  "items": [ { "type": "single", "name": "play", "offset": 0 } ] }"#,
         )
         .unwrap();
         let mut lb_custom = LedBuilder::new(&desc_custom, &iface);
+        assert_eq!(lb_custom.backlight_byte(), 15);
         assert_eq!(lb_custom.dim_byte(), 50);
         assert_eq!(lb_custom.bright_byte(), 200);
+        lb_custom.set("play", LedValue::Backlight);
+        assert_eq!(lb_custom.flush(), Some(vec![15, 0]));
         lb_custom.set("play", LedValue::Dim);
         assert_eq!(lb_custom.flush(), Some(vec![50, 0]));
         lb_custom.set("play", LedValue::Bright);

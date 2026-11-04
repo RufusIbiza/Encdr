@@ -14,7 +14,7 @@ pub struct InitStep {
 pub fn init_sequence(desc: &ScreenDesc) -> Vec<InitStep> {
     match desc.protocol {
         Some(ScreenProtocol::NiSt7529 { display }) => st7529_init(display),
-        Some(ScreenProtocol::NiMikroMk2) | None => Vec::new(),
+        Some(ScreenProtocol::NiMikroMk2) | Some(ScreenProtocol::NiColorRle { .. }) | None => Vec::new(),
     }
 }
 
@@ -24,7 +24,7 @@ pub fn frame_transfers(desc: &ScreenDesc, blit: Vec<u8>) -> Vec<Vec<u8>> {
     match desc.protocol {
         Some(ScreenProtocol::NiSt7529 { display }) => st7529_frame(display, desc, &blit),
         Some(ScreenProtocol::NiMikroMk2) => mikro_mk2_frame(desc, &blit),
-        None => vec![blit],
+        Some(ScreenProtocol::NiColorRle { .. }) | None => vec![blit],
     }
 }
 
@@ -157,6 +157,10 @@ fn st7529_frame(display: u8, desc: &ScreenDesc, pixels: &[u8]) -> Vec<Vec<u8>> {
 
 /// Build a full-frame blit transfer buffer: header + pixel data + footer.
 pub fn build_full_blit(desc: &ScreenDesc, native_pixels: &[u8]) -> Vec<u8> {
+    if let Some(ScreenProtocol::NiColorRle { display }) = desc.protocol {
+        return encode_ni_color_rle(display, 0, 0, desc.width, desc.height, native_pixels);
+    }
+
     let header = parse_byte_list(&desc.full_blit.header);
     let footer = parse_byte_list(&desc.full_blit.footer);
 
@@ -176,6 +180,10 @@ pub fn build_partial_blit(
     h: u16,
     region_pixels: &[u8],
 ) -> Vec<u8> {
+    if let Some(ScreenProtocol::NiColorRle { display }) = desc.protocol {
+        return encode_ni_color_rle(display, x, y, w, h, region_pixels);
+    }
+
     let partial = desc.partial_blit.as_ref().expect("partial_blit not supported");
 
     // Compute template substitution values
@@ -260,6 +268,194 @@ fn expand_template(
     }
 
     result
+}
+
+// ── NI Color Screen Command Stream (Maschine MK3, Studio, KK Mk2, Traktor) ────
+//
+// 16-byte header: `[0x84, 0x00, display, 0x60, 0, 0, 0, 0, x_be, y_be, w_be, h_be]`
+// followed by 4-byte stream opcodes:
+// - `0x00 nn nn nn`: raw transmit `nn` pixel pairs
+// - `0x01 nn nn nn [pair]`: repeat 1 pixel pair `nn` times (RLE)
+// - `0x02 nn nn nn`: skip `nn` pixel pairs (leaves screen RAM unchanged)
+// - `0x03, 0x00, 0x00, 0x00`: blit / swap buffer
+// - `0x40, 0x00, 0x00, 0x00`: end of transfer
+
+/// Encodes a rectangle of 16-bit BGR565-BE pixels into the Native Instruments hardware
+/// command stream format with Run-Length Encoding (RLE).
+pub fn encode_ni_color_rle(
+    display: u8,
+    x: u16,
+    y: u16,
+    w: u16,
+    h: u16,
+    bgr565_be_pixels: &[u8],
+) -> Vec<u8> {
+    let mut f = Vec::with_capacity(16 + bgr565_be_pixels.len() + 8);
+    f.extend_from_slice(&[0x84, 0x00, display, 0x60, 0, 0, 0, 0]);
+    f.extend_from_slice(&x.to_be_bytes());
+    f.extend_from_slice(&y.to_be_bytes());
+    f.extend_from_slice(&w.to_be_bytes());
+    f.extend_from_slice(&h.to_be_bytes());
+
+    let pair_count = bgr565_be_pixels.len() / 4;
+    let count_cmd = |buf: &mut Vec<u8>, cmd: u8, n: usize| {
+        buf.push(cmd);
+        buf.push((n >> 16) as u8);
+        buf.push((n >> 8) as u8);
+        buf.push(n as u8);
+    };
+
+    let mut i = 0;
+    while i < pair_count {
+        let p_i = &bgr565_be_pixels[i * 4..(i + 1) * 4];
+        let mut run = 1;
+        while i + run < pair_count && &bgr565_be_pixels[(i + run) * 4..(i + run + 1) * 4] == p_i {
+            run += 1;
+        }
+
+        if run >= 4 {
+            count_cmd(&mut f, 0x01, run);
+            f.extend_from_slice(p_i);
+            i += run;
+            continue;
+        }
+
+        // Scan raw pixels until next run of at least 4 identical pairs
+        let start = i;
+        while i < pair_count {
+            if i + 4 <= pair_count {
+                let candidate = &bgr565_be_pixels[i * 4..(i + 1) * 4];
+                if (1..4).all(|k| &bgr565_be_pixels[(i + k) * 4..(i + k + 1) * 4] == candidate) {
+                    break;
+                }
+            }
+            i += 1;
+        }
+
+        let raw_count = i - start;
+        if raw_count > 0 {
+            count_cmd(&mut f, 0x00, raw_count);
+            f.extend_from_slice(&bgr565_be_pixels[start * 4..i * 4]);
+        }
+    }
+
+    f.extend_from_slice(&[0x03, 0, 0, 0, 0x40, 0, 0, 0]);
+    f
+}
+
+/// Decoder for NI color screen command streams, useful for testing and verifying streams.
+#[derive(Default)]
+pub struct NiColorDecoder {
+    pub screens: [Vec<u8>; 2],
+    pub width: usize,
+    pub height: usize,
+    buf: Vec<u8>,
+}
+
+impl NiColorDecoder {
+    pub fn new(width: usize, height: usize) -> Self {
+        Self {
+            screens: [vec![0u8; width * height * 2], vec![0u8; width * height * 2]],
+            width,
+            height,
+            buf: Vec::new(),
+        }
+    }
+
+    pub fn feed(&mut self, bytes: &[u8]) -> Vec<usize> {
+        self.buf.extend_from_slice(bytes);
+        let mut blitted = Vec::new();
+        loop {
+            match self.parse_transfer() {
+                Some(Ok((used, display_blitted))) => {
+                    self.buf.drain(..used);
+                    if let Some(d) = display_blitted {
+                        blitted.push(d);
+                    }
+                }
+                Some(Err(())) => {
+                    let next = self.buf[1..]
+                        .windows(2)
+                        .position(|w| w == [0x84, 0x00])
+                        .map_or(self.buf.len(), |i| i + 1);
+                    self.buf.drain(..next);
+                }
+                None => break,
+            }
+        }
+        blitted
+    }
+
+    fn parse_transfer(&mut self) -> Option<Result<(usize, Option<usize>), ()>> {
+        let b = &self.buf;
+        if b.len() < 16 {
+            return None;
+        }
+        if b[0] != 0x84 || b[1] != 0 || b[2] > 1 {
+            return Some(Err(()));
+        }
+        let display = b[2] as usize;
+        let u16_at = |i: usize| u16::from_be_bytes([b[i], b[i + 1]]) as usize;
+        let (x, y, w, h) = (u16_at(8), u16_at(10), u16_at(12), u16_at(14));
+        if w == 0 || x + w > self.width || y + h > self.height {
+            return Some(Err(()));
+        }
+
+        let mut i = 16;
+        let mut pixels: Vec<Option<[u8; 2]>> = Vec::new();
+        let mut blit = None;
+
+        loop {
+            let cmd = b.get(i..i + 4)?;
+            let count = ((cmd[1] as usize) << 16) | ((cmd[2] as usize) << 8) | (cmd[3] as usize);
+            i += 4;
+            match cmd[0] {
+                0x00 => {
+                    let data = b.get(i..i + count * 4)?;
+                    for chunk in data.chunks_exact(2) {
+                        pixels.push(Some([chunk[0], chunk[1]]));
+                    }
+                    i += count * 4;
+                }
+                0x01 => {
+                    let pair_bytes = b.get(i..i + 4)?;
+                    let p0 = [pair_bytes[0], pair_bytes[1]];
+                    let p1 = [pair_bytes[2], pair_bytes[3]];
+                    for _ in 0..count {
+                        pixels.push(Some(p0));
+                        pixels.push(Some(p1));
+                    }
+                    i += 4;
+                }
+                0x02 => {
+                    for _ in 0..count * 2 {
+                        pixels.push(None);
+                    }
+                }
+                0x03 => blit = Some(display),
+                0x40 => break,
+                _ => return Some(Err(())),
+            }
+        }
+
+        let target = &mut self.screens[display];
+        let mut px_idx = 0;
+        for row in 0..h {
+            for col in 0..w {
+                if px_idx >= pixels.len() {
+                    break;
+                }
+                if let Some(p) = pixels[px_idx] {
+                    let dst_offset = ((y + row) * self.width + (x + col)) * 2;
+                    target[dst_offset] = p[0];
+                    target[dst_offset + 1] = p[1];
+                }
+                px_idx += 1;
+            }
+        }
+
+        Some(Ok((i, blit)))
+    }
 }
 
 #[cfg(test)]
@@ -358,5 +554,72 @@ mod tests {
 
         // In transfer 0, top-left pixel (x=0, y=0) should map to bit 0 of the first data byte (offset 9)
         assert_eq!(transfers[0][9], 0x01);
+    }
+
+    #[test]
+    fn ni_color_rle_compression_and_decode() {
+        let w = 8u16;
+        let h = 8u16;
+        // 64 pixels * 2 bytes = 128 bytes = 32 pixel pairs
+        // Make 10 pairs of red, then 22 pairs of blue
+        let red_pair = [0xF8, 0x00, 0xF8, 0x00];
+        let blue_pair = [0x00, 0x1F, 0x00, 0x1F];
+        let mut pixels = Vec::new();
+        for _ in 0..10 {
+            pixels.extend_from_slice(&red_pair);
+        }
+        for _ in 0..22 {
+            pixels.extend_from_slice(&blue_pair);
+        }
+
+        let encoded = encode_ni_color_rle(0, 0, 0, w, h, &pixels);
+
+        // Header: 16 bytes
+        // Run 1: 4 bytes opcode + 4 bytes pair = 8 bytes
+        // Run 2: 4 bytes opcode + 4 bytes pair = 8 bytes
+        // Footer: 4 bytes (blit) + 4 bytes (end) = 8 bytes
+        // Total expected size: 16 + 8 + 8 + 8 = 40 bytes (vs 128 raw)
+        assert_eq!(encoded.len(), 40);
+
+        let mut decoder = NiColorDecoder::new(w as usize, h as usize);
+        let blits = decoder.feed(&encoded);
+        assert_eq!(blits, vec![0]);
+        assert_eq!(decoder.screens[0], pixels);
+    }
+
+    #[test]
+    fn ni_color_rle_raw_and_partial_blit() {
+        let full_w = 16usize;
+        let full_h = 16usize;
+        let mut decoder = NiColorDecoder::new(full_w, full_h);
+
+        // Partial blit on display 1: x=4, y=2, w=4, h=2 (8 pixels = 4 pairs, all unique)
+        let sub_w = 4u16;
+        let sub_h = 2u16;
+        let mut sub_pixels = Vec::new();
+        for i in 0..8u8 {
+            sub_pixels.push(i);
+            sub_pixels.push(i + 10);
+        }
+
+        let encoded = encode_ni_color_rle(1, 4, 2, sub_w, sub_h, &sub_pixels);
+        let blits = decoder.feed(&encoded);
+        assert_eq!(blits, vec![1]);
+
+        // Verify the sub-rectangle in screen 1 was updated
+        for row in 0..sub_h as usize {
+            for col in 0..sub_w as usize {
+                let src_idx = (row * (sub_w as usize) + col) * 2;
+                let dst_idx = ((2 + row) * full_w + (4 + col)) * 2;
+                assert_eq!(
+                    &decoder.screens[1][dst_idx..dst_idx + 2],
+                    &sub_pixels[src_idx..src_idx + 2],
+                    "Mismatch at sub rect ({col}, {row})"
+                );
+            }
+        }
+
+        // Verify outside pixels remain 0
+        assert_eq!(decoder.screens[1][0..2], [0, 0]);
     }
 }

@@ -344,6 +344,33 @@ encdr/
 
 ## Changelog
 
+### v0.9.0
+- **Native Instruments Color Screen Command Stream & RLE Compression (`ScreenProtocol::NiColorRle`)**:
+  - Implemented dynamic 16-byte viewport header framing with 4-byte stream opcodes (`0x00` raw pixel pairs, `0x01` RLE compression for runs $\ge 4$ pairs, `0x02` pixel skip, `0x03` swap buffer / blit, and `0x40` end of transfer).
+  - Run-length encoding slashes USB bulk transfer saturation by 40%–80% on typical UI panels, waveforms, and solid backgrounds.
+  - Enabled across all supported Native Instruments color display controllers:
+    - **Maschine Studio**, **Maschine Mk3**, and **Maschine Plus**
+    - **Komplete Kontrol S-Series Mk2** (S49, S61, S88 Mk2)
+    - **Traktor Kontrol S8**, **Traktor Kontrol S5**, **Traktor Kontrol D2**, and **Traktor Kontrol S4 Mk3**
+  - Added `NiColorDecoder` for automated protocol verification and stream round-trip testing.
+- **Display Backlight Brightness Control via USB HID Feature Reports**:
+  - Added hardware display backlight brightness control via HID feature reports `0xf8` / `0xf9` on control interface 4.
+  - Connected controllers auto-initialize display brightness to 100% on connect (overriding the dim 20% hardware default).
+  - Added [`Encdr::set_display_brightness(device_id, level)`](docs/api_reference.md) method for runtime backlight adjustment (0–100%).
+  - Added `DisplayBrightnessQuirkDesc` to `QuirksDesc` for declarative descriptor configuration.
+- **Enhanced LED Precision & Hardware Backlight Option**:
+  - Added `LedValue::Backlight` (`0x09` / 9) for subtle button backlight illumination.
+  - Updated linear 7-bit values to accurate hardware thresholds: `NI_DIM = 0x22` (34) and `NI_BRIGHT = 0x7F` (127) for controllers using active-high comparators.
+  - Updated `ni_maschine_mk3.json` and `ni_maschine_plus.json` button LED arrays to use `"protocol": "linear_7bit"`.
+  - Added `default_backlight_byte()` and backlight byte resolution across single, indexed, and RGB LEDs in `LedBuilder`.
+- **Pad Strike Velocity Peak Tracking & Mechanical Spring-back Rejection**:
+  - Implemented a 4 ms / 3-report deceleration window tracking initial pad strikes to capture true physical velocity peaks before emitting `PadEvent::Strike` / `Event::Grid`.
+  - Added a 50 ms mechanical spring-back suppression window following pad releases, eliminating spurious aftertouch pressure re-triggering while preserving soft touches and rapid taps.
+- **Encoder Directional Boundary Hysteresis**:
+  - Implemented zero-lag directional hysteresis in `update_erp()`, suppressing 1-count boundary oscillation and parameter flicker when an encoder rests on a detent transition.
+- **Linux Udev Device Access Rules**:
+  - Added `assets/50-encdr.rules` granting unprivileged desktop user access via `TAG+="uaccess"` across all Native Instruments controllers (VID `0x17cc`).
+
 ### v0.8.5 (contributed by [TVbene](https://github.com/TVBene))
 - **Maschine Mk3 & Maschine Plus Screen Encoder Wrap-around Fix** (reported, analyzed, and contributed by [TVbene](https://github.com/TVBene)):
   - Fixed an issue where continuous rotation of screen encoders 1 through 8 caused parameter values to jump to opposite endpoints when passing through 0 / 999.

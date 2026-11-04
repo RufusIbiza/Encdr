@@ -589,7 +589,7 @@
       "interface": "control",
       "buffer_size": 62,
       "prefix_byte": "0x80",
-      "protocol": "nhl2",
+      "protocol": "linear_7bit",
       "items": [
         {
           "type": "single",
@@ -1005,6 +1005,10 @@
       "width": 480,
       "height": 272,
       "pixel_format": "bgr565_be",
+      "protocol": {
+        "type": "ni_color_rle",
+        "display": 0
+      },
       "full_blit": {
         "header": "0x84,0x00,0x00,0x60,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01,0xe0,0x01,0x10,0x00,0x00,0xff,0x00",
         "footer": "0x03,0x00,0x00,0x00,0x40,0x00,0x00,0x00"
@@ -1023,6 +1027,10 @@
       "width": 480,
       "height": 272,
       "pixel_format": "bgr565_be",
+      "protocol": {
+        "type": "ni_color_rle",
+        "display": 1
+      },
       "full_blit": {
         "header": "0x84,0x00,0x01,0x60,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01,0xe0,0x01,0x10,0x00,0x00,0xff,0x00",
         "footer": "0x03,0x00,0x00,0x00,0x40,0x00,0x01,0x00"
@@ -1039,6 +1047,14 @@
   "quirks": {
     "dual_handle": true,
     "detach_kernel_driver": true,
+    "display_brightness": {
+      "interface": "control",
+      "reports": [
+        "0xf8",
+        "0xf9"
+      ],
+      "level": 100
+    },
     "ni_service": {
       "product_id": "0x1600",
       "screen_interface": "screen"

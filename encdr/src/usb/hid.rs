@@ -123,6 +123,12 @@ mod imp {
             .map_err(|e| e.to_string())
         }
 
+        /// Read a feature report (`buf[0]` must contain the report ID).
+        pub fn get_feature_report(&self, buf: &mut [u8]) -> Result<usize, String> {
+            let dev = self.writer.lock().map_err(|_| "HID writer poisoned".to_string())?;
+            dev.get_feature_report(buf).map_err(|e| e.to_string())
+        }
+
         /// Start a thread that reads input reports and forwards them to the
         /// returned [`HidReader`]. `report_size` is the largest expected report.
         pub fn spawn_reader(&self, name: String, report_size: usize) -> Result<HidReader, String> {
@@ -221,6 +227,9 @@ mod imp {
             Err("HID backend not compiled in".to_string())
         }
         pub fn send_feature_report(&self, _: &[u8]) -> Result<(), String> {
+            Err("HID backend not compiled in".to_string())
+        }
+        pub fn get_feature_report(&self, _: &mut [u8]) -> Result<usize, String> {
             Err("HID backend not compiled in".to_string())
         }
         pub fn spawn_reader(&self, _: String, _: usize) -> Result<HidReader, String> {

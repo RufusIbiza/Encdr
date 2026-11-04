@@ -159,6 +159,16 @@ let left_meter = [128u8; 16];
 encdr.set_led_strip_in_group(device_id, "master_meters", "meter_left", &left_meter);
 ```
 
+#### `pub fn set_display_brightness(&self, device_id: DeviceId, level: u8)`
+Sets the screen backlight brightness on supported color screen controllers (such as Maschine Mk3 and Maschine Plus) via USB HID feature reports `0xf8` / `0xf9`.
+
+- `device_id`: Target device.
+- `level`: Backlight brightness percentage (0–100). The hardware default is 20%; Encdr automatically initializes to 100% on connection.
+
+```rust
+encdr.set_display_brightness(device_id, 100);
+```
+
 #### `pub fn set_seven_segment(&self, device_id: DeviceId, name: &str, seg: SevenSegment)`
 Updates a 7-segment display control by name, writing the raw segment bitmask (`bit 0 = a` .. `bit 6 = g`, `bit 7 = dp`) to the hardware.
 
@@ -534,6 +544,7 @@ Defined in [`encdr::core::led::LedValue`](file:///home/rufus/Documents/Projects/
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LedValue {
     Off,
+    Backlight,
     Dim,
     Bright,
     Single(u8),
@@ -546,12 +557,14 @@ pub enum LedValue {
 | Constant | Value | Description |
 | :--- | :--- | :--- |
 | `LedValue::OFF` | `LedValue::Off` | Off state |
-| `LedValue::DIM` | `LedValue::Dim` | Dim / half-brightness level (idle / 1 LED illuminated) |
-| `LedValue::BRIGHT` | `LedValue::Bright` | Bright / active level (active / 2 LEDs illuminated) |
+| `LedValue::BACKLIGHT` | `LedValue::Backlight` | Subtle backlight level |
+| `LedValue::DIM` | `LedValue::Dim` | Dim / idle level (1 LED illuminated) |
+| `LedValue::BRIGHT` | `LedValue::Bright` | Bright / active level (active / full illumination) |
 | `LedValue::MAX` | `LedValue::Single(255)` | Maximum drive level |
 | `LedValue::NI_OFF` | `0` (`0x00`) | Raw byte for NI single-color button off state |
-| `LedValue::NI_DIM` | `228` (`0xE4`) | Raw byte for NI single-color button dim / half-brightness (idle) |
-| `LedValue::NI_BRIGHT` | `158` (`0x9E`) | Raw byte for NI single-color button bright / active |
+| `LedValue::NI_BACKLIGHT`| `9` (`0x09`) | Raw byte for NI single-color button backlight |
+| `LedValue::NI_DIM` | `34` (`0x22`) | Raw byte for NI single-color button dim / idle |
+| `LedValue::NI_BRIGHT` | `127` (`0x7F`) | Raw byte for NI single-color button bright / active |
 | `LedValue::NI_MAX` | `255` (`0xFF`) | Raw byte for NI single-color button maximum drive |
 
 ### Methods
@@ -559,16 +572,18 @@ pub enum LedValue {
 #### `pub fn brightness(&self) -> u8`
 Returns the effective brightness (0–255) of the value.
 - `Off`: `0`
-- `Dim`: `228` (`LedValue::NI_DIM`)
-- `Bright`: `158` (`LedValue::NI_BRIGHT`)
+- `Backlight`: `9` (`LedValue::NI_BACKLIGHT`)
+- `Dim`: `34` (`LedValue::NI_DIM`)
+- `Bright`: `127` (`LedValue::NI_BRIGHT`)
 - `Single(b)`: `b`
 - `Rgb { r, g, b }`: $\max(r, g, b)$
 
 #### `pub fn to_ni_single_byte(pct: u8) -> u8`
-Converts a brightness percentage ($0..100$) to the Native Instruments PWM duty cycle byte format used by single-color button LEDs:
+Converts a brightness percentage ($0..100$) to the Native Instruments single-color button byte format:
 - `0`: Off (`0x00`)
-- `30`: Dim / half-brightness (`0xE4` = 228)
-- `100`: Bright / active (`0x9E` = 158)
+- `7`: Backlight (`0x09` = 9)
+- `27`: Dim / idle (`0x22` = 34)
+- `100`: Bright / active (`0x7F` = 127)
 
 #### `pub fn single_percent(pct: u8) -> Self`
 Convenience constructor returning `LedValue::Off` for $0$, or `LedValue::Single(to_ni_single_byte(pct))` for $1..=100$.
@@ -585,14 +600,14 @@ let ni_byte = LedValue::to_ni_palette_byte(255, 0, 0); // Red at full brightness
 
 ### Multi-Target & Protocol-Aware Mapping Semantics
 
-When `LedValue::Dim` or `LedValue::Bright` is dispatched via `set_led` or `set_led_in_group`, `LedBuilder` automatically tailors output to the hardware target type and the descriptor's configured [`LedProtocol`](#5-led-values--ni-palette-ledvalue):
+When `LedValue::Backlight`, `LedValue::Dim`, or `LedValue::Bright` is dispatched via `set_led` or `set_led_in_group`, `LedBuilder` automatically tailors output to the hardware target type and the descriptor's configured [`LedProtocol`](#5-led-values--ni-palette-ledvalue):
 - **Single (Monochrome Button LED):**
-  - **`nhl2`** (Maschine Mk3, Plus, Mikro Mk3, KK Mk2/Mk3, X1 Mk3): `Dim` emits `228` (`0xE4` = half-brightness / 1 LED illuminated), `Bright` emits `158` (`0x9E` = active / both LEDs illuminated).
-  - **`linear_7bit`** (Maschine Jam, Traktor S2/S4 Mk3, etc.): `Dim` emits `38` (~30%), `Bright` emits `127` (100%).
-  - **`linear_8bit`** (Maschine Studio, Maschine Mk2, Traktor S4/S5/S8, etc.): `Dim` emits `76` (~30%), `Bright` emits `255` (100%).
-  - Descriptors can also declare explicit `dim_value` and `bright_value` overrides per LED group.
-- **RGB LEDs:** `Dim` emits `(64, 64, 64)`, `Bright` emits `(255, 255, 255)`.
-- **Indexed Palette LEDs:** `Dim` emits `(17 << 2) | 1` (dim white), `Bright` emits `(17 << 2) | 3` (bright white).
+  - **`linear_7bit`** (Maschine Mk3, Maschine Plus, Maschine Jam, Traktor S2/S4 Mk3, etc.): `Backlight` emits `9` (`0x09`), `Dim` emits `34` (`0x22`), `Bright` emits `127` (`0x7F`).
+  - **`linear_8bit`** (Maschine Studio, Maschine Mk2, Traktor S4/S5/S8, etc.): `Backlight` emits `18` (`0x12`), `Dim` emits `68` (`0x44`), `Bright` emits `255` (`0xFF`).
+  - **`nhl2`** (Mikro Mk3, KK Mk2/Mk3, X1 Mk3): Inverted active-low comparator where `Dim` emits `228` (`0xE4`) and `Bright` emits `158` (`0x9E`).
+  - Descriptors can also declare explicit `backlight_value`, `dim_value`, and `bright_value` overrides per LED group.
+- **RGB LEDs:** `Backlight` emits `(20, 20, 20)`, `Dim` emits `(64, 64, 64)`, `Bright` emits `(255, 255, 255)`.
+- **Indexed Palette LEDs:** `Backlight` emits `(17 << 2) | 0` (backlight white), `Dim` emits `(17 << 2) | 1` (dim white), `Bright` emits `(17 << 2) | 3` (bright white).
 
 ---
 

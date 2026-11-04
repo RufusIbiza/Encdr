@@ -76,9 +76,17 @@ fn main() {
     println!(" Connected: {} (VID:PID 0x{:04x}:0x{:04x})", desc.name, desc.vendor_id.0, desc.product_id.0);
     println!(" Controls available: {}\n", desc.control_count());
     let screens = !std::env::args().any(|a| a == "--no-screens") && !desc.screens.is_empty();
+    let max_duration = std::env::args()
+        .position(|a| a == "--duration")
+        .and_then(|i| std::env::args().nth(i + 1))
+        .and_then(|s| s.parse::<f32>().ok());
     let mut input_log = File::create("mk3-input-log.txt").expect("Could not create mk3-input-log.txt");
     println!("Input events are written to mk3-input-log.txt. Screens: {}.", if screens { "on" } else { "off" });
-    println!("Interact with buttons, knobs, touchstrip, and pads. Press Ctrl+C to quit.\n");
+    if let Some(dur) = max_duration {
+        println!("Running test for {dur:.1} seconds...");
+    } else {
+        println!("Interact with buttons, knobs, touchstrip, and pads. Press Ctrl+C to quit.\n");
+    }
     let mut input_events = 0u64;
     let mut frames = 0u64;
     let mut last_screen = Instant::now();
@@ -102,6 +110,12 @@ fn main() {
 
     loop {
         let elapsed = start_time.elapsed().as_secs_f32();
+        if let Some(dur) = max_duration {
+            if elapsed >= dur {
+                println!("[{elapsed:6.1}s] Test duration reached. Submitted {frames} screen frames. Exiting cleanly.");
+                break;
+            }
+        }
 
         while let Ok(event) = events.try_recv() {
             match event {

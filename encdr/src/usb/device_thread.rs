@@ -9,7 +9,7 @@ use async_io::Timer;
 use crossbeam_channel::Sender;
 use futures_lite::future::block_on;
 use futures_lite::Stream;
-use nusb::transfer::{Buffer, Bulk, Completion, ControlOut, ControlType, In, Interrupt, Out, Recipient};
+use nusb::transfer::{Buffer, Bulk, Completion, ControlIn, ControlOut, ControlType, In, Interrupt, Out, Recipient};
 use nusb::MaybeFuture;
 
 use crate::core::descriptor::*;
@@ -74,6 +74,7 @@ pub enum DeviceCmd {
     SetLedInGroup { group: String, name: String, value: LedValue },
     SetLedStrip { name: String, values: Vec<u8> },
     SetLedStripInGroup { group: String, name: String, values: Vec<u8> },
+    SetDisplayBrightness { level: u8 },
     SubmitScreen { screen: String, pixels: Vec<u8>, format: PixelFormat },
     SubmitDualScreen {
         left_screen: String,
@@ -234,7 +235,8 @@ impl DeviceHandle {
             DeviceCmd::SetLed { .. }
             | DeviceCmd::SetLedInGroup { .. }
             | DeviceCmd::SetLedStrip { .. }
-            | DeviceCmd::SetLedStripInGroup { .. } => {
+            | DeviceCmd::SetLedStripInGroup { .. }
+            | DeviceCmd::SetDisplayBrightness { .. } => {
                 if let Some(ref tx) = self.led_tx {
                     tx.try_send(cmd).ok();
                 }
@@ -254,6 +256,10 @@ impl DeviceHandle {
                 }
             }
         }
+    }
+
+    pub fn set_display_brightness(&self, level: u8) {
+        self.send(DeviceCmd::SetDisplayBrightness { level });
     }
 
     pub fn disconnect(mut self) {
@@ -610,11 +616,23 @@ fn run_device(
     let led_thread = if let Some((led_rx, led_iface)) = led_rx.zip(control_iface.clone()) {
         let led_builders = led_builders;
         let feature_leds = descriptor.quirks.feature_report_leds.clone();
+        let display_brightness = descriptor.quirks.display_brightness.clone();
+        let iface_desc = descriptor.interface_by_id("control");
+        let physical_num = iface_desc.map(|i| i.number).unwrap_or(0);
         let led_is_connected = is_connected.clone();
         thread::Builder::new()
             .name(format!("encdr-led-{}", descriptor.name.replace(' ', "-").to_lowercase()))
             .spawn(move || {
-                run_leds(led_iface, led_builders, feature_leds, led_rx, led_is_connected, shared_led_eps);
+                run_leds(
+                    led_iface,
+                    led_builders,
+                    feature_leds,
+                    display_brightness,
+                    physical_num as usize,
+                    led_rx,
+                    led_is_connected,
+                    shared_led_eps,
+                );
             })
             .ok()
     } else {
@@ -926,6 +944,61 @@ impl Iface {
                 )
                 .await
                 .map_err(|e| e.to_string()),
+        }
+    }
+
+    /// HID GET_REPORT (feature). `buf[0]` is the report ID.
+    async fn get_feature_report(&self, buf: &mut [u8], interface: usize) -> Result<usize, String> {
+        match self {
+            Self::Hid(hid) => hid.get_feature_report(buf),
+            Self::Service(_) => Err("the NI service route does not support feature reports".to_string()),
+            Self::Usb(iface) => {
+                let report_id = buf.first().copied().unwrap_or(0);
+                let data = iface
+                    .control_in(
+                        ControlIn {
+                            control_type: ControlType::Class,
+                            recipient: Recipient::Interface,
+                            request: 0x01, // GET_REPORT
+                            value: (0x03 << 8) | report_id as u16,
+                            index: interface as u16,
+                            length: buf.len() as u16,
+                        },
+                        Duration::from_millis(100),
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let n = data.len().min(buf.len());
+                buf[..n].copy_from_slice(&data[..n]);
+                Ok(n)
+            }
+        }
+    }
+}
+
+async fn set_display_brightness_level(
+    iface: &Iface,
+    interface_num: usize,
+    reports: &[u8],
+    level: u8,
+) {
+    for &id in reports {
+        let mut buf = [0u8; 64];
+        buf[0] = id;
+        let lvl = level.min(100);
+        match iface.get_feature_report(&mut buf, interface_num).await {
+            Ok(n) if n > 8 => {
+                buf[8] = lvl;
+                if let Err(e) = iface.send_feature_report(&buf[..n], interface_num).await {
+                    tracing::warn!("Failed to set display brightness for report 0x{:02x}: {}", id, e);
+                }
+            }
+            _ => {
+                let fallback = [id, 0xe0, 0x01, 0x10, 0x01, 0x60, 0x01, 0x14, 0x32, lvl];
+                if let Err(e) = iface.send_feature_report(&fallback, interface_num).await {
+                    tracing::warn!("Failed to send display brightness fallback for report 0x{:02x}: {}", id, e);
+                }
+            }
         }
     }
 }
@@ -1680,11 +1753,19 @@ fn run_leds(
     iface: Iface,
     mut led_builders: Vec<LedBuilder>,
     feature_report_leds: Option<FeatureReportLedsQuirkDesc>,
+    display_brightness: Option<DisplayBrightnessQuirkDesc>,
+    interface_num: usize,
     led_rx: async_channel::Receiver<DeviceCmd>,
     is_connected: Arc<AtomicBool>,
     shared_endpoints: HashMap<u8, OutEndpoint>,
 ) {
     block_on(async {
+        // Initialize display backlight brightness if configured (e.g. Maschine MK3 defaults to 20%)
+        if let Some(ref quirk) = display_brightness {
+            let reports: Vec<u8> = quirk.reports.iter().map(|r| r.0 as u8).collect();
+            set_display_brightness_level(&iface, interface_num, &reports, quirk.level).await;
+        }
+
         let mut led_endpoints: HashMap<u8, OutEndpoint> = HashMap::new();
         for lb in &led_builders {
             let ep = lb.endpoint();
@@ -1739,6 +1820,7 @@ fn run_leds(
                                 let old_mask = entry.0;
                                 let is_on = match value {
                                     LedValue::Off => false,
+                                    LedValue::Backlight => true,
                                     LedValue::Dim => true,
                                     LedValue::Bright => true,
                                     LedValue::Single(b) => b > 0,
@@ -1773,6 +1855,7 @@ fn run_leds(
                                 let old_mask = entry.0;
                                 let is_on = match value {
                                     LedValue::Off => false,
+                                    LedValue::Backlight => true,
                                     LedValue::Dim => true,
                                     LedValue::Bright => true,
                                     LedValue::Single(b) => b > 0,
@@ -1811,6 +1894,12 @@ fn run_leds(
                                 lb.set_strip(&name, &values);
                                 break;
                             }
+                        }
+                    }
+                    DeviceCmd::SetDisplayBrightness { level } => {
+                        if let Some(ref quirk) = display_brightness {
+                            let reports: Vec<u8> = quirk.reports.iter().map(|r| r.0 as u8).collect();
+                            set_display_brightness_level(&iface, interface_num, &reports, level).await;
                         }
                     }
                     DeviceCmd::ControlLost => held = true,
