@@ -168,6 +168,9 @@ impl InputPacketDesc {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PadFormat {
+    /// Report 0x02 with 3-byte pad index / event / 12-bit value tuples.
+    /// Also accepts two 64-byte sets in a single 128-byte HID read.
+    NiEventTuples,
     /// Stream of little-endian u16 words: bits 15..12 are the hardware pad
     /// index, bits 11..0 the pressure (0..4095). Words are self-identifying,
     /// so frames need not align with USB packet boundaries (Maschine Mk1).
@@ -509,6 +512,9 @@ pub enum ScreenProtocol {
     /// 8-byte LE header (`[x=0, y_page, width=128, height_pages=2]`), and 256
     /// page-formatted data bytes.
     NiMikroMk2,
+
+    /// Mikro Mk3 128x32 OLED: two inverted monochrome page transfers.
+    NiMikroMk3,
 
     /// Native Instruments color screen command stream with RLE compression
     /// (Maschine MK3, Maschine+, Komplete Kontrol S49/S61/S88 MK2, Traktor S8/S5/D2/S4 MK3).

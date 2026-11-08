@@ -352,6 +352,7 @@ impl LedBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::device::loader::DescriptorRegistry;
 
     fn builder() -> LedBuilder {
         let desc: LedLayoutDesc = serde_json::from_str(
@@ -460,5 +461,29 @@ mod tests {
         assert_eq!(lb_custom.flush(), Some(vec![50, 0]));
         lb_custom.set("play", LedValue::Bright);
         assert_eq!(lb_custom.flush(), Some(vec![200, 0]));
+    }
+
+    #[test]
+    fn mikro_mk3_led_report() {
+        let mut r = DescriptorRegistry::new();
+        r.load_builtins().unwrap();
+        let d = r.find(0x17cc, 0x1700).unwrap();
+        assert_eq!(d.leds.len(), 1);
+        let mut b = LedBuilder::new(&d.leds[0], &d.interfaces[0]);
+        b.set("maschine", LedValue::Single(124));
+        b.set("mute", LedValue::Single(127));
+        for pad in 0..16 {
+            b.set(&format!("pad_{}", pad + 1), LedValue::Single(4 + pad as u8));
+        }
+        b.set_strip("touchstrip_leds", &[71; 25]);
+        let out = b.flush().unwrap();
+        assert_eq!(out.len(), 81);
+        assert_eq!(out[0], 0x80);
+        assert_eq!(out[1], 124);
+        assert_eq!(out[39], 127);
+        for pad in 0..16 {
+            assert_eq!(out[40 + (3 - pad / 4) * 4 + pad % 4], 4 + pad as u8);
+        }
+        assert_eq!(&out[56..], &[71; 25]);
     }
 }

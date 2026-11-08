@@ -48,15 +48,16 @@ The Maschine Mikro Mk3 is a streamlined production controller featuring 16 large
 
 * **Interface 0 (Control):** Interrupt IN `0x81`, Interrupt OUT `0x01`
 * **Input Packets:**
-  - `buttons` (17 bytes): Rotary encoder, navigation, transport, and mode buttons.
-  - `touchstrip` (8 bytes): 10-bit touchstrip slider position and touch contact detection.
-  - `pads` (64 bytes): 16-pad velocity and real-time polyphonic aftertouch pressure stream.
+  - Report `0x01` (64 bytes): 40 button bits in bytes 1..5; encoder touch at byte 6 bit 0; encoder position modulo 16 in byte 7's low nibble.
+  - The same report contains Smart Strip positions in bytes 10..11 and 12..13 (little endian). Zero means no contact; positions are normalized by 200. Encdr exposes `touchstrip` / `touchstrip_touch` and `touchstrip_dual` / `touchstrip_dual_touch`. In the tested two-finger gestures, positions follow left-to-right order, not finger identity.
+  - Report `0x02` (64 bytes): 16-pad velocity and real-time polyphonic aftertouch pressure stream, decoded by the existing event-tuple parser. Raw pad indices start at the top row; `pad_1` is bottom-left and `pad_13` top-left.
 * **Output Packets:**
-  - Report `0x80` (48 bytes): Single-color function buttons (offsets 1..27) and 25-segment Smart Strip LED bar (offsets 28..52). Function buttons use Native Instruments' 4-level discrete duty cycle protocol:
-    - `0x00`: **Off** (`LedValue::Off` / `LedValue::OFF`)
-    - `0xE4` (228): **Dim / Half-brightness** (`LedValue::Dim` / `LedValue::DIM`) — idle / half-brightness
-    - `0x9E` (158): **Bright / Active** (`LedValue::Bright` / `LedValue::BRIGHT`) — active state
-    - `0xFF` (255): **Max drive** (`LedValue::Single(255)` / `LedValue::MAX`)
-    - Arbitrary duty cycle percentages ($0..100\%$) encode as `0x80 | pct` via `LedValue::single_percent(pct)`.
-  - Report `0x81` (20 bytes): 16 RGB pads driven via Native Instruments packed palette byte format (`(color_id << 2) | (intensity & 0x03)`).
-* **Screen Protocol:** 128×32 1-bit monochrome OLED display using custom NI frame header (`0xe0 0x00 0x00 0x00 0x00 0x80 0x00 0x02`).
+  - Report `0x80` (81 bytes including report ID): all function-button, pad and Smart Strip LEDs share this report. Descriptor offsets count payload bytes: buttons 0..38, pads 39..54 (top row first), Smart Strip 55..79 (left to right). The encoder press/touch have no LEDs; there is no separate `0x81` pad LED report in this mapping.
+  - Function-button levels used by this descriptor:
+    - `0x00`: **Off** (`LedValue::Off`)
+    - `0x7C`: **Low** (`LedValue::Backlight`)
+    - `0x7E`: **Medium** (`LedValue::Dim`)
+    - `0x7F`: **Bright** (`LedValue::Bright`)
+    - These are discrete levels; the default NHL2 percentage conversion does not apply to this device.
+  - Pad LEDs use the NI packed palette format (`(color_id << 2) | (intensity & 0x03)`). Each Smart Strip segment has its own byte; full white `71` was used for the position check. Arbitrary strip colors and the full set of brightness values remain unverified.
+* **Screen Protocol:** 128×32 1-bit monochrome OLED, using the `ni_mikro_mk3` protocol. Each frame is two 265-byte transfers: headers `e0 00 00 00 00 80 00 02 00` and `e0 00 00 02 00 80 00 02 00`, each followed by 256 page-formatted bytes. A page contains 128 columns of eight vertical pixels, least significant bit at the top. Wire pixels are inverted (zero lights a pixel); Encdr converts ordinary row-major `PixelFormat::Mono` frames.
