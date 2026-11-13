@@ -14,7 +14,7 @@ pub struct InitStep {
 pub fn init_sequence(desc: &ScreenDesc) -> Vec<InitStep> {
     match desc.protocol {
         Some(ScreenProtocol::NiSt7529 { display }) => st7529_init(display),
-        Some(ScreenProtocol::NiMikroMk2) | Some(ScreenProtocol::NiColorRle { .. }) | None => Vec::new(),
+        Some(ScreenProtocol::NiMikroMk2 | ScreenProtocol::NiMikroMk3) | Some(ScreenProtocol::NiColorRle { .. }) | None => Vec::new(),
     }
 }
 
@@ -23,7 +23,8 @@ pub fn init_sequence(desc: &ScreenDesc) -> Vec<InitStep> {
 pub fn frame_transfers(desc: &ScreenDesc, blit: Vec<u8>) -> Vec<Vec<u8>> {
     match desc.protocol {
         Some(ScreenProtocol::NiSt7529 { display }) => st7529_frame(display, desc, &blit),
-        Some(ScreenProtocol::NiMikroMk2) => mikro_mk2_frame(desc, &blit),
+        Some(ScreenProtocol::NiMikroMk2) => mikro_page_frame(desc, &blit, false),
+        Some(ScreenProtocol::NiMikroMk3) => mikro_page_frame(desc, &blit, true),
         Some(ScreenProtocol::NiColorRle { .. }) | None => vec![blit],
     }
 }
@@ -34,8 +35,10 @@ pub fn frame_transfers(desc: &ScreenDesc, blit: Vec<u8>) -> Vec<Vec<u8>> {
 // Report ID 0xE0, followed by an 8-byte LE header:
 //   x = 0 (u16 LE), y_page in {0, 2, 4, 6} (u16 LE), width = 128 (u16 LE), height_pages = 2 (u16 LE),
 // and 256 page-formatted data bytes (two pages of 128 vertical 8-pixel column bytes).
+// Mikro Mk3 uses the same framing for a 128x32 OLED: two transfers, with
+// inverted pixel data. The descriptor selects the variant explicitly.
 
-fn mikro_mk2_frame(desc: &ScreenDesc, blit: &[u8]) -> Vec<Vec<u8>> {
+fn mikro_page_frame(desc: &ScreenDesc, blit: &[u8], inverted: bool) -> Vec<Vec<u8>> {
     let width = desc.width as usize;
     let height = desc.height as usize;
     let expected_mono_len = (width * height) / 8;
@@ -47,9 +50,10 @@ fn mikro_mk2_frame(desc: &ScreenDesc, blit: &[u8]) -> Vec<Vec<u8>> {
     };
 
     let stride = (width + 7) / 8;
-    let mut transfers = Vec::with_capacity(4);
+    let pages = height.div_ceil(8);
+    let mut transfers = Vec::with_capacity(pages.div_ceil(2));
 
-    for y_page in [0u16, 2u16, 4u16, 6u16] {
+    for y_page in (0..pages as u16).step_by(2) {
         let mut chunk = Vec::with_capacity(9 + 256);
         chunk.push(0xE0); // Report ID 0xE0
         chunk.extend_from_slice(&0u16.to_le_bytes()); // x = 0
@@ -70,7 +74,7 @@ fn mikro_mk2_frame(desc: &ScreenDesc, blit: &[u8]) -> Vec<Vec<u8>> {
                         }
                     }
                 }
-                chunk.push(col_byte);
+                chunk.push(if inverted { !col_byte } else { col_byte });
             }
         }
         transfers.push(chunk);
@@ -461,6 +465,7 @@ impl NiColorDecoder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::device::loader::DescriptorRegistry;
 
     #[test]
     fn st7529_frame_chunking() {
@@ -621,5 +626,28 @@ mod tests {
 
         // Verify outside pixels remain 0
         assert_eq!(decoder.screens[1][0..2], [0, 0]);
+    }
+
+    #[test]
+    fn mikro_mk3_frame_chunking() {
+        let mut r = DescriptorRegistry::new();
+        r.load_builtins().unwrap();
+        let d = r.find(0x17cc, 0x1700).unwrap();
+        let s = &d.screens[0];
+        let mut frame = vec![0; 512];
+        frame[0] = 0x80;
+        frame[15] = 1;
+        frame[31 * 16] = 0x80;
+        frame[511] = 1;
+        let out = frame_transfers(s, build_full_blit(s, &frame));
+        assert_eq!(out.len(), 2);
+        assert_eq!(&out[0][..9], &[0xe0, 0, 0, 0, 0, 128, 0, 2, 0]);
+        assert_eq!(&out[1][..9], &[0xe0, 0, 0, 2, 0, 128, 0, 2, 0]);
+        assert!(out.iter().all(|t| t.len() == 265));
+        assert_eq!(out[0][9], 0xfe);
+        assert_eq!(out[0][9 + 127], 0xfe);
+        assert_eq!(out[1][9 + 128], 0x7f);
+        assert_eq!(out[1][264], 0x7f);
+        assert_eq!(out[0][10], 0xff);
     }
 }

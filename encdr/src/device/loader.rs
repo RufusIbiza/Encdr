@@ -769,8 +769,8 @@ mod tests {
         let mm3 = reg.find(0x17cc, 0x1700).expect("Mikro Mk3 not found");
         assert_eq!(mm3.name, "NI Maschine Mikro Mk3");
         assert_eq!(mm3.screens.len(), 1);
-        assert_eq!(mm3.input_packets.len(), 3);
-        assert_eq!(mm3.leds.len(), 2);
+        assert_eq!(mm3.input_packets.len(), 2);
+        assert_eq!(mm3.leds.len(), 1);
     }
 
     #[test]

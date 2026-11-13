@@ -382,6 +382,7 @@ impl PacketParser {
         };
 
         match self.routed_packets[idx].pad_format {
+            Some(PadFormat::NiEventTuples) => self.parse(buf, events),
             Some(PadFormat::IdPressureWords) => self.parse_id_pressure_words(buf, events),
             None => Self::parse_items(
                 &mut self.routed_packets[idx].state,
@@ -2197,6 +2198,259 @@ mod tests {
             _ => None,
         });
         assert!(p3.is_some() && (p3.unwrap() - 3091.0 / 4095.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_mikro_mk3_controls_parsing() {
+        let buttons = [
+            "maschine",
+            "star",
+            "browse",
+            "volume",
+            "swing",
+            "tempo",
+            "plugin",
+            "sampling",
+            "left",
+            "right",
+            "pitch",
+            "mod",
+            "perform",
+            "notes",
+            "masch_group",
+            "auto",
+            "lock",
+            "note_repeat",
+            "restart",
+            "erase",
+            "tap",
+            "follow",
+            "play",
+            "rec",
+            "stop",
+            "shift",
+            "fixed_vel",
+            "pad_mode",
+            "keyboard",
+            "chords",
+            "step",
+            "scene",
+            "pattern",
+            "events",
+            "variation",
+            "duplicate",
+            "select",
+            "solo",
+            "mute",
+            "encoder_press",
+        ];
+        // Check both native 64-byte reports and 128-byte padded HID reads.
+        for len in [64, 128] {
+            let mut r = DescriptorRegistry::new();
+            r.load_builtins().unwrap();
+            let d = r.find(0x17cc, 0x1700).unwrap().clone();
+            // Raw USB reads must complete for each 64-byte report, without
+            // waiting for a second full-size packet to fill a larger buffer.
+            assert!(d.input_packets.iter().all(|packet| packet.size == 64));
+            let names = r.intern_descriptor_names(&d);
+            let mut p = PacketParser::new(DeviceId::default(), &d, names);
+            let mut buf = vec![0; len];
+            buf[0] = 1;
+            let mut e = Vec::new();
+            p.parse_from("control", &buf, &mut e);
+            for (bit, expected) in buttons.iter().enumerate() {
+                e.clear();
+                buf[1 + bit / 8] |= 1 << (bit % 8);
+                p.parse_from("control", &buf, &mut e);
+                assert!(
+                    matches!(e.as_slice(), [Event::Button { name, pressed: true, .. }] if name == expected),
+                    "{expected}: {e:?}"
+                );
+                e.clear();
+                buf[1 + bit / 8] = 0;
+                p.parse_from("control", &buf, &mut e);
+                assert!(
+                    matches!(e.as_slice(), [Event::Button { name, pressed: false, .. }] if name == expected)
+                );
+            }
+            e.clear();
+            buf[7] = 1;
+            p.parse_from("control", &buf, &mut e);
+            assert!(matches!(
+                e.as_slice(),
+                [Event::Encoder {
+                    name: "encoder",
+                    delta: 1,
+                    ..
+                }]
+            ));
+            e.clear();
+            buf[7] = 0;
+            p.parse_from("control", &buf, &mut e);
+            assert!(matches!(e.as_slice(), [Event::Encoder { delta: -1, .. }]));
+            e.clear();
+            buf[10] = 200;
+            p.parse_from("control", &buf, &mut e);
+            assert!(e.iter().any(
+                |e| matches!(e, Event::Slider { name: "touchstrip", value, .. } if *value == 1.0)
+            ));
+            assert!(e.iter().any(|e| matches!(
+                e,
+                Event::Touch {
+                    name: "touchstrip_touch",
+                    touched: true,
+                    ..
+                }
+            )));
+            e.clear();
+            buf[10] = 0;
+            p.parse_from("control", &buf, &mut e);
+            assert!(
+                e.iter()
+                    .any(|e| matches!(e, Event::Touch { touched: false, .. }))
+            );
+        }
+    }
+
+    #[test]
+    fn test_mikro_mk3_dual_touch_parsing() {
+        let mut r = DescriptorRegistry::new();
+        r.load_builtins().unwrap();
+        let d = r.find(0x17cc, 0x1700).unwrap().clone();
+        let names = r.intern_descriptor_names(&d);
+        let mut parser = PacketParser::new(DeviceId::default(), &d, names);
+        let mut events = Vec::new();
+        let mut report = [0u8; 64];
+        report[0] = 1;
+        parser.parse_from("control", &report, &mut events);
+        events.clear();
+        // Positions from physical single/two-finger captures. The controller
+        // reports spatial order, not a stable identity for the first finger.
+        report[10] = 23;
+        parser.parse_from("control", &report, &mut events);
+        assert!(events.iter().any(|e| matches!(
+            e,
+            Event::Touch {
+                name: "touchstrip_touch",
+                touched: true,
+                ..
+            }
+        )));
+        events.clear();
+        report[12] = 132;
+        parser.parse_from("control", &report, &mut events);
+        assert!(events.iter().any(|e| matches!(
+            e,
+            Event::Touch {
+                name: "touchstrip_dual_touch",
+                touched: true,
+                ..
+            }
+        )));
+        assert!(events.iter().any(
+            |e| matches!(e,Event::Slider {name:"touchstrip_dual",value,..} if (*value-0.66).abs()<0.001)
+        ));
+        assert!(!events.iter().any(|e| matches!(
+            e,
+            Event::Slider {
+                name: "touchstrip",
+                ..
+            }
+        )));
+        events.clear();
+        report[12] = 200;
+        parser.parse_from("control", &report, &mut events);
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e,Event::Slider {name:"touchstrip_dual",value,..} if *value==1.0))
+        );
+        events.clear();
+        report[12] = 0;
+        parser.parse_from("control", &report, &mut events);
+        assert!(events.iter().any(|e| matches!(
+            e,
+            Event::Touch {
+                name: "touchstrip_dual_touch",
+                touched: false,
+                ..
+            }
+        )));
+        assert!(!events.iter().any(|e| matches!(
+            e,
+            Event::Touch {
+                name: "touchstrip_touch",
+                touched: false,
+                ..
+            }
+        )));
+        // Begin with a finger at the right edge, then add one to its left.
+        events.clear();
+        report[10] = 200;
+        parser.parse_from("control", &report, &mut events);
+        events.clear();
+        report[10] = 95;
+        report[12] = 200;
+        parser.parse_from("control", &report, &mut events);
+        assert!(events.iter().any(
+            |e| matches!(e,Event::Slider {name:"touchstrip",value,..} if (*value-0.475).abs()<0.001)
+        ));
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e,Event::Slider {name:"touchstrip_dual",value,..} if *value==1.0))
+        );
+        events.clear();
+        report[10] = 0;
+        report[12] = 0;
+        parser.parse_from("control", &report, &mut events);
+        for expected in ["touchstrip_touch", "touchstrip_dual_touch"] {
+            assert!(
+                events
+                    .iter()
+                    .any(|e| matches!(e,Event::Touch {name,touched:false,..} if *name==expected))
+            );
+        }
+    }
+
+    #[test]
+    fn test_mikro_mk3_pad_parsing() {
+        for len in [64, 128] {
+            let mut r = DescriptorRegistry::new();
+            r.load_builtins().unwrap();
+            let d = r.find(0x17cc, 0x1700).unwrap().clone();
+            let names = r.intern_descriptor_names(&d);
+            let mut parser = PacketParser::new(DeviceId::default(), &d, names);
+            for hardware_pad in 0..16 {
+                let expected = format!("pad_{}", (3 - hardware_pad / 4) * 4 + hardware_pad % 4 + 1);
+                let mut events = Vec::new();
+                let mut report = vec![0; len];
+                report[0] = 2;
+                // In a combined read, exercise the second independent set.
+                let base = if len == 128 {
+                    report[64] = 2;
+                    64
+                } else {
+                    0
+                };
+                report[base + 1] = hardware_pad as u8;
+                report[base + 2] = 0x18; // strike, raw value 0x800
+                parser.parse_from("control", &report, &mut events);
+                assert!(events.iter().any(
+                    |e| matches!(e, Event::Button { name, pressed: true, .. } if *name == expected)
+                ));
+                events.clear();
+                report[base + 2] = 0x4c; // increasing pressure, raw value 0xc00
+                parser.parse_from("control", &report, &mut events);
+                assert!(events.iter().any(|e| matches!(e, Event::Grid { name, pressure, .. } if *name == expected && *pressure > 0.7)));
+                events.clear();
+                report[base + 2] = 0x30; // explicit release
+                parser.parse_from("control", &report, &mut events);
+                assert!(events.iter().any(
+                    |e| matches!(e, Event::Button { name, pressed: false, .. } if *name == expected)
+                ));
+            }
+        }
     }
 }
 
