@@ -344,6 +344,16 @@ encdr/
 
 ## Changelog
 
+### v0.9.2 (contributed by [ybelonozhkin](https://github.com/ybelonozhkin))
+- **Maschine Mikro Mk3 Controls, Unified LEDs & OLED Frame Protocol** (analyzed, measured, and contributed by [@ybelonozhkin](https://github.com/ybelonozhkin) in [#7](https://github.com/RufusIbiza/Encdr/pull/7)):
+  - **Accurate Control Mappings & Sizing**: Corrected input packet size to 64 bytes (Report `0x01`), fixing dropped controls on raw USB reads. Accurately mapped all 40 buttons across bytes 1–5, encoder rotation at byte 7 (`wrap16`), encoder press, and capacitive touch.
+  - **Smart Strip Dual-Contact Tracking**: Integrated touchstrip positions directly into Report `0x01` (bytes 10–13), normalized to `0..200`. Added second finger contact tracking (`touchstrip_dual` and `touchstrip_dual_touch`) with left-to-right positional ordering.
+  - **Pad Event Tuples**: Routed Report `0x02` to `PadFormat::NiEventTuples` for velocity strikes, 12-bit continuous polyphonic aftertouch pressure, and explicit releases across 16 pads.
+  - **Unified Output LED Buffer**: Consolidated all LEDs (39 function buttons, 16 RGB pads, and 25-segment Smart Strip) into a single 81-byte Report `0x80`, eliminating invalid split report handling.
+  - **OLED Page Framing Protocol (`ScreenProtocol::NiMikroMk3`)**: Added 128×32 monochrome OLED page framing via two 265-byte transfers (`0xE0` report ID + 8-byte LE header + 256 data bytes) with inverted pixel data (`0` = lit) matching SSD1306/similar controller requirements.
+- **Maschine Mikro Mk1 Monochrome Display Protocol**:
+  - Configured `ni_maschine_mikro_mk1.json` with `ScreenProtocol::NiMikroMk2` to packetize the 128×64 1bpp monochrome framebuffer into four 265-byte page transfers matching the hardware specification.
+
 ### v0.9.0
 - **Native Instruments Color Screen Command Stream & RLE Compression (`ScreenProtocol::NiColorRle`)**:
   - Implemented dynamic 16-byte viewport header framing with 4-byte stream opcodes (`0x00` raw pixel pairs, `0x01` RLE compression for runs $\ge 4$ pairs, `0x02` pixel skip, `0x03` swap buffer / blit, and `0x40` end of transfer).

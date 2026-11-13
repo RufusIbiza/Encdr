@@ -755,6 +755,7 @@ mod tests {
         let mm1 = reg.find(0x17cc, 0x1110).expect("Mikro Mk1 not found");
         assert_eq!(mm1.name, "NI Maschine Mikro Mk1");
         assert_eq!(mm1.screens.len(), 1);
+        assert_eq!(mm1.screens[0].protocol, Some(crate::core::descriptor::ScreenProtocol::NiMikroMk2));
 
         // 7. Maschine Mikro Mk2
         let mm2 = reg.find(0x17cc, 0x1200).expect("Mikro Mk2 not found");
