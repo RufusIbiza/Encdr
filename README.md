@@ -344,6 +344,14 @@ encdr/
 
 ## Changelog
 
+### v0.9.4 (contributed by [nans1906](https://github.com/nans1906))
+- **Maschine Mk2 Master Volume Encoder & Display Encoder Mapping Fix** (reported and investigated by [@nans1906](https://github.com/nans1906) in [#5](https://github.com/RufusIbiza/Encdr/issues/5)):
+  - **Sizing & Collision Resolution**: Corrected Report `0x01` input packet size from 24 to 25 bytes.
+  - **Master Volume Encoder**: Added `volume_encoder` at Byte 8 (`wrap16`, 4-bit nibble relative encoder), eliminating event overlap and value collision with display encoders.
+  - **Screen Encoders Alignment**: Shifted `screen_encoder_1` through `screen_encoder_8` from bytes `[8, 9]..[22, 23]` to bytes `[9, 10]..[23, 24]` (`wrap16_wide`) to align with hardware wire reports.
+  - **Transport Button Bitmask**: Corrected Byte 5 transport button bit order (`restart`, `step_left`, `step_right`, `grid`, `play`, `rec`, `erase`, `shift`) to match physical controller layout.
+  - Added regression test `test_maschine_mk2_button_and_encoder_parsing` verifying independent operation of `volume_encoder`, `screen_encoder_1`, and transport buttons.
+
 ### v0.9.2 (contributed by [ybelonozhkin](https://github.com/ybelonozhkin))
 - **Maschine Mikro Mk3 Controls, Unified LEDs & OLED Frame Protocol** (analyzed, measured, and contributed by [@ybelonozhkin](https://github.com/ybelonozhkin) in [#7](https://github.com/RufusIbiza/Encdr/pull/7)):
   - **Accurate Control Mappings & Sizing**: Corrected input packet size to 64 bytes (Report `0x01`), fixing dropped controls on raw USB reads. Accurately mapped all 40 buttons across bytes 1–5, encoder rotation at byte 7 (`wrap16`), encoder press, and capacitive touch.

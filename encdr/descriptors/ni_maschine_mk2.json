@@ -26,7 +26,7 @@
     {
       "id": "buttons",
       "interface": "control",
-      "size": 24,
+      "size": 25,
       "items": [
         { "type": "button", "name": "top_8",             "byte": 1,  "mask": "0x01" },
         { "type": "button", "name": "top_7",             "byte": 1,  "mask": "0x02" },
@@ -64,14 +64,14 @@
         { "type": "button", "name": "group_b",           "byte": 4,  "mask": "0x40" },
         { "type": "button", "name": "group_a",           "byte": 4,  "mask": "0x80" },
 
-        { "type": "button", "name": "shift",             "byte": 5,  "mask": "0x01" },
-        { "type": "button", "name": "erase",             "byte": 5,  "mask": "0x02" },
-        { "type": "button", "name": "rec",               "byte": 5,  "mask": "0x04" },
-        { "type": "button", "name": "play",              "byte": 5,  "mask": "0x08" },
-        { "type": "button", "name": "grid",              "byte": 5,  "mask": "0x10" },
-        { "type": "button", "name": "step_right",        "byte": 5,  "mask": "0x20" },
-        { "type": "button", "name": "step_left",         "byte": 5,  "mask": "0x40" },
-        { "type": "button", "name": "restart",           "byte": 5,  "mask": "0x80" },
+        { "type": "button", "name": "restart",           "byte": 5,  "mask": "0x01" },
+        { "type": "button", "name": "step_left",         "byte": 5,  "mask": "0x02" },
+        { "type": "button", "name": "step_right",        "byte": 5,  "mask": "0x04" },
+        { "type": "button", "name": "grid",              "byte": 5,  "mask": "0x08" },
+        { "type": "button", "name": "play",              "byte": 5,  "mask": "0x10" },
+        { "type": "button", "name": "rec",               "byte": 5,  "mask": "0x20" },
+        { "type": "button", "name": "erase",             "byte": 5,  "mask": "0x40" },
+        { "type": "button", "name": "shift",             "byte": 5,  "mask": "0x80" },
 
         { "type": "button", "name": "mute",              "byte": 6,  "mask": "0x01" },
         { "type": "button", "name": "solo",              "byte": 6,  "mask": "0x02" },
@@ -82,14 +82,16 @@
         { "type": "button", "name": "pattern",           "byte": 6,  "mask": "0x40" },
         { "type": "button", "name": "scene",             "byte": 6,  "mask": "0x80" },
 
-        { "type": "encoder_fine", "name": "screen_encoder_1", "bytes": [8, 9],   "encoding": "signed16" },
-        { "type": "encoder_fine", "name": "screen_encoder_2", "bytes": [10, 11], "encoding": "signed16" },
-        { "type": "encoder_fine", "name": "screen_encoder_3", "bytes": [12, 13], "encoding": "signed16" },
-        { "type": "encoder_fine", "name": "screen_encoder_4", "bytes": [14, 15], "encoding": "signed16" },
-        { "type": "encoder_fine", "name": "screen_encoder_5", "bytes": [16, 17], "encoding": "signed16" },
-        { "type": "encoder_fine", "name": "screen_encoder_6", "bytes": [18, 19], "encoding": "signed16" },
-        { "type": "encoder_fine", "name": "screen_encoder_7", "bytes": [20, 21], "encoding": "signed16" },
-        { "type": "encoder_fine", "name": "screen_encoder_8", "bytes": [22, 23], "encoding": "signed16" }
+        { "type": "encoder",      "name": "volume_encoder",   "byte": 8, "bits": 4, "bit_offset": 0, "encoding": "wrap16" },
+
+        { "type": "encoder_fine", "name": "screen_encoder_1", "bytes": [9, 10],   "encoding": "wrap16_wide" },
+        { "type": "encoder_fine", "name": "screen_encoder_2", "bytes": [11, 12], "encoding": "wrap16_wide" },
+        { "type": "encoder_fine", "name": "screen_encoder_3", "bytes": [13, 14], "encoding": "wrap16_wide" },
+        { "type": "encoder_fine", "name": "screen_encoder_4", "bytes": [15, 16], "encoding": "wrap16_wide" },
+        { "type": "encoder_fine", "name": "screen_encoder_5", "bytes": [17, 18], "encoding": "wrap16_wide" },
+        { "type": "encoder_fine", "name": "screen_encoder_6", "bytes": [19, 20], "encoding": "wrap16_wide" },
+        { "type": "encoder_fine", "name": "screen_encoder_7", "bytes": [21, 22], "encoding": "wrap16_wide" },
+        { "type": "encoder_fine", "name": "screen_encoder_8", "bytes": [23, 24], "encoding": "wrap16_wide" }
       ]
     },
     {

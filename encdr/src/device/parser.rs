@@ -2094,6 +2094,42 @@ mod tests {
     }
 
     #[test]
+    fn test_maschine_mk2_button_and_encoder_parsing() {
+        let mut reg = DescriptorRegistry::new();
+        reg.load_builtins().unwrap();
+        let desc = reg.find(0x17cc, 0x1140).expect("Maschine Mk2 descriptor missing").clone();
+        assert_eq!(desc.input_packets[0].size, 25);
+        let names = reg.intern_descriptor_names(&desc);
+        let mut parser = PacketParser::new(DeviceId::from_usb(0, 0, 0x17cc, 0x1140), &desc, names);
+        let mut events: Vec<Event> = Vec::new();
+
+        // 25-byte Report 0x01
+        let mut pkt = [0u8; 25];
+        pkt[0] = 0x01;
+        pkt[5] = 0x11; // restart (0x01) and play (0x10)
+        pkt[8] = 0x02; // volume_encoder initial position = 2
+        pkt[9..11].copy_from_slice(&100u16.to_le_bytes()); // screen_encoder_1 = 100
+        parser.parse(&pkt, &mut events);
+
+        assert!(events.iter().any(|e| matches!(e, Event::Button { name: "restart", pressed: true, .. })));
+        assert!(events.iter().any(|e| matches!(e, Event::Button { name: "play", pressed: true, .. })));
+
+        // Turn volume_encoder from 2 to 3 (+1)
+        events.clear();
+        pkt[8] = 0x03;
+        parser.parse(&pkt, &mut events);
+        assert!(events.iter().any(|e| matches!(e, Event::Encoder { name: "volume_encoder", delta: 1, .. })));
+        assert!(!events.iter().any(|e| matches!(e, Event::EncoderFine { name: "screen_encoder_1", .. })));
+
+        // Turn screen_encoder_1 from 100 to 105 (+5)
+        events.clear();
+        pkt[9..11].copy_from_slice(&105u16.to_le_bytes());
+        parser.parse(&pkt, &mut events);
+        assert!(events.iter().any(|e| matches!(e, Event::EncoderFine { name: "screen_encoder_1", delta, .. } if (*delta - 5.0).abs() < 1e-4)));
+        assert!(!events.iter().any(|e| matches!(e, Event::Encoder { name: "volume_encoder", .. })));
+    }
+
+    #[test]
     fn maschine_mk3_screen_encoder_wraps_without_direction_reversal() {
         let mut parser = mk3_parser();
         let mut events = Vec::new();

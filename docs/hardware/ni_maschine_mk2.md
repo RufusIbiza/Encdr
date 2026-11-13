@@ -68,18 +68,21 @@ The Linux kernel `hidraw` driver automatically binds to the Maschine Mk2. `encdr
 ### Input Packets
 
 #### 1. Button & Encoder Report (`0x01`)
-Report ID `0x01` is 24 bytes long and reports physical button presses and rotary encoder relative movements. Standardized names matching the Mk3 descriptor are used across controls:
+Report ID `0x01` is 25 bytes long and reports physical button presses, the master volume encoder, and rotary screen encoder relative movements:
 
 * **Bytes 1–6 (Button Bitmask):**
   * `Byte 1`: `top_8` (`0x01`), `top_7` (`0x02`), `top_6` (`0x04`), `top_5` (`0x08`), `top_4` (`0x10`), `top_3` (`0x20`), `top_2` (`0x40`), `top_1` (`0x80`)
   * `Byte 2`: `auto` (`0x01`), `all` (`0x02`), `arrow_left` (`0x04`), `arrow_right` (`0x08`), `sampling` (`0x10`), `browser` (`0x20`), `step` (`0x40`), `control` (`0x80`)
   * `Byte 3`: `navigate` (`0x01`), `note_repeat` (`0x02`), `enter` (`0x04`), `nav_right` (`0x08`), `nav_left` (`0x10`), `tempo` (`0x20`), `swing` (`0x40`), `volume` (`0x80`)
   * `Byte 4`: `group_h` (`0x01`), `group_g` (`0x02`), `group_f` (`0x04`), `group_e` (`0x08`), `group_d` (`0x10`), `group_c` (`0x20`), `group_b` (`0x40`), `group_a` (`0x80`)
-  * `Byte 5`: `shift` (`0x01`), `erase` (`0x02`), `rec` (`0x04`), `play` (`0x08`), `grid` (`0x10`), `step_right` (`0x20`), `step_left` (`0x40`), `restart` (`0x80`)
+  * `Byte 5`: `restart` (`0x01`), `step_left` (`0x02`), `step_right` (`0x04`), `grid` (`0x08`), `play` (`0x10`), `rec` (`0x20`), `erase` (`0x40`), `shift` (`0x80`)
   * `Byte 6`: `mute` (`0x01`), `solo` (`0x02`), `select` (`0x04`), `duplicate` (`0x08`), `nav_mode` (`0x10`), `pad_mode` (`0x20`), `pattern` (`0x40`), `scene` (`0x80`)
 
-* **Bytes 8–23 (Relative Encoders):**
-  `screen_encoder_1` through `screen_encoder_8` output relative step deltas across even byte offsets `8, 10, 12, 14, 16, 18, 20, 22`.
+* **Byte 8 (Master Volume Encoder):**
+  `volume_encoder` (4-bit nibble relative encoder, `wrap16`).
+
+* **Bytes 9–24 (Screen Encoders):**
+  `screen_encoder_1` through `screen_encoder_8` (16-bit relative encoders `wrap16_wide`) output across byte pairs `[9, 10]`, `[11, 12]`, `[13, 14]`, `[15, 16]`, `[17, 18]`, `[19, 20]`, `[21, 22]`, `[23, 24]`.
 
 #### 2. Pad Pressure Report (`0x20`)
 Report ID `0x20` is 32 bytes long, containing 16x 12-bit pad pressure readings (`pad_1` through `pad_16`).
