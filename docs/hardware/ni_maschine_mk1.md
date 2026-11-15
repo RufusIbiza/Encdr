@@ -34,6 +34,21 @@ The kernel's `snd-usb-caiaq` driver binds to the Mk1 and exposes it as an ALSA c
    sudo udevadm control --reload-rules && sudo udevadm trigger
    ```
 
+### Windows Requirements
+
+Windows works natively, but the Mk1 needs a **WinUSB** driver instead of NI's. The Mk1 is not HID, and NI's driver (`gbxusb_svc`) owns its bulk interface, so Encdr cannot claim it until the device is rebound. Verified on Windows 11 with Encdr running natively (no WSL).
+
+1. Bind the device (VID `17CC`, PID `0808`) to **WinUSB** with [Zadig](https://zadig.akeo.ie/): choose the Maschine Controller, select WinUSB and replace the driver. Unplug other NI and USB MIDI gear first so the wrong device cannot be selected. A reboot may be needed before the bind takes effect.
+2. Leave `NIHardwareService` and `NIHostIntegrationAgent` running. They do not block the claim; Encdr only logs a warning about them.
+3. Run any example, for example `cargo run -p encdr-examples --bin mk1_vegas`.
+
+Consequences of the WinUSB mode:
+- **NI software cannot see the Mk1** (Maschine 2, Controller Editor), and the `Maschine Midi` ports that NI's driver creates disappear.
+- **It is reversible.** NI's driver stays in the driver store. To switch back, open Device Manager, choose the Mk1, Update driver, Browse, "Let me pick from a list", and select the Native Instruments driver. Never tick "delete the driver software" for NI's driver. Windows remembers the last driver chosen and reapplies it on replug.
+- **Zadig installs a self-signed package** under a machine-wide trusted certificate, so this suits your own machine and not something you ship to end users.
+
+Soak-tested for an hour on Windows with screens, LEDs and input running continuously: no errors, flat memory and handle counts, and automatic recovery after unplug/replug and after a Windows sleep and resume.
+
 ---
 
 ## Physical Layout
@@ -137,6 +152,10 @@ bits 11..0   pressure (0–4095)
 - **Word order.** Each word names its own pad, and frames of 16 words are **not aligned** to transfer boundaries (a transfer may start mid-cycle). The descriptor marks the stream `"pad_format": "id_pressure_words"` so it is decoded word by word.
 - **Thresholds.** Resting pads read exactly 0, light hits peak above 2000, and hard hits reach about 3600. A pad presses at a raw value of 256 and releases below 128.
 - **Index mapping.** Hardware index *n* maps to pads in the same order as the Mk3: index 0 is `pad_13` (top-left) and index 12 is `pad_1` (bottom-left). `Event::Grid::index` carries the hardware index.
+- **Reports are sent on change.** A pad held at a steady pressure goes silent, so do not treat silence as release; use the press and release events. During a strike the reports come a few milliseconds apart.
+- **Strikes versus presses.** A drum-style strike peaks within about 3 ms of the press event, while a slow press takes 130 to 170 ms to reach its peak. For velocity, take the maximum pressure over the first 3 to 4 reports (about 3 ms) of a strike: it reaches 91 to 97% of the final peak (correlation 0.93 to 0.97 with the final peak) and separated light, medium and heavy hits correctly 76 to 86% of the time (thresholds fitted to the same hits), with no light-versus-heavy mix-ups. This is coarse, three-level velocity; fine gradations are not reliable. Measured with one player on 8 pads; hand presses are not a calibrated stimulus. Do not wait for the peak.
+- **Range.** The highest pressure seen was about 81% of full scale (raw about 3,320 of 4,095), so the usable range is roughly 5 to 80%.
+- **Chatter.** Light taps near the press threshold can produce a second press event. A software debounce (ignore a re-press within about 50 ms, or require pressure to fall below the release level first) removes it.
 
 ---
 
@@ -162,7 +181,11 @@ All LEDs are single-color. NI's own software drives them at up to `0x5c` (92), a
 | 24–27 | `shift`, `erase`, `grid`, `step_right` | `top_2`, `top_1`, `note_repeat`, `display_backlight` |
 | 28–30 | `rec`, `play`, — | — |
 
-`display_backlight` defaults to 92 on connect (via the descriptor's `"default"`). Without it the LCDs are unreadable. Setting it to 0 turns the backlight off.
+`display_backlight` defaults to 92 on connect (via the descriptor's `"default"`). Without it the LCDs are unreadable.
+
+**Backlight range.** The backlight is a **7-bit** value: the device ignores bit 7, so 0 is off, 127 is the brightest, and 128 looks like 0, 129 like 1 and 255 like 127. Use 0 to 127. It is set through this LED item; `set_display_brightness` has no effect on the Mk1 because the descriptor has no `display_brightness` quirk (that is for the Mk3 and Plus).
+
+**Pad and button brightness.** The pad LEDs are visibly distinct in about 13 steps (every 8 units from 0 to 96 can be told apart side by side); brightness stops rising between 96 and 104, so the effective ceiling is about 100. NI's own software uses 92, which is a safe maximum but not the hardware limit. Single-unit steps are not visible.
 
 ---
 
@@ -196,6 +219,12 @@ byte 1: [p1 1:0][unused][p2 4:0]
 ```
 
 Levels are 5-bit and **inverted**: 0 is fully lit and 31 is black. Submit RGBA8888 or RGB888 frames and Encdr converts luminance for you.
+
+**Usable grey levels.** Counting 32 evenly spaced bands with dithering off, only about 13 to 14 are distinguishable on a real unit, and the two screens differ by about one band. Both ends of the range saturate: the lightest 5 or so bands look identical, as do the darkest 10 or so. Keep your lightest and darkest UI shades inside that usable range, and design for 8 to 10 clearly separated greys.
+
+### Visible columns
+
+On the unit tested, the two screens do not show the same number of columns. The right screen shows all 255 (0 to 254); the left screen's last logical column (254) is not visible, so only columns 0 to 253 are usable there. A 3-pixel bar drawn at each edge showed as 3 and 3 pixels on the right screen, but as 3 pixels at the left edge and 2 pixels at the right edge on the left screen. The cause is unexplained: Encdr sends byte-identical commands to both screens. The etched pixel grid on the glass continues past the rendered pixels at the edges of both screens, so the missing column is most likely unlit glass at the left screen's edge, not a shifted image, but that is not proven. This was judged by eye with 1-pixel test patterns on one unit. To draw identically on both screens, keep content inside columns 1 to 253.
 
 ### Monochrome & Maschine Mk2 Compatibility
 

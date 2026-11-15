@@ -378,6 +378,16 @@ mod tests {
     }
 
     #[test]
+    fn single_values_reach_the_wire_unmasked() {
+        // Every u8 (notably 128, which the MK1 backlight treats as off) is written verbatim.
+        for v in 0..=255u8 {
+            let mut lb = builder();
+            lb.set("play", LedValue::Single(v));
+            assert_eq!(lb.flush(), Some(vec![0x0c, 0x00, v, 9]), "value {v}");
+        }
+    }
+
+    #[test]
     fn invalidate_resends_the_current_state() {
         let mut lb = builder();
         lb.set("play", LedValue::Single(7));
