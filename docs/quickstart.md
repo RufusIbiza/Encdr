@@ -62,6 +62,8 @@ No additional system packages are required (`encdr-view` uses the Microsoft Edge
 
 > **Native Instruments Services on Windows**: For the **Maschine Mk3, Maschine Plus, and Maschine Studio**, keep `NIHardwareService` / `NIHostIntegrationAgent` running — no Zadig driver replacement is needed, Encdr routes the screens through the NI hardware service while using the Windows HID stack for controls/LEDs, and the controller's instance button hands the hardware between NI software and Encdr. (For other NI controllers whose screens use raw USB, stop `NIHardwareService` first if it holds exclusive USB access.)
 
+> **Non-HID Controllers on Windows (Maschine Mk1)**: Older controllers that communicate entirely over vendor bulk endpoints rather than USB HID (such as the original Maschine Mk1) require Microsoft's **WinUSB** driver instead of NI's proprietary driver (`gbxusb_svc`). See the [Maschine Mk1 Hardware Reference](hardware/ni_maschine_mk1.md#windows-requirements) for quick setup steps using Zadig and instructions on switching back at any time.
+
 ---
 
 ## 2. Hardware Architecture & USB Quirks

@@ -344,6 +344,14 @@ encdr/
 
 ## Changelog
 
+### v0.9.5 (contributed by [demastri](https://github.com/demastri))
+- **Maschine Mk1 Windows Support & Hardware Documentation** (contributed by [@demastri](https://github.com/demastri) in [#9](https://github.com/RufusIbiza/Encdr/pull/9), closing [#8](https://github.com/RufusIbiza/Encdr/issues/8)):
+  - **Windows Setup Guide**: Added detailed Windows setup instructions for the original non-HID Maschine Mk1 (`0x17cc:0x0808`) using WinUSB via Zadig, noting reversibility through Device Manager and coexistence with NI background helper processes.
+  - **Hardware Characteristics & Measurements**: Documented 7-bit display backlight behavior (`0..127`), pad LED brightness ceiling (~100), usable grayscale levels (13–14 distinguishable shades), pad strike velocity dynamics (~3 ms peak detection window), and visible display column boundaries.
+  - **Demo Connection Race Fix**: Updated `mk1_vegas` to use `wait_for_controller`, resolving a connection race where background hotplug threads claimed the Mk1 before a bare `scan()` completed.
+  - **LED Unmasked Transmission Test**: Added unit test `single_values_reach_the_wire_unmasked` confirming unmasked 8-bit LED values (`0..=255`) reach the wire byte-for-byte.
+  - **Quickstart Documentation**: Added Windows guidance for non-HID controllers in `docs/quickstart.md`.
+
 ### v0.9.4 (contributed by [nans1906](https://github.com/nans1906))
 - **Maschine Mk2 Master Volume Encoder & Display Encoder Mapping Fix** (reported and investigated by [@nans1906](https://github.com/nans1906) in [#5](https://github.com/RufusIbiza/Encdr/issues/5)):
   - **Sizing & Collision Resolution**: Corrected Report `0x01` input packet size from 24 to 25 bytes.
