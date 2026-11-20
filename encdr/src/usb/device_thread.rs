@@ -92,6 +92,13 @@ pub enum DeviceCmd {
     Disconnect,
 }
 
+fn signal_disconnect(tx: &async_channel::Sender<DeviceCmd>) {
+    // A full queue must still wake the worker after it drains pending commands.
+    if let Err(async_channel::TrySendError::Full(_)) = tx.try_send(DeviceCmd::Disconnect) {
+        tx.close();
+    }
+}
+
 /// Manages a single connected device's I/O thread.
 pub struct DeviceHandle {
     pub device_id: DeviceId,
@@ -247,12 +254,12 @@ impl DeviceHandle {
                 }
             }
             DeviceCmd::Disconnect => {
-                self.cmd_tx.try_send(DeviceCmd::Disconnect).ok();
+                signal_disconnect(&self.cmd_tx);
                 if let Some(ref tx) = self.led_tx {
-                    tx.try_send(DeviceCmd::Disconnect).ok();
+                    signal_disconnect(tx);
                 }
                 if let Some(ref tx) = self.screen_tx {
-                    tx.try_send(DeviceCmd::Disconnect).ok();
+                    signal_disconnect(tx);
                 }
             }
         }
@@ -285,6 +292,36 @@ impl Drop for DeviceHandle {
         }
         if let Some(thread) = self.screen_thread.take() {
             thread.join().ok();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn disconnect_wakes_full_worker_queues() {
+        let mut registry = crate::device::loader::DescriptorRegistry::new();
+        registry.load_builtins().unwrap();
+        let (cmd_tx, cmd_rx) = async_channel::bounded(1);
+        let (led_tx, led_rx) = async_channel::bounded(1);
+        let (screen_tx, screen_rx) = async_channel::bounded(1);
+        for tx in [&cmd_tx, &led_tx, &screen_tx] {
+            tx.try_send(DeviceCmd::ControlLost).unwrap();
+        }
+        let handle = DeviceHandle {
+            device_id: DeviceId::default(),
+            descriptor: registry.find(0x17cc, 0x1700).unwrap().clone(),
+            cmd_tx, led_tx: Some(led_tx), screen_tx: Some(screen_tx),
+            has_control: Arc::new(AtomicBool::new(true)),
+            is_connected: Arc::new(AtomicBool::new(true)),
+            thread: None, screen_thread: None,
+        };
+        handle.send(DeviceCmd::Disconnect);
+        for rx in [cmd_rx, led_rx, screen_rx] {
+            assert!(matches!(rx.try_recv(), Ok(DeviceCmd::ControlLost)));
+            assert!(matches!(rx.try_recv(), Ok(DeviceCmd::Disconnect) | Err(async_channel::TryRecvError::Closed)));
         }
     }
 }
@@ -704,10 +741,10 @@ fn run_device(
                     is_connected.store(false, Ordering::SeqCst);
                     has_control.store(false, Ordering::SeqCst);
                     if let Some(ref tx) = screen_ctl_tx {
-                        tx.try_send(DeviceCmd::Disconnect).ok();
+                        signal_disconnect(tx);
                     }
                     if let Some(ref tx) = led_ctl_tx {
-                        tx.try_send(DeviceCmd::Disconnect).ok();
+                        signal_disconnect(tx);
                     }
                     running = false;
                 }
@@ -720,10 +757,10 @@ fn run_device(
                             is_connected.store(false, Ordering::SeqCst);
                             has_control.store(false, Ordering::SeqCst);
                             if let Some(ref tx) = screen_ctl_tx {
-                                tx.try_send(DeviceCmd::Disconnect).ok();
+                                signal_disconnect(tx);
                             }
                             if let Some(ref tx) = led_ctl_tx {
-                                tx.try_send(DeviceCmd::Disconnect).ok();
+                                signal_disconnect(tx);
                             }
                             running = false;
                             break;
@@ -798,10 +835,10 @@ fn run_device(
 
                             // Signal worker threads to terminate without deadlocking
                             if let Some(ref tx) = screen_ctl_tx {
-                                tx.try_send(DeviceCmd::Disconnect).ok();
+                                signal_disconnect(tx);
                             }
                             if let Some(ref tx) = led_ctl_tx {
-                                tx.try_send(DeviceCmd::Disconnect).ok();
+                                signal_disconnect(tx);
                             }
 
                             running = false;
@@ -1508,7 +1545,7 @@ fn run_screens(
                 Err(e) if ni_service::is_rejected_frame(&e) => control.lose().await,
                 Err(e) => {
                     tracing::warn!("Screen transfer for '{}' failed: {}", screen, e);
-                    input_ctl_tx.try_send(DeviceCmd::Disconnect).ok();
+                    signal_disconnect(input_ctl_tx);
                 }
             }
         }
