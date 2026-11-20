@@ -33,9 +33,9 @@ fn main() {
     println!("Scanning for connected devices...\n");
 
     let mut encdr = Encdr::new(EncdrConfig::default()).expect("Failed to initialize encdr");
-    let ids = encdr.scan().expect("Scan failed");
+    encdr.scan().expect("Scan failed");
 
-    let device_id = ids.into_iter().find(|&id| {
+    let device_id = encdr.connected_devices().into_iter().find(|&id| {
         encdr.device_descriptor(id).map(|d| d.vendor_id.0 == 0x17cc && d.product_id.0 == 0x1700).unwrap_or(false)
     }).unwrap_or_else(|| {
         eprintln!("❌ NI Maschine Mikro Mk3 (0x17cc:0x1700) not found.");
