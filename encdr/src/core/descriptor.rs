@@ -489,7 +489,7 @@ impl ScreenDesc {
 
     pub fn byte_size(&self) -> usize {
         match self.pixel_format {
-            PixelFormat::Mono => (self.pixel_count() + 7) / 8,
+            PixelFormat::Mono => self.width.div_ceil(8) as usize * self.height as usize,
             PixelFormat::St7529Gray5 => {
                 self.width.div_ceil(3) as usize * 2 * self.height as usize
             }
