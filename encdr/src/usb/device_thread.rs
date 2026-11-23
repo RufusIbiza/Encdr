@@ -211,7 +211,7 @@ impl DeviceHandle {
                     thread_has_control, thread_is_connected, screen_rx, screen_ctl_tx, event_tx, gpu,
                 );
             })
-            .map_err(|e| crate::core::error::EncdrError::Io(e))?;
+            .map_err(crate::core::error::EncdrError::Io)?;
 
         Ok(Self {
             device_id,
@@ -319,6 +319,7 @@ mod tests {
 }
 
 /// Main device I/O loop. Runs on a dedicated thread.
+#[allow(clippy::too_many_arguments)]
 fn run_device(
     device_id: DeviceId,
     descriptor: Arc<DeviceDescriptor>,
@@ -524,8 +525,8 @@ fn run_device(
 
     // Screens whose USB interface couldn't be claimed (Windows keeps NI's driver
     // on it) can still be drawn by the NI hardware service.
-    if let Some(quirk) = &descriptor.quirks.ni_service {
-        if !interfaces.contains_key(&quirk.screen_interface) {
+    if let Some(quirk) = &descriptor.quirks.ni_service
+        && !interfaces.contains_key(&quirk.screen_interface) {
             match ni_service::connect_with_retry(quirk.product_id.0, hid_target.serial.as_deref(), Duration::from_secs(5)) {
                 Ok(session) => {
                     tracing::info!(
@@ -541,7 +542,6 @@ fn run_device(
                 ),
             }
         }
-    }
 
     // Check for OUT endpoints shared between screens and LEDs on the same physical interface.
     // In nusb, an endpoint on an interface cannot be opened by multiple Endpoint handles simultaneously,
@@ -551,8 +551,8 @@ fn run_device(
 
     let mut screen_out_eps = Vec::new();
     for s in &descriptor.screens {
-        if let Some(iface_desc) = descriptor.interface_by_id(&s.interface) {
-            if let Some(out_ep) = &iface_desc.endpoints.out {
+        if let Some(iface_desc) = descriptor.interface_by_id(&s.interface)
+            && let Some(out_ep) = &iface_desc.endpoints.out {
                 screen_out_eps.push((
                     iface_desc.number,
                     s.interface.clone(),
@@ -560,20 +560,18 @@ fn run_device(
                     out_ep.transfer_type,
                 ));
             }
-        }
     }
 
     for lb in &led_builders {
         let ep_addr = lb.endpoint();
-        let iface_desc = descriptor.interface_by_id("control");
+        let iface_desc = descriptor.interface_by_id(&control_iface_id);
         let physical_num = iface_desc.map(|i| i.number).unwrap_or(0);
 
         if let Some((_, screen_iface_id, _, transfer_type)) = screen_out_eps
             .iter()
             .find(|(num, _, addr, _)| *num == physical_num && *addr == ep_addr)
-        {
-            if !shared_led_eps.contains_key(&ep_addr) {
-                if let Some(iface) = interfaces.get(screen_iface_id) {
+            && !shared_led_eps.contains_key(&ep_addr)
+                && let Some(iface) = interfaces.get(screen_iface_id) {
                     match OutEndpoint::open(iface, ep_addr, *transfer_type) {
                         Ok(raw_ep) => {
                             tracing::info!(
@@ -594,8 +592,6 @@ fn run_device(
                         }
                     }
                 }
-            }
-        }
     }
 
     // Tracks actual physical USB loss (as opposed to user-initiated clean shutdown)
@@ -604,8 +600,9 @@ fn run_device(
 
     // If device has screens, delegate them entirely to a dedicated screen thread
     // so that screen bulk transfers never stall the interrupt input loop.
-    let screen_thread = if !descriptor.screens.is_empty() && screen_rx.is_some() {
-        let screen_rx = screen_rx.unwrap();
+    let screen_thread = if !descriptor.screens.is_empty()
+        && let Some(screen_rx) = screen_rx
+    {
         let screen_desc = descriptor.clone();
         let mut screen_ifaces = HashMap::new();
         for s in &descriptor.screens {
@@ -649,10 +646,9 @@ fn run_device(
     // interrupt IN read loop. The LED thread gets its own clone of control_iface
     // (nusb::Interface is Arc-based and supports concurrent transfers).
     let led_thread = if let Some((led_rx, led_iface)) = led_rx.zip(control_iface.clone()) {
-        let led_builders = led_builders;
         let feature_leds = descriptor.quirks.feature_report_leds.clone();
         let display_brightness = descriptor.quirks.display_brightness.clone();
-        let iface_desc = descriptor.interface_by_id("control");
+        let iface_desc = descriptor.interface_by_id(&control_iface_id);
         let physical_num = iface_desc.map(|i| i.number).unwrap_or(0);
         let led_phys_disconnected = physically_disconnected.clone();
         thread::Builder::new()
@@ -1086,8 +1082,8 @@ fn claim_interface(
                 .iter()
                 .filter(|i| i.number == iface_desc.number)
                 .find_map(|i| i.alt_setting);
-            if let Some(alt) = alt {
-                if let Err(e) = iface.set_alt_setting(alt).wait() {
+            if let Some(alt) = alt
+                && let Err(e) = iface.set_alt_setting(alt).wait() {
                     tracing::error!(
                         "Failed to select alt setting {} on interface {}: {}",
                         alt,
@@ -1096,7 +1092,6 @@ fn claim_interface(
                     );
                     return Err(());
                 }
-            }
             Ok(Iface::Usb(iface))
         }
         Err(usb_err) => {
@@ -1430,6 +1425,7 @@ async fn try_regain_screens(
 
 /// Dedicated screen worker thread. Runs completely decoupled from the interrupt IN input loop
 /// so that large bulk pixel transfers never delay button, pad, or encoder events.
+#[allow(clippy::too_many_arguments)]
 fn run_screens(
     descriptor: Arc<DeviceDescriptor>,
     screen_ifaces: HashMap<String, Iface>,
@@ -1484,13 +1480,13 @@ fn run_screens(
                 let key = (s.interface.clone(), ep_addr);
                 screen_to_ep.insert(s.name.clone(), key.clone());
 
-                if !endpoints.contains_key(&key) {
-                    if let Some(shared) = shared_endpoints.get(&key).and_then(|e| e.try_clone()) {
-                        endpoints.insert(key, shared);
+                if let std::collections::hash_map::Entry::Vacant(slot) = endpoints.entry(key) {
+                    if let Some(shared) = shared_endpoints.get(slot.key()).and_then(|e| e.try_clone()) {
+                        slot.insert(shared);
                     } else {
                         match OutEndpoint::open(iface, ep_addr, transfer_type) {
                             Ok(ep) => {
-                                endpoints.insert(key, ep);
+                                slot.insert(ep);
                             }
                             Err(e) => tracing::error!(
                                 "Failed to open screen OUT ep 0x{:02x} for '{}': {}",
@@ -1542,6 +1538,7 @@ fn run_screens(
             }
         }
 
+        #[allow(clippy::too_many_arguments)]
         async fn process_and_send_screen(
             screen: &str,
             pixels: &[u8],
@@ -1842,6 +1839,7 @@ fn run_screens(
 /// them, and flushes via interrupt OUT on a cloned interface handle. Runs completely
 /// decoupled from the interrupt IN read loop so USB output transfers never stall
 /// input processing.
+#[allow(clippy::too_many_arguments)]
 fn run_leds(
     iface: Iface,
     mut led_builders: Vec<LedBuilder>,
@@ -1862,13 +1860,13 @@ fn run_leds(
         let mut led_endpoints: HashMap<u8, OutEndpoint> = HashMap::new();
         for lb in &led_builders {
             let ep = lb.endpoint();
-            if !led_endpoints.contains_key(&ep) {
+            if let std::collections::hash_map::Entry::Vacant(e) = led_endpoints.entry(ep) {
                 if let Some(shared) = shared_endpoints.get(&ep).and_then(|e| e.try_clone()) {
-                    led_endpoints.insert(ep, shared);
+                    e.insert(shared);
                 } else {
                     match OutEndpoint::open(&iface, ep, lb.transfer_type()) {
                         Ok(endpoint) => {
-                            led_endpoints.insert(ep, endpoint);
+                            e.insert(endpoint);
                         }
                         Err(e) => tracing::error!("Failed to open LED OUT ep 0x{:02x}: {}", ep, e),
                     }
@@ -1878,11 +1876,10 @@ fn run_leds(
 
         // Push descriptor default LED values (e.g. a display backlight).
         for lb in &mut led_builders {
-            if let Some(wire_buf) = lb.flush() {
-                if let Some(endpoint) = led_endpoints.get_mut(&lb.endpoint()) {
+            if let Some(wire_buf) = lb.flush()
+                && let Some(endpoint) = led_endpoints.get_mut(&lb.endpoint()) {
                     let _ = endpoint.write(wire_buf).await;
                 }
-            }
         }
 
         // Tracks cumulative mask and dirty state per feature subcommand (e.g. 0x26 -> (mask, dirty))
@@ -1905,8 +1902,8 @@ fn run_leds(
                     }
                     DeviceCmd::SetLed { name, value } => {
                         let mut handled = false;
-                        if let Some(ref quirk) = feature_report_leds {
-                            if let Some(item) = quirk.items.get(&name) {
+                        if let Some(ref quirk) = feature_report_leds
+                            && let Some(item) = quirk.items.get(&name) {
                                 let cmd_byte = item.command.0 as u8;
                                 let mask_byte = item.mask.0 as u8;
                                 let entry = feature_cmd_masks.entry(cmd_byte).or_insert((0, false));
@@ -1929,7 +1926,6 @@ fn run_leds(
                                 }
                                 handled = true;
                             }
-                        }
                         if !handled {
                             for lb in &mut led_builders {
                                 if lb.set(&name, value) {
@@ -1940,8 +1936,8 @@ fn run_leds(
                     }
                     DeviceCmd::SetLedInGroup { group, name, value } => {
                         let mut handled = false;
-                        if let Some(ref quirk) = feature_report_leds {
-                            if let Some(item) = quirk.items.get(&name) {
+                        if let Some(ref quirk) = feature_report_leds
+                            && let Some(item) = quirk.items.get(&name) {
                                 let cmd_byte = item.command.0 as u8;
                                 let mask_byte = item.mask.0 as u8;
                                 let entry = feature_cmd_masks.entry(cmd_byte).or_insert((0, false));
@@ -1964,7 +1960,6 @@ fn run_leds(
                                 }
                                 handled = true;
                             }
-                        }
                         if !handled {
                             for lb in &mut led_builders {
                                 if lb.group_id() == group {
@@ -2031,14 +2026,13 @@ fn run_leds(
                     let ep = lb.endpoint();
                     let group = lb.group_id().to_string();
                     let len = wire_buf.len();
-                    if let Some(endpoint) = led_endpoints.get_mut(&ep) {
-                        if let Err(e) = endpoint.write(wire_buf).await {
+                    if let Some(endpoint) = led_endpoints.get_mut(&ep)
+                        && let Err(e) = endpoint.write(wire_buf).await {
                             tracing::warn!(
                                 "Failed to flush {} bytes to LED group '{}' ep 0x{:02x}: {}",
                                 len, group, ep, e
                             );
                         }
-                    }
                 }
             }
 

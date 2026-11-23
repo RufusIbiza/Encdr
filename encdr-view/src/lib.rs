@@ -181,11 +181,10 @@ impl ScreenView {
     /// Process pending frames: if the WebView has rendered new content,
     /// capture and submit it to encdr.
     pub fn poll(&self, encdr: &Encdr) {
-        if self.is_frame_ready() {
-            if let Err(e) = self.capture_and_submit(encdr) {
+        if self.is_frame_ready()
+            && let Err(e) = self.capture_and_submit(encdr) {
                 tracing::warn!("Frame capture failed: {}", e);
             }
-        }
     }
 
     /// Pump the platform event loop.
@@ -397,11 +396,10 @@ impl DualScreenView {
     /// Process pending frames: if the WebView has rendered new content,
     /// capture and submit it to encdr.
     pub fn poll(&self, encdr: &Encdr) {
-        if self.is_frame_ready() {
-            if let Err(e) = self.capture_and_submit(encdr) {
+        if self.is_frame_ready()
+            && let Err(e) = self.capture_and_submit(encdr) {
                 tracing::warn!("Frame capture failed: {}", e);
             }
-        }
     }
 
     /// Load new HTML content into the WebView, replacing the current page.

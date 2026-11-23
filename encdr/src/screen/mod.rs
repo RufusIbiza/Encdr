@@ -128,15 +128,15 @@ impl ScreenManager {
         self.frame_count += 1;
 
         // Step 2: Determine if we need a keyframe (full blit on frame 1 and every ~60 frames / ~2s at 30fps)
-        let force_full = self.frame_count == 1 || self.frame_count % 60 == 0;
+        let force_full = self.frame_count == 1 || self.frame_count.is_multiple_of(60);
 
         // Step 3: Frame diff & region extraction on CPU-resident native buffers.
         // Both `native_pixels` and `self.prev_frame` are already in host memory (~261 KB for 480x272),
         // so diffing (~30 us) and row-memcpy extraction (~10 us) on CPU avoids two extra PCIe
         // round-trips and synchronous GPU device.poll stalls per frame.
-        if !force_full {
-            if let Some(partial_blit) = &screen_desc.partial_blit {
-                if partial_blit.supported {
+        if !force_full
+            && let Some(partial_blit) = &screen_desc.partial_blit
+                && partial_blit.supported {
                     let bpp = self.pixel_format.bytes_per_pixel();
                     let dirty = compute_dirty_rect(
                         &self.prev_frame,
@@ -175,8 +175,6 @@ impl ScreenManager {
                         }
                     }
                 }
-            }
-        }
 
         // Full blit
         if self.prev_frame == native_pixels && !force_full {
@@ -288,7 +286,7 @@ fn rgb8_to_bgr565_be(rgb: &[u8], width: usize, height: usize) -> Vec<u8> {
 
 /// Convert RGBA8888 to 1bpp monochrome bitmap (MSB-first row-major).
 pub(crate) fn rgba8_to_mono(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
-    let stride = (width + 7) / 8;
+    let stride = width.div_ceil(8);
     let mut out = vec![0u8; stride * height];
 
     for y in 0..height {
@@ -313,7 +311,7 @@ pub(crate) fn rgba8_to_mono(rgba: &[u8], width: usize, height: usize) -> Vec<u8>
 
 /// Convert RGB888 to 1bpp monochrome bitmap (MSB-first row-major).
 pub(crate) fn rgb8_to_mono(rgb: &[u8], width: usize, height: usize) -> Vec<u8> {
-    let stride = (width + 7) / 8;
+    let stride = width.div_ceil(8);
     let mut out = vec![0u8; stride * height];
 
     for y in 0..height {
@@ -377,7 +375,7 @@ pub(crate) fn mono_to_st7529_gray5(src: &[u8], width: usize, height: usize) -> V
     let src_stride = if height > 0 && src.len() >= height {
         src.len() / height
     } else {
-        (width + 7) / 8
+        width.div_ceil(8)
     };
 
     for y in 0..height {
@@ -411,7 +409,7 @@ pub(crate) fn mono_to_st7529_gray5(src: &[u8], width: usize, height: usize) -> V
 ///
 /// Thresholds at mid-level (16): pixels with inverted level < 16 are treated as lit.
 pub(crate) fn st7529_gray5_to_mono(src: &[u8], width: usize, height: usize) -> Vec<u8> {
-    let stride = (width + 7) / 8;
+    let stride = width.div_ceil(8);
     let mut out = vec![0u8; stride * height];
     let groups = width.div_ceil(3);
 
@@ -545,7 +543,7 @@ fn extract_region(
         if src_end <= pixels.len() {
             out.extend_from_slice(&pixels[src_start..src_end]);
         } else {
-            out.extend(std::iter::repeat(0u8).take(region_stride));
+            out.extend(std::iter::repeat_n(0u8, region_stride));
         }
     }
 
@@ -742,7 +740,7 @@ mod tests {
         ];
         let out = to_st7529_gray5(&rgba, 4, 4, 1);
         // Inverted levels: white 0, black 31, gray 31 - 16 = 15.
-        assert_eq!(out, vec![0 << 3 | 31 >> 2, (31 & 3) << 6 | 15, 0 << 3 | 31 >> 2, (31 & 3) << 6 | 31]);
+        assert_eq!(out, vec![(31 >> 2), (31 & 3) << 6 | 15, (31 >> 2), (31 & 3) << 6 | 31]);
     }
 
     #[test]
@@ -755,9 +753,9 @@ mod tests {
         assert_eq!(
             gray5,
             vec![
-                0 << 3 | 31 >> 2,
+                (31 >> 2),
                 (31 & 3) << 6 | 31,
-                0 << 3 | 31 >> 2,
+                (31 >> 2),
                 (31 & 3) << 6 | 31,
             ]
         );
@@ -779,11 +777,11 @@ mod tests {
         assert_eq!(st7529_frame.len(), 85 * 2 * 64);
 
         // Row 0 first triad: p0 lit (0), p1 unlit (31), p2 unlit (31)
-        assert_eq!(st7529_frame[0], 0 << 3 | 31 >> 2);
+        assert_eq!(st7529_frame[0], (31 >> 2));
         assert_eq!(st7529_frame[1], (31 & 3) << 6 | 31);
 
         // Row 1 first triad at offset 170: p0 lit (0), p1 unlit (31), p2 unlit (31)
-        assert_eq!(st7529_frame[170], 0 << 3 | 31 >> 2);
+        assert_eq!(st7529_frame[170], (31 >> 2));
         assert_eq!(st7529_frame[171], (31 & 3) << 6 | 31);
     }
 
@@ -811,7 +809,7 @@ mod tests {
 
         let mut sm = ScreenManager::new(&desc, None);
         let frame_black = vec![0u8; 10 * 10 * 2];
-        let mut frame_red = vec![0xF8, 0x00].repeat(10 * 10);
+        let mut frame_red = [0xF8, 0x00].repeat(10 * 10);
 
         // Frame 1: forced full
         let res1 = sm.submit(&frame_black, PixelFormat::Bgr565Be, &desc);

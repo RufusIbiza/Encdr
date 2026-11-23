@@ -41,6 +41,7 @@ impl SkiaScreenView {
 
     /// Create a new Skia-backed screen for a connected device using a dedicated GPU context.
     pub fn new(encdr: &Encdr, device_id: DeviceId, screen_name: &str) -> Result<Self, String> {
+        #[allow(clippy::arc_with_non_send_sync)]
         let gpu = Arc::new(Mutex::new(SkiaGpuContext::new()));
         Self::with_gpu_context(encdr, device_id, screen_name, gpu)
     }

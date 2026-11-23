@@ -237,8 +237,10 @@ mod imp {
         }
     }
 
+    pub(crate) type HidReportRx = Pin<Box<async_channel::Receiver<Result<Vec<u8>, String>>>>;
+
     pub struct HidReader {
-        pub rx: Pin<Box<async_channel::Receiver<Result<Vec<u8>, String>>>>,
+        pub rx: HidReportRx,
     }
 }
 

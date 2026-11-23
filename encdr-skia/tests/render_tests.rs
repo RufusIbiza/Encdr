@@ -26,14 +26,14 @@ fn test_cpu_surface_rendering() {
 
     // Check pixel at (0, 0) is black (0, 0, 0, 255)
     let idx_bg = 0;
-    assert_eq!(pixels[idx_bg + 0], 0);
+    assert_eq!(pixels[idx_bg], 0);
     assert_eq!(pixels[idx_bg + 1], 0);
     assert_eq!(pixels[idx_bg + 2], 0);
     assert_eq!(pixels[idx_bg + 3], 255);
 
     // Check pixel inside rect (15, 15) is red (255, 0, 0, 255)
     let idx_rect = (15 * 100 + 15) * 4;
-    assert_eq!(pixels[idx_rect + 0], 255);
+    assert_eq!(pixels[idx_rect], 255);
     assert_eq!(pixels[idx_rect + 1], 0);
     assert_eq!(pixels[idx_rect + 2], 0);
     assert_eq!(pixels[idx_rect + 3], 255);
@@ -65,7 +65,7 @@ fn test_gpu_context_fallback_or_vulkan() {
 
     // Check center pixel (240, 136) is green-ish
     let center_idx = (136 * 480 + 240) * 4;
-    assert_eq!(pixels[center_idx + 0], 0);
+    assert_eq!(pixels[center_idx], 0);
     assert_eq!(pixels[center_idx + 1], 255);
     assert_eq!(pixels[center_idx + 2], 128);
     assert_eq!(pixels[center_idx + 3], 255);

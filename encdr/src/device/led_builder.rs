@@ -39,22 +39,20 @@ impl LedBuilder {
         for item in &desc.items {
             match item {
                 LedItemDesc::Single(s) => {
-                    if let Some(value) = s.default {
-                        if let Some(slot) = buffer.get_mut(s.offset) {
+                    if let Some(value) = s.default
+                        && let Some(slot) = buffer.get_mut(s.offset) {
                             *slot = value;
                         }
-                    }
                     led_map.insert(
                         s.name.clone(),
                         LedMapping::Single { offset: s.offset },
                     );
                 }
                 LedItemDesc::Indexed(i) => {
-                    if let Some(value) = i.default {
-                        if let Some(slot) = buffer.get_mut(i.offset) {
+                    if let Some(value) = i.default
+                        && let Some(slot) = buffer.get_mut(i.offset) {
                             *slot = value;
                         }
-                    }
                     led_map.insert(
                         i.name.clone(),
                         LedMapping::Indexed { offset: i.offset },
@@ -124,12 +122,11 @@ impl LedBuilder {
 
     #[inline]
     fn write_byte(&mut self, offset: usize, value: u8) {
-        if let Some(slot) = self.buffer.get_mut(offset) {
-            if *slot != value {
+        if let Some(slot) = self.buffer.get_mut(offset)
+            && *slot != value {
                 *slot = value;
                 self.dirty = true;
             }
-        }
     }
 
     /// Set an LED by name.

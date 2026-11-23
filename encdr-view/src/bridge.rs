@@ -13,8 +13,6 @@ pub const BRIDGE_INIT_JS: &str = r#"
     if (!window.encdr.onMessage) {
         window.encdr.onMessage = function(channel, data) {};
     }
-    window.encdr._dirty = false;
-    window.encdr._rafId = null;
 
     window.encdr.requestCapture = function() {
         if (window.ipc) {

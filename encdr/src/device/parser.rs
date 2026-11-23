@@ -669,7 +669,7 @@ impl PacketParser {
                                     const SPRING_BACK_WINDOW: Duration = Duration::from_millis(50);
 
                                     let in_strike_window = state.last_strike[p_usize]
-                                        .map_or(false, |t| t.elapsed() < STRIKE_DEBOUNCE_WINDOW);
+                                        .is_some_and(|t| t.elapsed() < STRIKE_DEBOUNCE_WINDOW);
 
                                     if pressure_raw <= PAD_RELEASE_THRESHOLD {
                                         if prev_pressed && !in_strike_window {
@@ -698,7 +698,7 @@ impl PacketParser {
                                     } else if pressure_raw >= PAD_PRESS_THRESHOLD {
                                         if !prev_pressed {
                                             let in_spring_back = state.last_release[p_usize]
-                                                .map_or(false, |t| t.elapsed() < SPRING_BACK_WINDOW);
+                                                .is_some_and(|t| t.elapsed() < SPRING_BACK_WINDOW);
                                             if in_spring_back {
                                                 // Spring-back rejection: mechanical silicone rebound after release
                                                 // must never trigger a new note press via aftertouch 0x40.
@@ -793,7 +793,7 @@ impl PacketParser {
                                     const STRIKE_DEBOUNCE_WINDOW: Duration = Duration::from_millis(30);
 
                                     let in_strike_window = state.last_strike[p_usize]
-                                        .map_or(false, |t| t.elapsed() < STRIKE_DEBOUNCE_WINDOW);
+                                        .is_some_and(|t| t.elapsed() < STRIKE_DEBOUNCE_WINDOW);
 
                                     if pressure_raw <= PAD_RELEASE_THRESHOLD {
                                         if prev_pressed && !in_strike_window {
@@ -922,8 +922,8 @@ impl PacketParser {
             None
         };
 
-        if let Some(pad_data) = mk2_pad_bytes {
-            if let Some(ref mut state) = self.pad_stream_state {
+        if let Some(pad_data) = mk2_pad_bytes
+            && let Some(ref mut state) = self.pad_stream_state {
                 let start = events.len();
                 const MK2_PRESS_THRESHOLD: f32 = 48.0 / 4095.0;
                 const MK2_RELEASE_THRESHOLD: f32 = 16.0 / 4095.0;
@@ -964,46 +964,43 @@ impl PacketParser {
                                 pressure,
                             });
                         }
+                    } else if pressure < MK2_RELEASE_THRESHOLD {
+                        state.pad_states[p] = false;
+                        state.pad_pressures[p] = 0.0;
+                        state.aftertouch_count[p] = 0;
+                        events.push(Event::Button {
+                            device: self.device_id,
+                            name: pad_name,
+                            pressed: false,
+                        });
+                        events.push(Event::Grid {
+                            device: self.device_id,
+                            name: pad_name,
+                            index: p as u8,
+                            pressure: 0.0,
+                        });
                     } else {
-                        if pressure < MK2_RELEASE_THRESHOLD {
-                            state.pad_states[p] = false;
-                            state.pad_pressures[p] = 0.0;
-                            state.aftertouch_count[p] = 0;
-                            events.push(Event::Button {
-                                device: self.device_id,
-                                name: pad_name,
-                                pressed: false,
-                            });
+                        // The ADC stream is continuous, so every incoming packet while held counts as an update.
+                        // Without updating last_update and aftertouch_count, check_pad_timeouts treats held pads
+                        // as an abandoned tap and forces false release on every sweep.
+                        state.last_update[p] = Instant::now();
+                        state.aftertouch_count[p] = state.aftertouch_count[p].saturating_add(1);
+
+                        let pressure_changed = (pressure - state.pad_pressures[p]).abs() > 0.02;
+                        if pressure_changed {
+                            state.pad_pressures[p] = pressure;
                             events.push(Event::Grid {
                                 device: self.device_id,
                                 name: pad_name,
                                 index: p as u8,
-                                pressure: 0.0,
+                                pressure,
                             });
-                        } else {
-                            // The ADC stream is continuous, so every incoming packet while held counts as an update.
-                            // Without updating last_update and aftertouch_count, check_pad_timeouts treats held pads
-                            // as an abandoned tap and forces false release on every sweep.
-                            state.last_update[p] = Instant::now();
-                            state.aftertouch_count[p] = state.aftertouch_count[p].saturating_add(1);
-
-                            let pressure_changed = (pressure - state.pad_pressures[p]).abs() > 0.02;
-                            if pressure_changed {
-                                state.pad_pressures[p] = pressure;
-                                events.push(Event::Grid {
-                                    device: self.device_id,
-                                    name: pad_name,
-                                    index: p as u8,
-                                    pressure,
-                                });
-                            }
                         }
                     }
                 }
                 self.filter_pad_events(start, events);
                 return;
             }
-        }
 
         // Declared packets without items (e.g. the Mk3's pad stream, handled
         // above) have nothing to parse here, so they don't count as a match.
@@ -1116,19 +1113,16 @@ impl PacketParser {
             }
             let mask = if desc.bits >= 8 { 0xFF } else { (1u8 << desc.bits) - 1 };
             let raw = (buf[desc.byte] >> desc.bit_offset) & mask;
-            if desc.encoding == EncoderEncoding::Wrap16 {
-                if let Some(delta) = enc.state.update_wrap16(raw) {
-                    if active {
-                        if let Some(name) = enc.name {
+            if desc.encoding == EncoderEncoding::Wrap16
+                && let Some(delta) = enc.state.update_wrap16(raw)
+                    && active
+                        && let Some(name) = enc.name {
                             events.push(Event::Encoder {
                                 device: device_id,
                                 name,
                                 delta,
                             });
                         }
-                    }
-                }
-            }
         }
 
         // Parse compiled fine encoders
@@ -1157,17 +1151,15 @@ impl PacketParser {
                 }
                 _ => None,
             };
-            if let Some(raw_delta) = raw_delta {
-                if active {
-                    if let Some(name) = enc.name {
+            if let Some(raw_delta) = raw_delta
+                && active
+                    && let Some(name) = enc.name {
                         events.push(Event::EncoderFine {
                             device: device_id,
                             name,
                             delta: raw_delta / desc.scale,
                         });
                     }
-                }
-            }
         }
 
         // Parse compiled sliders

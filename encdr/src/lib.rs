@@ -345,14 +345,13 @@ impl Encdr {
 
     /// Set an LED on a device by name (matches first LED group containing the name).
     pub fn set_led(&self, device_id: DeviceId, name: &str, value: LedValue) {
-        if let Some(handle) = self.devices.read().unwrap().get(&device_id) {
-            if handle.is_connected() {
+        if let Some(handle) = self.devices.read().unwrap().get(&device_id)
+            && handle.is_connected() {
                 handle.send(DeviceCmd::SetLed {
                     name: name.to_string(),
                     value,
                 });
             }
-        }
     }
 
     /// Set an LED on a device within a specific LED group.
@@ -363,27 +362,25 @@ impl Encdr {
         name: &str,
         value: LedValue,
     ) {
-        if let Some(handle) = self.devices.read().unwrap().get(&device_id) {
-            if handle.is_connected() {
+        if let Some(handle) = self.devices.read().unwrap().get(&device_id)
+            && handle.is_connected() {
                 handle.send(DeviceCmd::SetLedInGroup {
                     group: group.to_string(),
                     name: name.to_string(),
                     value,
                 });
             }
-        }
     }
 
     /// Set a strip LED array on a device by name (matches first group containing the name).
     pub fn set_led_strip(&self, device_id: DeviceId, name: &str, values: &[u8]) {
-        if let Some(handle) = self.devices.read().unwrap().get(&device_id) {
-            if handle.is_connected() {
+        if let Some(handle) = self.devices.read().unwrap().get(&device_id)
+            && handle.is_connected() {
                 handle.send(DeviceCmd::SetLedStrip {
                     name: name.to_string(),
                     values: values.to_vec(),
                 });
             }
-        }
     }
 
     /// Set a strip LED array on a device within a specific LED group.
@@ -394,15 +391,14 @@ impl Encdr {
         name: &str,
         values: &[u8],
     ) {
-        if let Some(handle) = self.devices.read().unwrap().get(&device_id) {
-            if handle.is_connected() {
+        if let Some(handle) = self.devices.read().unwrap().get(&device_id)
+            && handle.is_connected() {
                 handle.send(DeviceCmd::SetLedStripInGroup {
                     group: group.to_string(),
                     name: name.to_string(),
                     values: values.to_vec(),
                 });
             }
-        }
     }
 
     /// Sets the display backlight brightness for devices with adjustable screens
@@ -410,11 +406,10 @@ impl Encdr {
     ///
     /// - `level`: Brightness percentage (0..=100)
     pub fn set_display_brightness(&self, device_id: DeviceId, level: u8) {
-        if let Some(handle) = self.devices.read().unwrap().get(&device_id) {
-            if handle.is_connected() {
+        if let Some(handle) = self.devices.read().unwrap().get(&device_id)
+            && handle.is_connected() {
                 handle.set_display_brightness(level);
             }
-        }
     }
 
     /// Set a 7-segment display control on a device by name.
@@ -660,7 +655,7 @@ impl Encdr {
             .read()
             .unwrap()
             .get(&device_id)
-            .map_or(false, |handle| handle.has_control())
+            .is_some_and(|handle| handle.has_control())
     }
 
     /// Check whether a device is currently physically connected and responsive.
@@ -669,7 +664,7 @@ impl Encdr {
             .read()
             .unwrap()
             .get(&device_id)
-            .map_or(false, |handle| handle.is_connected())
+            .is_some_and(|handle| handle.is_connected())
     }
 
     /// Number of submitted screen frames still waiting for the device thread (0 for unknown devices).
@@ -714,15 +709,14 @@ impl Encdr {
         pixels: Vec<u8>,
         format: PixelFormat,
     ) {
-        if let Some(handle) = self.devices.read().unwrap().get(&device_id) {
-            if handle.is_connected() {
+        if let Some(handle) = self.devices.read().unwrap().get(&device_id)
+            && handle.is_connected() {
                 handle.send(DeviceCmd::SubmitScreen {
                     screen: screen.to_string(),
                     pixels,
                     format,
                 });
             }
-        }
     }
 
     /// Submit a combined double-width frame for a dual-screen device.
@@ -791,8 +785,8 @@ impl Encdr {
         pixels: Vec<u8>,
         format: PixelFormat,
     ) {
-        if let Some(handle) = self.devices.read().unwrap().get(&device_id) {
-            if handle.is_connected() {
+        if let Some(handle) = self.devices.read().unwrap().get(&device_id)
+            && handle.is_connected() {
                 handle.send(DeviceCmd::SubmitDualScreen {
                     left_screen: left_screen.to_string(),
                     right_screen: right_screen.to_string(),
@@ -800,7 +794,6 @@ impl Encdr {
                     format,
                 });
             }
-        }
     }
 
     /// Disconnect a specific device.
@@ -907,11 +900,10 @@ fn run_hotplug_monitor(
             }
 
             // Check if matches filter (if a filter is configured)
-            if let Some(ref f) = active_filter {
-                if !f.matches(&det.descriptor) {
+            if let Some(ref f) = active_filter
+                && !f.matches(&det.descriptor) {
                     continue;
                 }
-            }
 
             let already_connected = {
                 let devs = devices.read().unwrap();
@@ -989,7 +981,7 @@ mod tests {
         let mut encdr = Encdr::new(config).expect("Failed to create Encdr");
 
         let start = std::time::Instant::now();
-        let res = encdr.wait_for_controller_timeout(&["NonExistentDevice"], Duration::from_millis(100));
+        let res = encdr.wait_for_controller_timeout(["NonExistentDevice"], Duration::from_millis(100));
         assert!(res.is_err());
         assert!(start.elapsed() >= Duration::from_millis(90));
 

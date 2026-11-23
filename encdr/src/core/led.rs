@@ -1,6 +1,8 @@
 /// Value to set on an LED.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum LedValue {
+    #[default]
     Off,
     /// Faint backlight level so inactive buttons remain readable in the dark (0x09 / 9).
     Backlight,
@@ -12,11 +14,6 @@ pub enum LedValue {
     Rgb { r: u8, g: u8, b: u8 },
 }
 
-impl Default for LedValue {
-    fn default() -> Self {
-        LedValue::Off
-    }
-}
 
 impl LedValue {
     /// Native Instruments standard OFF state (`0x00`).

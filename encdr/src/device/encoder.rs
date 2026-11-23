@@ -1,5 +1,6 @@
 /// Tracks encoder state for delta calculation across USB packets.
 #[derive(Debug)]
+#[derive(Default)]
 pub struct EncoderState {
     /// Current raw value (for wrap-around encoders)
     pub value: u16,
@@ -11,16 +12,6 @@ pub struct EncoderState {
     pub back: i32,
 }
 
-impl Default for EncoderState {
-    fn default() -> Self {
-        Self {
-            value: 0,
-            initialized: false,
-            dir: 0,
-            back: 0,
-        }
-    }
-}
 
 impl EncoderState {
     /// Update with a new raw value and return the delta.

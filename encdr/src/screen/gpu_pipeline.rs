@@ -376,7 +376,7 @@ impl GpuConvertPipeline {
         }
 
         let input_bytes = (pixel_count * 4) as u64;
-        let output_pairs = (pixel_count + 1) / 2;
+        let output_pairs = pixel_count.div_ceil(2);
         let output_bytes = (output_pairs * 4) as u64;
 
         let input_buf = self.gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -465,8 +465,8 @@ impl GpuConvertPipeline {
             .queue
             .write_buffer(params_buf, 0, bytemuck::bytes_of(&params));
 
-        let output_pairs = (pixel_count + 1) / 2;
-        let workgroups = ((output_pairs as u32) + 255) / 256;
+        let output_pairs = pixel_count.div_ceil(2);
+        let workgroups = (output_pairs as u32).div_ceil(256);
 
         let mut encoder = self
             .gpu
@@ -535,8 +535,8 @@ impl GpuConvertPipeline {
 
         if self.dual_capacity_pixels < total_pixels || self.dual_input_buf.is_none() {
             let input_bytes = (total_pixels * 4) as u64;
-            let left_bytes = ((left_w * h * 2 + 3) / 4 * 4) as u64;
-            let right_bytes = ((right_w * h * 2 + 3) / 4 * 4) as u64;
+            let left_bytes = ((left_w * h * 2).div_ceil(4) * 4) as u64;
+            let right_bytes = ((right_w * h * 2).div_ceil(4) * 4) as u64;
 
             let dual_input_buf = self.gpu.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("encdr_dual_input"),
@@ -638,9 +638,9 @@ impl GpuConvertPipeline {
             .queue
             .write_buffer(params_buf, 0, bytemuck::bytes_of(&params));
 
-        let pair_cols = (total_w + 1) / 2;
-        let wg_x = (pair_cols + 15) / 16;
-        let wg_y = (h + 15) / 16;
+        let pair_cols = total_w.div_ceil(2);
+        let wg_x = pair_cols.div_ceil(16);
+        let wg_y = h.div_ceil(16);
 
         let left_bytes = (left_w * h * 2) as u64;
         let right_bytes = (right_w * h * 2) as u64;
@@ -852,8 +852,8 @@ impl GpuConvertPipeline {
             .queue
             .write_buffer(params_buf, 0, bytemuck::bytes_of(&diff_params));
 
-        let pairs = (pixel_count + 1) / 2;
-        let workgroups = ((pairs as u32) + 255) / 256;
+        let pairs = pixel_count.div_ceil(2);
+        let workgroups = (pairs as u32).div_ceil(256);
 
         let mut encoder = self
             .gpu
@@ -927,14 +927,14 @@ impl GpuConvertPipeline {
 
         let raw_w = max_x - x + 1;
         let w = if x_align > 1 {
-            ((raw_w + x_align - 1) / x_align) * x_align
+            raw_w.div_ceil(x_align) * x_align
         } else {
             raw_w
         };
 
         let raw_h = max_y - y + 1;
         let h = if y_align > 1 {
-            ((raw_h + y_align - 1) / y_align) * y_align
+            raw_h.div_ceil(y_align) * y_align
         } else {
             raw_h
         };
@@ -1061,9 +1061,9 @@ impl GpuConvertPipeline {
             .queue
             .write_buffer(params_buf, 0, bytemuck::bytes_of(&params));
 
-        let pair_cols = (w as u32 + 1) / 2;
-        let wg_x = (pair_cols + 15) / 16;
-        let wg_y = (h as u32 + 15) / 16;
+        let pair_cols = (w as u32).div_ceil(2);
+        let wg_x = pair_cols.div_ceil(16);
+        let wg_y = (h as u32).div_ceil(16);
 
         let mut encoder = self
             .gpu

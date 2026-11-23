@@ -52,6 +52,7 @@ impl SkiaDualScreenView {
         left_screen: &str,
         right_screen: &str,
     ) -> Result<Self, String> {
+        #[allow(clippy::arc_with_non_send_sync)]
         let gpu = Arc::new(Mutex::new(SkiaGpuContext::new()));
         Self::with_gpu_context(encdr, device_id, left_screen, right_screen, gpu)
     }

@@ -49,7 +49,7 @@ fn mikro_page_frame(desc: &ScreenDesc, blit: &[u8], inverted: bool) -> Vec<Vec<u
         blit
     };
 
-    let stride = (width + 7) / 8;
+    let stride = width.div_ceil(8);
     let pages = height.div_ceil(8);
     let mut transfers = Vec::with_capacity(pages.div_ceil(2));
 

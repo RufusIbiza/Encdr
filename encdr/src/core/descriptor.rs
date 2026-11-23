@@ -303,10 +303,12 @@ pub enum EncoderEncoding {
 /// Protocol and duty cycle encoding used by single-color LEDs in an LED layout group.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum LedProtocol {
     /// Modern Native Instruments discrete active-low comparator (Maschine Mk3, Maschine Plus,
     /// Maschine Mikro Mk3, Komplete Kontrol Mk2 / Mk3, Traktor Kontrol X1 Mk3).
     /// Dim = 0xE4 (228), Bright = 0x9E (158), Max = 255.
+    #[default]
     Nhl2,
     /// Standard 7-bit linear positive PWM 0..127 (Maschine Jam, Traktor S2 Mk2, etc.).
     /// Dim = 38 (~30%), Bright = 127 (100%), Max = 127.
@@ -318,11 +320,6 @@ pub enum LedProtocol {
     Linear8Bit,
 }
 
-impl Default for LedProtocol {
-    fn default() -> Self {
-        LedProtocol::Nhl2
-    }
-}
 
 impl LedProtocol {
     /// Default byte value for faint backlight level under this protocol.

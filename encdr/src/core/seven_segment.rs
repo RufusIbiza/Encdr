@@ -138,12 +138,11 @@ impl SevenSegment {
     pub fn encode_str(s: &str) -> Vec<Self> {
         let mut digits: Vec<Self> = Vec::new();
         for ch in s.chars() {
-            if ch == '.' {
-                if let Some(last) = digits.last_mut() {
+            if ch == '.'
+                && let Some(last) = digits.last_mut() {
                     *last = last.with_dot(true);
                     continue;
                 }
-            }
             digits.push(Self::from_char(ch));
         }
         digits
