@@ -49,7 +49,9 @@ pub mod gpu;
 pub mod screen;
 
 pub use dual_screen::SkiaDualScreenView;
-pub use gpu::{SkiaGpuContext, VulkanContext};
+pub use gpu::SkiaGpuContext;
+#[cfg(feature = "vulkan")]
+pub use gpu::VulkanContext;
 pub use screen::SkiaScreenView;
 
 // Re-export core Skia types for convenience

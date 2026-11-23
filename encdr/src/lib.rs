@@ -275,9 +275,12 @@ impl Encdr {
         drop(reg);
 
         if filter_display.is_empty() || filter_display == "any compatible controller" {
-            println!("Waiting for a compatible controller to be connected...");
+            tracing::info!("Waiting for a compatible controller to be connected...");
         } else {
-            println!("Waiting for a compatible controller to be connected (supported: {})...", filter_display);
+            tracing::info!(
+                "Waiting for a compatible controller to be connected (supported: {})...",
+                filter_display
+            );
         }
 
         let start = std::time::Instant::now();
@@ -291,7 +294,7 @@ impl Encdr {
                 let devs = self.devices.read().unwrap();
                 for (&id, handle) in devs.iter() {
                     if handle.is_connected() && filter.matches(&handle.descriptor) {
-                        println!(
+                        tracing::info!(
                             "Controller connected: {} (0x{:04x}:0x{:04x})",
                             handle.descriptor.name,
                             handle.descriptor.vendor_id.0,
@@ -307,7 +310,7 @@ impl Encdr {
                 let devs = self.devices.read().unwrap();
                 for (&id, handle) in devs.iter() {
                     if handle.is_connected() && filter.matches(&handle.descriptor) {
-                        println!(
+                        tracing::info!(
                             "Controller connected: {} (0x{:04x}:0x{:04x})",
                             handle.descriptor.name,
                             handle.descriptor.vendor_id.0,

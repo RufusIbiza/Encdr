@@ -1,10 +1,16 @@
+#[cfg(feature = "vulkan")]
 use std::sync::Arc;
 
+#[cfg(feature = "vulkan")]
 use ash::vk::Handle;
+#[cfg(feature = "vulkan")]
 use skia_safe::gpu::{self, DirectContext};
-use skia_safe::{AlphaType, ColorSpace, ColorType, ImageInfo, Surface};
+use skia_safe::Surface;
+#[cfg(feature = "vulkan")]
+use skia_safe::{AlphaType, ColorSpace, ColorType, ImageInfo};
 
 /// Vulkan context for offscreen GPU rendering with ash.
+#[cfg(feature = "vulkan")]
 pub struct VulkanContext {
     pub entry: ash::Entry,
     pub instance: ash::Instance,
@@ -14,6 +20,7 @@ pub struct VulkanContext {
     pub queue_family_index: u32,
 }
 
+#[cfg(feature = "vulkan")]
 impl VulkanContext {
     /// Try to initialize a headless Vulkan context with graphics support.
     pub fn new() -> Result<Self, String> {
@@ -98,6 +105,7 @@ impl VulkanContext {
     }
 }
 
+#[cfg(feature = "vulkan")]
 impl Drop for VulkanContext {
     fn drop(&mut self) {
         unsafe {
@@ -114,8 +122,10 @@ impl Drop for VulkanContext {
 /// unavailable or initialization fails, falls back gracefully to CPU rasterization.
 pub struct SkiaGpuContext {
     /// Skia direct context (must drop BEFORE vulkan context)
+    #[cfg(feature = "vulkan")]
     direct_context: Option<DirectContext>,
     /// Underlying Vulkan instance/device handles
+    #[cfg(feature = "vulkan")]
     #[allow(dead_code)]
     vulkan: Option<Arc<VulkanContext>>,
 }
@@ -123,7 +133,8 @@ pub struct SkiaGpuContext {
 impl SkiaGpuContext {
     /// Create a new Skia GPU context, attempting Vulkan hardware acceleration first.
     ///
-    /// If Vulkan fails, a warning is logged and the context operates in CPU fallback mode.
+    /// If Vulkan fails (or the `vulkan` feature is disabled), operates in CPU fallback mode.
+    #[cfg(feature = "vulkan")]
     pub fn new() -> Self {
         match VulkanContext::new() {
             Ok(vk_ctx) => {
@@ -188,17 +199,32 @@ impl SkiaGpuContext {
         }
     }
 
+    /// Create a new Skia context (CPU-only when built without the `vulkan` feature).
+    #[cfg(not(feature = "vulkan"))]
+    pub fn new() -> Self {
+        Self::cpu()
+    }
+
     /// Create an explicit CPU-only context (useful for testing or benchmarking).
     pub fn cpu() -> Self {
         Self {
+            #[cfg(feature = "vulkan")]
             direct_context: None,
+            #[cfg(feature = "vulkan")]
             vulkan: None,
         }
     }
 
     /// Returns `true` if this context is hardware GPU accelerated via Vulkan.
     pub fn is_gpu_accelerated(&self) -> bool {
-        self.direct_context.is_some()
+        #[cfg(feature = "vulkan")]
+        {
+            self.direct_context.is_some()
+        }
+        #[cfg(not(feature = "vulkan"))]
+        {
+            false
+        }
     }
 
     /// Creates an offscreen Skia surface matching the given dimensions.
@@ -206,27 +232,30 @@ impl SkiaGpuContext {
     /// If GPU accelerated, allocates a GPU render target. Otherwise allocates
     /// a CPU raster surface.
     pub fn create_surface(&mut self, width: i32, height: i32) -> Result<Surface, String> {
-        let image_info = ImageInfo::new(
-            (width, height),
-            ColorType::RGBA8888,
-            AlphaType::Premul,
-            Some(ColorSpace::new_srgb()),
-        );
+        #[cfg(feature = "vulkan")]
+        {
+            let image_info = ImageInfo::new(
+                (width, height),
+                ColorType::RGBA8888,
+                AlphaType::Premul,
+                Some(ColorSpace::new_srgb()),
+            );
 
-        if let Some(ref mut d_ctx) = self.direct_context {
-            if let Some(surface) = gpu::surfaces::render_target(
-                d_ctx,
-                gpu::Budgeted::Yes,
-                &image_info,
-                0,
-                gpu::SurfaceOrigin::TopLeft,
-                None,
-                false,
-                false,
-            ) {
-                return Ok(surface);
+            if let Some(ref mut d_ctx) = self.direct_context {
+                if let Some(surface) = gpu::surfaces::render_target(
+                    d_ctx,
+                    gpu::Budgeted::Yes,
+                    &image_info,
+                    0,
+                    gpu::SurfaceOrigin::TopLeft,
+                    None,
+                    false,
+                    false,
+                ) {
+                    return Ok(surface);
+                }
+                tracing::warn!("Failed to create GPU render target surface, falling back to CPU raster surface");
             }
-            tracing::warn!("Failed to create GPU render target surface, falling back to CPU raster surface");
         }
 
         skia_safe::surfaces::raster_n32_premul((width, height))
@@ -235,10 +264,13 @@ impl SkiaGpuContext {
 
     /// Flush pending GPU rendering commands.
     pub fn flush_and_submit(&mut self, surface: &mut Surface) {
+        #[cfg(feature = "vulkan")]
         if let Some(ref mut d_ctx) = self.direct_context {
             d_ctx.flush_surface(surface);
             d_ctx.submit(gpu::SyncCpu::No);
         }
+        #[cfg(not(feature = "vulkan"))]
+        let _ = surface;
     }
 }
 

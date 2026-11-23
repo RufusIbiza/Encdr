@@ -388,6 +388,12 @@ impl DualScreenView {
         self.inner.is_frame_ready()
     }
 
+    /// Pump the platform event loop (processes pending WebView/OS events).
+    /// Call this regularly in your main loop.
+    pub fn pump_events() -> bool {
+        ScreenView::pump_events()
+    }
+
     /// Process pending frames: if the WebView has rendered new content,
     /// capture and submit it to encdr.
     pub fn poll(&self, encdr: &Encdr) {

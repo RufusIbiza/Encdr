@@ -1445,7 +1445,10 @@ fn run_screens(
     use crate::screen::protocol;
 
     block_on(async {
+        #[cfg(feature = "gpu")]
         let mut dual_gpu = gpu.map(crate::screen::GpuConvertPipeline::new);
+        #[cfg(not(feature = "gpu"))]
+        let _ = gpu;
         let changes = screen_ifaces.values().find_map(|iface| match iface {
             Iface::Service(session) => Some(session.control_events()),
             _ => None,
@@ -1717,16 +1720,29 @@ fn run_screens(
                     );
                     continue;
                 }
-                let (left_pixels, right_pixels, send_format) = if let Some(d_gpu) = dual_gpu.as_mut().filter(|_| {
+                #[cfg(feature = "gpu")]
+                let gpu_split = dual_gpu.as_mut().filter(|_| {
                     format == PixelFormat::Rgba8888
                         && left_desc.pixel_format == PixelFormat::Bgr565Be
                         && right_desc.pixel_format == PixelFormat::Bgr565Be
-                }) {
+                });
+                #[cfg(feature = "gpu")]
+                let (left_pixels, right_pixels, send_format) = if let Some(d_gpu) = gpu_split {
                     let (l, r) = d_gpu.split_convert_dual(
                         &pixels, left_desc.width.into(), right_desc.width.into(), left_desc.height.into(),
                     ).await;
                     (l, r, PixelFormat::Bgr565Be)
                 } else {
+                    let Some((l, r)) = crate::screen::split_dual_frame(
+                        &pixels, left_desc, right_desc, format,
+                    ) else {
+                        tracing::warn!("SubmitDualScreen: incompatible frame format or size");
+                        continue;
+                    };
+                    (l, r, format)
+                };
+                #[cfg(not(feature = "gpu"))]
+                let (left_pixels, right_pixels, send_format) = {
                     let Some((l, r)) = crate::screen::split_dual_frame(
                         &pixels, left_desc, right_desc, format,
                     ) else {
@@ -2017,7 +2033,10 @@ fn run_leds(
                     let len = wire_buf.len();
                     if let Some(endpoint) = led_endpoints.get_mut(&ep) {
                         if let Err(e) = endpoint.write(wire_buf).await {
-                            eprintln!("[LED-USB-ERR] Failed to flush {} bytes to group '{}' ep 0x{:02x}: {}", len, group, ep, e);
+                            tracing::warn!(
+                                "Failed to flush {} bytes to LED group '{}' ep 0x{:02x}: {}",
+                                len, group, ep, e
+                            );
                         }
                     }
                 }
@@ -2040,8 +2059,8 @@ fn run_leds(
                         }
                         let res = iface.send_feature_report(&buf, quirk.interface).await;
                         if let Err(e) = res {
-                            eprintln!(
-                                "[LED-CTRL-ERR] Failed to flush feature LED report 0x{:02x} cmd 0x{:02x}: {}",
+                            tracing::warn!(
+                                "Failed to flush feature LED report 0x{:02x} cmd 0x{:02x}: {}",
                                 quirk.report_id.0, cmd_byte, e
                             );
                         }

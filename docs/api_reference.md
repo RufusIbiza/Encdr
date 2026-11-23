@@ -1,6 +1,6 @@
 # Encdr Programmer Reference & API Documentation
 
-This document provides a comprehensive API reference for [`encdr`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/lib.rs) and [`encdr-view`](file:///home/rufus/Documents/Projects/Encdr/encdr-view/src/lib.rs). It covers every public struct, enum, trait, and function, accompanied by signatures, field breakdowns, error states, and working code examples.
+This document provides a comprehensive API reference for [`encdr`](../encdr/src/lib.rs) and [`encdr-view`](../encdr-view/src/lib.rs). It covers every public struct, enum, trait, and function, accompanied by signatures, field breakdowns, error states, and working code examples.
 
 ---
 
@@ -25,7 +25,7 @@ This document provides a comprehensive API reference for [`encdr`](file:///home/
 
 ## 1. Core Facade: `Encdr`
 
-Defined in [`encdr::Encdr`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/lib.rs#L36-L42).
+Defined in [`encdr::Encdr`](../encdr/src/lib.rs#L36-L42).
 
 `Encdr` is the top-level facade managing USB discovery, descriptor registries, background I/O threads, and event dispatch channels.
 
@@ -411,7 +411,7 @@ encdr.clean_exit();
 
 ## 2. Configuration: `EncdrConfig`
 
-Defined in [`encdr::EncdrConfig`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/lib.rs#L24-L32).
+Defined in [`encdr::EncdrConfig`](../encdr/src/lib.rs#L24-L32).
 
 ```rust
 pub struct EncdrConfig {
@@ -435,7 +435,7 @@ pub struct EncdrConfig {
 
 ### `ControllerFilter`
 
-Defined in [`encdr::ControllerFilter`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/usb/hotplug.rs).
+Defined in [`encdr::ControllerFilter`](../encdr/src/usb/hotplug.rs).
 
 Expresses which controllers an application supports:
 - `ControllerFilter::Any`: Any recognized hardware controller.
@@ -451,7 +451,7 @@ Implements `From` for `&str`, `String`, `&[&str]`, `[&str; N]`, `Vec<String>`, `
 
 ## 3. Device Identifiers: `DeviceId`
 
-Defined in [`encdr::core::event::DeviceId`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/core/event.rs#L7-L24).
+Defined in [`encdr::core::event::DeviceId`](../encdr/src/core/event.rs#L7-L24).
 
 ```rust
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
@@ -466,7 +466,7 @@ An opaque 64-bit identifier encoding the USB bus, device address, vendor ID, and
 
 ## 4. Hardware Events: `Event`
 
-Defined in [`encdr::core::event::Event`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/core/event.rs#L29-L69).
+Defined in [`encdr::core::event::Event`](../encdr/src/core/event.rs#L29-L69).
 
 Every hardware input event carries the source `DeviceId` and an interned `&'static str` identifier corresponding to the JSON descriptor. Because names are interned when descriptors load, no string allocations occur during event polling.
 
@@ -538,7 +538,7 @@ impl Event {
 
 ## 5. LED Values & NI Palette: `LedValue`
 
-Defined in [`encdr::core::led::LedValue`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/core/led.rs#L2-L86).
+Defined in [`encdr::core::led::LedValue`](../encdr/src/core/led.rs#L2-L86).
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -613,7 +613,7 @@ When `LedValue::Backlight`, `LedValue::Dim`, or `LedValue::Bright` is dispatched
 
 ## 6. Seven-Segment Displays: `SevenSegment`
 
-Defined in [`encdr::core::seven_segment::SevenSegment`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/core/seven_segment.rs#L16-L195).
+Defined in [`encdr::core::seven_segment::SevenSegment`](../encdr/src/core/seven_segment.rs#L16-L195).
 
 Controllers like the Traktor Kontrol S4 MK2, Traktor Kontrol X1 MK2, and Traktor Kontrol F1 feature multi-digit 7-segment LED displays. The `SevenSegment` struct models segment bitmasks, character translation, brightness conversion, and DJ loop length formatting.
 
@@ -690,7 +690,7 @@ assert_eq!(right, SevenSegment::from_char('2').with_dot(true));
 
 ## 7. Jog Wheel LED Rings: `JogRing`, `JogDeck`, `JogRingMode`
 
-Defined in [`encdr::core::jog_ring`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/core/jog_ring.rs).
+Defined in [`encdr::core::jog_ring`](../encdr/src/core/jog_ring.rs).
 
 Models the dual motorized/haptic jog wheel LED rings on the Traktor Kontrol S4 MK3 (USB Output Report `0x32`).
 
@@ -736,7 +736,7 @@ Helper struct for tracking angular rotation from manual or motorized movements:
 
 ## 8. Pixel Formats: `PixelFormat`
 
-Defined in [`encdr::core::descriptor::PixelFormat`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/core/descriptor.rs#L318-L335).
+Defined in [`encdr::core::descriptor::PixelFormat`](../encdr/src/core/descriptor.rs#L318-L335).
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -764,7 +764,7 @@ Returns the native byte value that fills a frame with black (`0xFF` for the inve
 
 ## 9. GPU Acceleration: `GpuContext`
 
-Defined in [`encdr::screen::gpu::GpuContext`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/screen/gpu.rs#L5-L36).
+Defined in [`encdr::screen::gpu::GpuContext`](../encdr/src/screen/gpu.rs#L5-L36).
 
 ```rust
 pub struct GpuContext {
@@ -789,7 +789,7 @@ Wraps existing `wgpu` device and queue instances from a host application to elim
 
 ## 10. Custom Packet Decoders: `PacketHook`
 
-Defined in [`encdr::device::hooks::PacketHook`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/device/hooks.rs#L6-L16).
+Defined in [`encdr::device::hooks::PacketHook`](../encdr/src/device/hooks.rs#L6-L16).
 
 ```rust
 pub trait PacketHook: Send + Sync + 'static {
@@ -809,7 +809,7 @@ pub trait PacketHook: Send + Sync + 'static {
 
 ## 11. Error Handling: `EncdrError`
 
-Defined in [`encdr::core::error::EncdrError`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/core/error.rs#L4-L34).
+Defined in [`encdr::core::error::EncdrError`](../encdr/src/core/error.rs#L4-L34).
 
 ```rust
 #[derive(thiserror::Error, Debug)]
@@ -852,7 +852,7 @@ pub type Result<T> = std::result::Result<T, EncdrError>;
 
 ## 12. Device Descriptors & Runtime Introspection
 
-Defined in [`encdr::core::descriptor`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/core/descriptor.rs).
+Defined in [`encdr::core::descriptor`](../encdr/src/core/descriptor.rs).
 
 Descriptors provide a complete declarative specification of a hardware controller.
 
@@ -893,7 +893,7 @@ pub struct ScreenDesc {
 - `byte_size(&self) -> usize`: Total frame byte buffer size.
 
 ### `QuirksDesc` & `NiServiceQuirkDesc`
-Defined in [`encdr::core::descriptor::QuirksDesc`](file:///home/rufus/Documents/Projects/Encdr/encdr/src/core/descriptor.rs#L536-L563).
+Defined in [`encdr::core::descriptor::QuirksDesc`](../encdr/src/core/descriptor.rs#L536-L563).
 
 ```rust
 pub struct QuirksDesc {
@@ -934,7 +934,7 @@ pub struct NiServiceQuirkDesc {
 
 ## 13. WebView Offscreen Renderer: `encdr-view`
 
-Defined in [`encdr-view::ScreenView`](file:///home/rufus/Documents/Projects/Encdr/encdr-view/src/lib.rs#L61-L70).
+Defined in [`encdr-view::ScreenView`](../encdr-view/src/lib.rs#L61-L70).
 
 `encdr-view` renders modern web content (HTML, CSS, SVG, Canvas, WebGL) offscreen in a hardware-sized WebView and pipes pixel captures directly into Encdr's screen pipeline.
 
@@ -1023,7 +1023,7 @@ Returns the target screen identifier string.
 
 ### `DualScreenView` Methods
 
-Defined in [`encdr-view::DualScreenView`](file:///home/rufus/Documents/Projects/Encdr/encdr-view/src/lib.rs#L224-L394).
+Defined in [`encdr-view::DualScreenView`](../encdr-view/src/lib.rs#L224-L394).
 
 `DualScreenView` hosts a single offscreen WebView sized to `(left_width + right_width) x height` (e.g. `960x272` on Maschine Mk3 / KK Mk2 / Traktor S8, or `640x240` on Traktor S4 Mk3). 
 
@@ -1086,9 +1086,9 @@ It offers a lightweight, high-framerate alternative to `encdr-view` when you don
 
 ### Key Types
 
-- [`SkiaScreenView`](file:///home/rufus/Documents/Projects/Encdr/encdr-skia/src/screen.rs): Manages a GPU-accelerated Skia surface for an individual controller display.
-- [`SkiaDualScreenView`](file:///home/rufus/Documents/Projects/Encdr/encdr-skia/src/dual_screen.rs): Manages a single double-width Skia canvas (e.g. 960×272 on Maschine Mk3/Studio/S8) spanning both displays seamlessly.
-- [`SkiaGpuContext`](file:///home/rufus/Documents/Projects/Encdr/encdr-skia/src/gpu.rs): Initializes a headless Vulkan device (`ash`) and Skia Ganesh `DirectContext`. Falls back automatically to CPU rasterization if no Vulkan device is available.
+- [`SkiaScreenView`](../encdr-skia/src/screen.rs): Manages a GPU-accelerated Skia surface for an individual controller display.
+- [`SkiaDualScreenView`](../encdr-skia/src/dual_screen.rs): Manages a single double-width Skia canvas (e.g. 960×272 on Maschine Mk3/Studio/S8) spanning both displays seamlessly.
+- [`SkiaGpuContext`](../encdr-skia/src/gpu.rs): Initializes a headless Vulkan device (`ash`) and Skia Ganesh `DirectContext`. Falls back automatically to CPU rasterization if no Vulkan device is available.
 
 ### Re-exported Skia Types
 

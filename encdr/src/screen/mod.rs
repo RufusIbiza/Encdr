@@ -1,4 +1,5 @@
 pub mod gpu;
+#[cfg(feature = "gpu")]
 pub mod gpu_pipeline;
 pub mod protocol;
 pub mod screensaver;
@@ -9,6 +10,7 @@ use std::sync::Arc;
 use crate::core::descriptor::{PixelFormat, ScreenDesc};
 
 pub use gpu::GpuContext;
+#[cfg(feature = "gpu")]
 pub use gpu_pipeline::GpuConvertPipeline;
 
 static DITHERING: AtomicBool = AtomicBool::new(true);
@@ -55,25 +57,24 @@ pub struct ScreenManager {
     /// Frame counter for periodic keyframes
     frame_count: u64,
     /// GPU compute pipeline for format conversion (lazily created)
+    #[cfg(feature = "gpu")]
     gpu_pipeline: Option<GpuConvertPipeline>,
-}
-
-/// Result of submitting a frame: the bytes to send over USB (if any).
-pub struct BlitResult {
-    pub data: Vec<u8>,
-    pub is_partial: bool,
 }
 
 impl ScreenManager {
     pub fn new(desc: &ScreenDesc, gpu: Option<Arc<GpuContext>>) -> Self {
         let byte_size = desc.byte_size();
+        #[cfg(feature = "gpu")]
         let gpu_pipeline = gpu.map(GpuConvertPipeline::new);
+        #[cfg(not(feature = "gpu"))]
+        let _ = gpu;
         Self {
             width: desc.width,
             height: desc.height,
             pixel_format: desc.pixel_format,
             prev_frame: vec![0u8; byte_size],
             frame_count: 0,
+            #[cfg(feature = "gpu")]
             gpu_pipeline,
         }
     }
@@ -95,16 +96,22 @@ impl ScreenManager {
         // Step 1: Format conversion (if needed)
         let native_pixels = if input_format == self.pixel_format {
             pixels.to_vec()
-        } else if let Some(ref mut gpu) = self.gpu_pipeline {
-            // Use GPU pipeline for RGBA→BGR565 conversion
-            match (input_format, self.pixel_format) {
-                (PixelFormat::Rgba8888, PixelFormat::Bgr565Be) => {
-                    futures_lite::future::block_on(gpu.convert_rgba_to_bgr565(pixels, self.width as u32))
-                }
-                _ => convert_format(pixels, input_format, self.pixel_format, self.width, self.height),
-            }
         } else {
-            convert_format(pixels, input_format, self.pixel_format, self.width, self.height)
+            #[cfg(feature = "gpu")]
+            if let Some(ref mut gpu) = self.gpu_pipeline {
+                match (input_format, self.pixel_format) {
+                    (PixelFormat::Rgba8888, PixelFormat::Bgr565Be) => {
+                        futures_lite::future::block_on(gpu.convert_rgba_to_bgr565(pixels, self.width as u32))
+                    }
+                    _ => convert_format(pixels, input_format, self.pixel_format, self.width, self.height),
+                }
+            } else {
+                convert_format(pixels, input_format, self.pixel_format, self.width, self.height)
+            }
+            #[cfg(not(feature = "gpu"))]
+            {
+                convert_format(pixels, input_format, self.pixel_format, self.width, self.height)
+            }
         };
 
         if native_pixels.len() != self.prev_frame.len() {

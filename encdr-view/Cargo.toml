@@ -13,13 +13,13 @@ categories = ["hardware-support", "gui"]
 [dependencies]
 encdr = { version = "0.9.6", path = "../encdr" }
 wry = "0.57"
-tao = "0.37"
-raw-window-handle = "0.6"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-crossbeam-channel = "0.5"
+
+# Non-Linux platforms use tao for offscreen window & event loop management
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+tao = "0.37"
 
 # Linux: GTK + WebKitGTK for snapshot capture
 [target.'cfg(target_os = "linux")'.dependencies]

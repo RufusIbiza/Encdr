@@ -12,10 +12,10 @@ categories = ["hardware-support", "gui"]
 
 [dependencies]
 encdr = { version = "0.9.6", path = "../encdr" }
-skia-safe = { version = "0.153", features = ["ganesh", "vulkan"] }
-ash = "0.38"
+skia-safe = "0.153"
+ash = { version = "0.38", optional = true }
 tracing = "0.1"
 
 [features]
 default = ["vulkan"]
-vulkan = []
+vulkan = ["dep:ash", "skia-safe/ganesh", "skia-safe/vulkan"]

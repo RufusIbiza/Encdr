@@ -83,6 +83,11 @@ impl SkiaScreenView {
         })
     }
 
+    /// Update the target DeviceId (e.g. after a controller reconnects at a new USB address).
+    pub fn set_device_id(&mut self, device_id: DeviceId) {
+        self.device_id = device_id;
+    }
+
     /// Access the Skia canvas for direct rendering.
     pub fn canvas(&mut self) -> &Canvas {
         self.surface.canvas()

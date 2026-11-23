@@ -1,5 +1,5 @@
 use std::io::Cursor;
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 
 /// Bundled default screensaver PNG image (480x272).
 pub const DEFAULT_SCREENSAVER_PNG: &[u8] = include_bytes!("../../assets/screensaver.png");
@@ -61,7 +61,7 @@ pub fn decode_png_to_rgba(png_bytes: &[u8]) -> Result<(u32, u32, Vec<u8>), Strin
 
 /// Global lazy-decoded default screensaver RGBA buffer.
 pub fn default_screensaver_rgba() -> &'static (u32, u32, Vec<u8>) {
-    static SCREENSAVER: Lazy<(u32, u32, Vec<u8>)> = Lazy::new(|| {
+    static SCREENSAVER: LazyLock<(u32, u32, Vec<u8>)> = LazyLock::new(|| {
         decode_png_to_rgba(DEFAULT_SCREENSAVER_PNG)
             .expect("Failed to decode bundled default screensaver PNG")
     });
