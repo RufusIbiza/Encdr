@@ -146,10 +146,10 @@ fn main() {
        │               │            │  └──────────┬────────────┘ │
        │               │            │             │ OR raw pixels│
        └───────────────┘            │  ┌──────────▼────────────┐ │
-               │                    │  │ encdr::screen         │ │
-               │                    │  │ GPU/CPU split & conv  │ │
-               │                    │  │ CPU dirty-rect diff   │ │
-               │                    │  │ CPU partial extract   │ │
+               │                    │  │ encdr::screen (wgpu)  │ │
+               │                    │  │ Fused VRAM GPU pass:  │ │
+               │                    │  │ conv → diff → extract │ │
+               │                    │  │ (1 submit, 1 poll)    │ │
                │                    │  └──────────┬────────────┘ │
                │                    │        USB bulk write      │
                │                    └─────────────┬──────────────┘
@@ -354,7 +354,7 @@ encdr/
   - **Control Hand-off & Lock Contention**: Retained submitted frames while `!has_control()` so `ScreenManager` redraws the latest frame when control returns. Released the `devices` write lock before `DeviceHandle::spawn()` in `scan()` and `run_hotplug_monitor()` to prevent stalling other connected controllers.
   - **Input, LED & GPU Safety Fixes**: Fixed `LedBuilder::set` RGB-to-Single brightness (`r.max(g).max(b)`) and `Indexed` default values; fixed 16-bit signed encoder wraparound in `EncoderState::update_signed16`; stopped clamping unnormalized sliders to `1.0` in `PacketParser`; fixed `JogRing::spinner` overflow and `JogWheelTracker` `NaN`/`Inf` poisoning; switched string interning in `DescriptorRegistry` to a global `OnceLock` pool; hashed non-Linux `bus_id()` strings to avoid `DeviceId` collisions; hardened `wgpu` buffer alignment, staging-buffer unmapping, and `on_uncaptured_error` handling; and fixed `encdr-view` mid-capture `frame_ready` races, macOS `autoreleasepool` leaks, and Windows PNG color-type expansion.
 - **Speed & Latency Optimizations**:
-  - **Zero-Stall Screen Diff & Extract**: Moved dirty-rect diffing and region extraction in `ScreenManager::submit` onto the already CPU-resident native framebuffers, eliminating two extra PCIe uploads and synchronous GPU `device.poll` stalls per frame. Rewrote CPU `rgba8_to_bgr565_be` / `rgb8_to_bgr565_be` without per-pixel division/modulo.
+  - **Fused Single-Submission VRAM-Resident GPU Pipeline**: Kept `prev_frame` permanently resident in VRAM and chained `convert -> diff -> extract_bounds -> prev_frame update` into a single `CommandEncoder` submission and a single `device.poll` (`GpuConvertPipeline::submit_frame_fused`). Static frames read back only 20 bytes (zero pixel copies), partial frames read back only the dirty sub-rectangle, and `diff.wgsl` now uses 256-thread workgroup shared-memory reduction (cutting global atomic contention by 256×). Also rewrote CPU fallback `rgba8_to_bgr565_be` / `rgb8_to_bgr565_be` without per-pixel division/modulo.
   - **Frame Coalescing & Zero-Copy Submission**: Coalesced queued screen frames per screen/dual-screen pair in `run_screens` to eliminate multi-frame queue backlog latency. Added `submit_screen_owned`, `submit_screen_owned_with_format`, `submit_dual_screen_owned`, and `submit_dual_screen_owned_with_format` on `Encdr` and updated `encdr-view` to submit owned buffers without extra copies.
   - **Zero-Allocation Real-Time Input Parsing**: Removed per-packet `Vec` allocations, redundant `Instant::now()` calls, and all `HashMap` lookups from the 1 kHz USB input hot path in `PacketParser` by pre-compiling descriptor items and `&'static str` names.
   - **LED Change Filtering & Lock-Free Flags**: Skipped marking `LedBuilder` dirty on unchanged byte writes to avoid redundant USB OUT flushes, and replaced `Arc<Mutex<bool>>` with `Arc<AtomicBool>` for `frame_ready` across all `encdr-view` backends.

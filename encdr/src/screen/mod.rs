@@ -52,13 +52,16 @@ pub struct ScreenManager {
     width: u16,
     height: u16,
     pixel_format: PixelFormat,
-    /// Previous frame in device-native format (for diffing)
+    /// Previous frame in device-native format (CPU fallback / redraw cache)
     prev_frame: Vec<u8>,
     /// Frame counter for periodic keyframes
     frame_count: u64,
-    /// GPU compute pipeline for format conversion (lazily created)
+    /// GPU compute pipeline for fused convert + diff + extract
     #[cfg(feature = "gpu")]
     gpu_pipeline: Option<GpuConvertPipeline>,
+    /// True when the latest frame lives in VRAM (`gpu_pipeline.fused_prev_buf`)
+    #[cfg(feature = "gpu")]
+    gpu_prev_valid: bool,
 }
 
 impl ScreenManager {
@@ -76,12 +79,21 @@ impl ScreenManager {
             frame_count: 0,
             #[cfg(feature = "gpu")]
             gpu_pipeline,
+            #[cfg(feature = "gpu")]
+            gpu_prev_valid: false,
         }
     }
 
     /// The latest submitted frame as a full-screen transfer buffer, whether or
     /// not it was sent. Use it to redraw a screen that something else drew on.
     pub fn current_blit(&self, screen_desc: &ScreenDesc) -> Vec<u8> {
+        #[cfg(feature = "gpu")]
+        if self.gpu_prev_valid
+            && let Some(ref gpu) = self.gpu_pipeline
+            && let Some(vram_prev) = gpu.read_prev_frame(self.prev_frame.len())
+        {
+            return protocol::build_full_blit(screen_desc, &vram_prev);
+        }
         protocol::build_full_blit(screen_desc, &self.prev_frame)
     }
 
@@ -93,25 +105,52 @@ impl ScreenManager {
         input_format: PixelFormat,
         screen_desc: &ScreenDesc,
     ) -> Option<Vec<u8>> {
-        // Step 1: Format conversion (if needed)
+        // Fast path: single-submission VRAM-resident GPU pipeline
+        // (`convert -> diff -> extract_bounds -> prev_frame update` in one submit/poll).
+        #[cfg(feature = "gpu")]
+        if self.pixel_format == PixelFormat::Bgr565Be
+            && matches!(input_format, PixelFormat::Rgba8888 | PixelFormat::Bgr565Be)
+            && let Some(ref mut gpu) = self.gpu_pipeline
+        {
+            let next_count = self.frame_count + 1;
+            let force_full = next_count == 1 || next_count.is_multiple_of(60);
+            let (partial_supported, x_align, y_align) = match &screen_desc.partial_blit {
+                Some(pb) if pb.supported => (true, pb.x_align, pb.y_align),
+                _ => (false, 2, 1),
+            };
+            if let Some(output) = gpu.submit_frame_fused(
+                pixels,
+                input_format,
+                self.width,
+                self.height,
+                x_align,
+                y_align,
+                partial_supported,
+                force_full,
+            ) {
+                self.frame_count = next_count;
+                self.gpu_prev_valid = true;
+                return match output {
+                    gpu_pipeline::GpuFrameOutput::Clean => None,
+                    gpu_pipeline::GpuFrameOutput::Partial { x, y, w, h, pixels } => Some(
+                        protocol::build_partial_blit(screen_desc, x, y, w, h, &pixels),
+                    ),
+                    gpu_pipeline::GpuFrameOutput::Full { pixels } => {
+                        Some(protocol::build_full_blit(screen_desc, &pixels))
+                    }
+                };
+            }
+        }
+
+        // CPU fallback (or non-BGR565 formats such as 1-bit Mono / ST7529 Gray5)
+        #[cfg(feature = "gpu")]
+        {
+            self.gpu_prev_valid = false;
+        }
         let native_pixels = if input_format == self.pixel_format {
             pixels.to_vec()
         } else {
-            #[cfg(feature = "gpu")]
-            if let Some(ref mut gpu) = self.gpu_pipeline {
-                match (input_format, self.pixel_format) {
-                    (PixelFormat::Rgba8888, PixelFormat::Bgr565Be) => {
-                        futures_lite::future::block_on(gpu.convert_rgba_to_bgr565(pixels, self.width as u32))
-                    }
-                    _ => convert_format(pixels, input_format, self.pixel_format, self.width, self.height),
-                }
-            } else {
-                convert_format(pixels, input_format, self.pixel_format, self.width, self.height)
-            }
-            #[cfg(not(feature = "gpu"))]
-            {
-                convert_format(pixels, input_format, self.pixel_format, self.width, self.height)
-            }
+            convert_format(pixels, input_format, self.pixel_format, self.width, self.height)
         };
 
         if native_pixels.len() != self.prev_frame.len() {

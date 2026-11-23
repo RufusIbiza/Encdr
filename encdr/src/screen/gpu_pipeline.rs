@@ -3,6 +3,24 @@ use std::sync::Arc;
 
 use super::gpu::GpuContext;
 use super::DirtyRect;
+use crate::core::descriptor::PixelFormat;
+
+/// Output of a single-submission fused GPU frame pass (`convert -> diff -> extract`).
+#[derive(Debug, PartialEq, Eq)]
+pub enum GpuFrameOutput {
+    /// Frame is identical to the VRAM-resident previous frame; zero pixels read back.
+    Clean,
+    /// Only the aligned dirty sub-rectangle was extracted and read back.
+    Partial {
+        x: u16,
+        y: u16,
+        w: u16,
+        h: u16,
+        pixels: Vec<u8>,
+    },
+    /// Full native BGR565BE frame (keyframe, partial_blit disabled, or dirty area above threshold).
+    Full { pixels: Vec<u8> },
+}
 
 /// GPU compute pipeline for format conversion, dual-screen splitting, and dirty-rect diffing.
 pub struct GpuConvertPipeline {
@@ -21,7 +39,10 @@ pub struct GpuConvertPipeline {
     extract_pipeline: wgpu::ComputePipeline,
     extract_bgl: wgpu::BindGroupLayout,
 
-    // Convert buffers
+    extract_bounds_pipeline: wgpu::ComputePipeline,
+    extract_bounds_bgl: wgpu::BindGroupLayout,
+
+    // Convert buffers (output_buf is also the fused pipeline's VRAM-resident curr_buf)
     capacity_pixels: usize,
     input_buf: Option<wgpu::Buffer>,
     output_buf: Option<wgpu::Buffer>,
@@ -39,7 +60,7 @@ pub struct GpuConvertPipeline {
     dual_right_staging: Option<wgpu::Buffer>,
     split_bg: Option<wgpu::BindGroup>,
 
-    // Diff buffers
+    // Standalone diff buffers
     diff_curr_buf: Option<wgpu::Buffer>,
     diff_prev_buf: Option<wgpu::Buffer>,
     diff_bounds_buf: Option<wgpu::Buffer>,
@@ -47,13 +68,25 @@ pub struct GpuConvertPipeline {
     diff_params_buf: Option<wgpu::Buffer>,
     diff_bg: Option<wgpu::BindGroup>,
 
-    // Extract buffers
+    // Standalone extract buffers
     extract_src_buf: Option<wgpu::Buffer>,
     extract_dst_buf: Option<wgpu::Buffer>,
     extract_staging: Option<wgpu::Buffer>,
     extract_params_buf: Option<wgpu::Buffer>,
     extract_bg: Option<wgpu::BindGroup>,
     extract_capacity_bytes: usize,
+
+    // Fused single-submission VRAM-resident buffers (convert -> diff -> extract_bounds)
+    fused_capacity_pixels: usize,
+    fused_prev_buf: Option<wgpu::Buffer>,
+    fused_dst_buf: Option<wgpu::Buffer>,
+    fused_staging_buf: Option<wgpu::Buffer>,
+    fused_bounds_buf: Option<wgpu::Buffer>,
+    fused_bounds_staging: Option<wgpu::Buffer>,
+    fused_diff_params_buf: Option<wgpu::Buffer>,
+    fused_extract_params_buf: Option<wgpu::Buffer>,
+    fused_diff_bg: Option<wgpu::BindGroup>,
+    fused_extract_bg: Option<wgpu::BindGroup>,
 }
 
 #[repr(C)]
@@ -106,6 +139,19 @@ struct ExtractParams {
     _pad0: u32,
     _pad1: u32,
     _pad2: u32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct FusedExtractParams {
+    width: u32,
+    height: u32,
+    x_align: u32,
+    y_align: u32,
+    force_full: u32,
+    partial_supported: u32,
+    full_threshold_pct: u32,
+    _pad: u32,
 }
 
 fn create_compute_pipeline(
@@ -331,6 +377,61 @@ impl GpuConvertPipeline {
             &[&extract_bgl],
         );
 
+        // 5. Fused bounds-driven extraction
+        let extract_bounds_bgl =
+            gpu.device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("encdr_extract_bounds_bgl"),
+                    entries: &[
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            visibility: wgpu::ShaderStages::COMPUTE,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 1,
+                            visibility: wgpu::ShaderStages::COMPUTE,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Storage { read_only: false },
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 2,
+                            visibility: wgpu::ShaderStages::COMPUTE,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 3,
+                            visibility: wgpu::ShaderStages::COMPUTE,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Uniform,
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
+                        },
+                    ],
+                });
+        let extract_bounds_pipeline = create_compute_pipeline(
+            &gpu.device,
+            "encdr_extract_bounds",
+            include_str!("shaders/extract_bounds.wgsl"),
+            &[&extract_bounds_bgl],
+        );
+
         Self {
             gpu,
             convert_pipeline,
@@ -341,6 +442,8 @@ impl GpuConvertPipeline {
             diff_bgl,
             extract_pipeline,
             extract_bgl,
+            extract_bounds_pipeline,
+            extract_bounds_bgl,
             capacity_pixels: 0,
             input_buf: None,
             output_buf: None,
@@ -367,6 +470,16 @@ impl GpuConvertPipeline {
             extract_params_buf: None,
             extract_bg: None,
             extract_capacity_bytes: 0,
+            fused_capacity_pixels: 0,
+            fused_prev_buf: None,
+            fused_dst_buf: None,
+            fused_staging_buf: None,
+            fused_bounds_buf: None,
+            fused_bounds_staging: None,
+            fused_diff_params_buf: None,
+            fused_extract_params_buf: None,
+            fused_diff_bg: None,
+            fused_extract_bg: None,
         }
     }
 
@@ -1107,6 +1220,452 @@ impl GpuConvertPipeline {
         tracing::warn!("GPU region extraction failed, falling back to CPU");
         super::extract_region(src_bgr565, src_width, 2, x, y, w, h)
     }
+
+    fn ensure_fused_capacity(&mut self, pixel_count: usize) {
+        self.ensure_capacity(pixel_count);
+        if self.fused_capacity_pixels == self.capacity_pixels && self.fused_prev_buf.is_some() {
+            return;
+        }
+
+        let output_pairs = self.capacity_pixels.div_ceil(2);
+        let output_bytes = (output_pairs * 4) as u64;
+        let curr_buf = self.output_buf.as_ref().unwrap();
+
+        let prev_buf = self.gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("encdr_fused_prev"),
+            size: output_bytes,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+
+        let dst_buf = self.gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("encdr_fused_dst"),
+            size: output_bytes,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+
+        let staging_buf = self.gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("encdr_fused_staging"),
+            size: output_bytes,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let bounds_buf = self.gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("encdr_fused_bounds"),
+            size: std::mem::size_of::<GpuDiffBounds>() as u64,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let bounds_staging = self.gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("encdr_fused_bounds_staging"),
+            size: std::mem::size_of::<GpuDiffBounds>() as u64,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let diff_params_buf = self.gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("encdr_fused_diff_params"),
+            size: std::mem::size_of::<DiffParams>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let extract_params_buf = self.gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("encdr_fused_extract_params"),
+            size: std::mem::size_of::<FusedExtractParams>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let fused_diff_bg = self
+            .gpu
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("encdr_fused_diff_bg"),
+                layout: &self.diff_bgl,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: curr_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: prev_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: bounds_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: diff_params_buf.as_entire_binding(),
+                    },
+                ],
+            });
+
+        let fused_extract_bg = self
+            .gpu
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("encdr_fused_extract_bg"),
+                layout: &self.extract_bounds_bgl,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: curr_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: dst_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: bounds_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: extract_params_buf.as_entire_binding(),
+                    },
+                ],
+            });
+
+        self.fused_prev_buf = Some(prev_buf);
+        self.fused_dst_buf = Some(dst_buf);
+        self.fused_staging_buf = Some(staging_buf);
+        self.fused_bounds_buf = Some(bounds_buf);
+        self.fused_bounds_staging = Some(bounds_staging);
+        self.fused_diff_params_buf = Some(diff_params_buf);
+        self.fused_extract_params_buf = Some(extract_params_buf);
+        self.fused_diff_bg = Some(fused_diff_bg);
+        self.fused_extract_bg = Some(fused_extract_bg);
+        self.fused_capacity_pixels = self.capacity_pixels;
+    }
+
+    /// Execute the entire `convert -> diff -> extract -> prev_frame update` pipeline
+    /// in a single VRAM-resident GPU submission (1 upload, 1 `queue.submit`, 1 `device.poll`).
+    ///
+    /// Keeps `prev_frame` permanently in VRAM so static frames read back only 20 bytes
+    /// (zero pixel copies) and partial frames read back only the dirty sub-rectangle.
+    /// Returns `None` if the input format/dimensions are unsupported or GPU readback fails.
+    #[allow(clippy::too_many_arguments)]
+    pub fn submit_frame_fused(
+        &mut self,
+        pixels: &[u8],
+        input_format: PixelFormat,
+        width: u16,
+        height: u16,
+        x_align: u16,
+        y_align: u16,
+        partial_supported: bool,
+        force_full: bool,
+    ) -> Option<GpuFrameOutput> {
+        const FULL_THRESHOLD_PCT: u32 = 85;
+
+        if width == 0 || height == 0 || !width.is_multiple_of(2) {
+            return None;
+        }
+        let pixel_count = width as usize * height as usize;
+        let frame_bytes = pixel_count * 2;
+
+        let needs_convert = match input_format {
+            PixelFormat::Rgba8888 => {
+                if pixels.len() != pixel_count * 4 {
+                    return None;
+                }
+                true
+            }
+            PixelFormat::Bgr565Be => {
+                if pixels.len() != frame_bytes {
+                    return None;
+                }
+                false
+            }
+            _ => return None,
+        };
+
+        self.ensure_fused_capacity(pixel_count);
+
+        let input_buf = self.input_buf.as_ref().unwrap();
+        let curr_buf = self.output_buf.as_ref().unwrap();
+        let convert_params_buf = self.params_buf.as_ref().unwrap();
+        let convert_bg = self.convert_bg.as_ref().unwrap();
+
+        let prev_buf = self.fused_prev_buf.as_ref().unwrap();
+        let dst_buf = self.fused_dst_buf.as_ref().unwrap();
+        let staging_buf = self.fused_staging_buf.as_ref().unwrap();
+        let bounds_buf = self.fused_bounds_buf.as_ref().unwrap();
+        let bounds_staging = self.fused_bounds_staging.as_ref().unwrap();
+        let diff_params_buf = self.fused_diff_params_buf.as_ref().unwrap();
+        let extract_params_buf = self.fused_extract_params_buf.as_ref().unwrap();
+        let diff_bg = self.fused_diff_bg.as_ref().unwrap();
+        let extract_bg = self.fused_extract_bg.as_ref().unwrap();
+
+        // Even horizontal alignment >= 2 guarantees u32 pixel-pair alignment in extract_bounds.wgsl.
+        let xa = (x_align.max(2) as u32).next_multiple_of(2);
+        let ya = y_align.max(1) as u32;
+
+        if needs_convert {
+            self.gpu.queue.write_buffer(input_buf, 0, pixels);
+            let convert_params = ConvertParams {
+                pixel_count: pixel_count as u32,
+                width: width as u32,
+                dither: super::dithering() as u32,
+                _pad: 0,
+            };
+            self.gpu
+                .queue
+                .write_buffer(convert_params_buf, 0, bytemuck::bytes_of(&convert_params));
+        } else {
+            self.gpu.queue.write_buffer(curr_buf, 0, pixels);
+        }
+
+        if !force_full {
+            let initial_bounds = GpuDiffBounds {
+                min_x: width as u32,
+                max_x: 0,
+                min_y: height as u32,
+                max_y: 0,
+                dirty_count: 0,
+            };
+            self.gpu
+                .queue
+                .write_buffer(bounds_buf, 0, bytemuck::bytes_of(&initial_bounds));
+
+            let diff_params = DiffParams {
+                width: width as u32,
+                height: height as u32,
+                pixel_count: pixel_count as u32,
+                _pad: 0,
+            };
+            self.gpu
+                .queue
+                .write_buffer(diff_params_buf, 0, bytemuck::bytes_of(&diff_params));
+        }
+
+        let extract_params = FusedExtractParams {
+            width: width as u32,
+            height: height as u32,
+            x_align: xa,
+            y_align: ya,
+            force_full: u32::from(force_full),
+            partial_supported: u32::from(partial_supported),
+            full_threshold_pct: FULL_THRESHOLD_PCT,
+            _pad: 0,
+        };
+        self.gpu
+            .queue
+            .write_buffer(extract_params_buf, 0, bytemuck::bytes_of(&extract_params));
+
+        let mut encoder = self
+            .gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("encdr_fused_frame_encoder"),
+            });
+
+        let pairs = (pixel_count as u32).div_ceil(2);
+        let wg_1d = pairs.div_ceil(256);
+
+        if needs_convert {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("encdr_fused_convert_pass"),
+                timestamp_writes: None,
+            });
+            pass.set_pipeline(&self.convert_pipeline);
+            pass.set_bind_group(0, convert_bg, &[]);
+            pass.dispatch_workgroups(wg_1d, 1, 1);
+        }
+
+        if !force_full {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("encdr_fused_diff_pass"),
+                timestamp_writes: None,
+            });
+            pass.set_pipeline(&self.diff_pipeline);
+            pass.set_bind_group(0, diff_bg, &[]);
+            pass.dispatch_workgroups(wg_1d, 1, 1);
+        }
+
+        {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("encdr_fused_extract_pass"),
+                timestamp_writes: None,
+            });
+            pass.set_pipeline(&self.extract_bounds_pipeline);
+            pass.set_bind_group(0, extract_bg, &[]);
+            pass.dispatch_workgroups((width as u32 / 2).div_ceil(16), (height as u32).div_ceil(16), 1);
+        }
+
+        let frame_bytes_u64 = frame_bytes as u64;
+        // Keep prev_buf updated directly in VRAM (zero CPU copy).
+        encoder.copy_buffer_to_buffer(curr_buf, 0, prev_buf, 0, frame_bytes_u64);
+        if !force_full {
+            encoder.copy_buffer_to_buffer(
+                bounds_buf,
+                0,
+                bounds_staging,
+                0,
+                std::mem::size_of::<GpuDiffBounds>() as u64,
+            );
+        }
+        encoder.copy_buffer_to_buffer(dst_buf, 0, staging_buf, 0, frame_bytes_u64);
+
+        self.gpu.queue.submit(std::iter::once(encoder.finish()));
+
+        // Map staging buffers before a single synchronous poll.
+        let bounds_rx = if !force_full {
+            let (tx, rx) = std::sync::mpsc::channel();
+            bounds_staging.slice(..).map_async(wgpu::MapMode::Read, move |res| {
+                tx.send(res).ok();
+            });
+            Some(rx)
+        } else {
+            None
+        };
+
+        let (px_tx, px_rx) = std::sync::mpsc::channel();
+        staging_buf
+            .slice(..frame_bytes_u64)
+            .map_async(wgpu::MapMode::Read, move |res| {
+                px_tx.send(res).ok();
+            });
+
+        let _ = self.gpu.device.poll(wgpu::PollType::wait_indefinitely());
+
+        let bounds = if let Some(rx) = bounds_rx {
+            let ok = matches!(rx.recv(), Ok(Ok(())));
+            let res = if ok {
+                bounds_staging
+                    .slice(..)
+                    .get_mapped_range()
+                    .ok()
+                    .map(|data| *bytemuck::from_bytes::<GpuDiffBounds>(&data))
+            } else {
+                None
+            };
+            if ok {
+                bounds_staging.unmap();
+            }
+            res
+        } else {
+            None
+        };
+
+        let px_mapped = matches!(px_rx.recv(), Ok(Ok(())));
+        if !px_mapped {
+            tracing::warn!("Fused GPU frame readback failed");
+            return None;
+        }
+
+        let result = if !force_full {
+            let Some(b) = bounds else {
+                staging_buf.unmap();
+                return None;
+            };
+            if b.dirty_count == 0 {
+                // Static frame: unmap without copying any pixels.
+                Some(GpuFrameOutput::Clean)
+            } else if partial_supported {
+                let ax = (b.min_x / xa) * xa;
+                let ay = (b.min_y / ya) * ya;
+                let ar = (((b.max_x + xa) / xa) * xa).min(width as u32);
+                let ab = (((b.max_y + ya) / ya) * ya).min(height as u32);
+                let aw = ar.saturating_sub(ax);
+                let ah = ab.saturating_sub(ay);
+
+                let use_full = aw == 0
+                    || ah == 0
+                    || (aw as usize * ah as usize * 100) > (pixel_count * FULL_THRESHOLD_PCT as usize);
+
+                if use_full {
+                    staging_buf
+                        .slice(..frame_bytes_u64)
+                        .get_mapped_range()
+                        .ok()
+                        .map(|data| GpuFrameOutput::Full {
+                            pixels: data[..frame_bytes].to_vec(),
+                        })
+                } else {
+                    let region_bytes = aw as usize * ah as usize * 2;
+                    staging_buf
+                        .slice(..frame_bytes_u64)
+                        .get_mapped_range()
+                        .ok()
+                        .map(|data| GpuFrameOutput::Partial {
+                            x: ax as u16,
+                            y: ay as u16,
+                            w: aw as u16,
+                            h: ah as u16,
+                            pixels: data[..region_bytes].to_vec(),
+                        })
+                }
+            } else {
+                staging_buf
+                    .slice(..frame_bytes_u64)
+                    .get_mapped_range()
+                    .ok()
+                    .map(|data| GpuFrameOutput::Full {
+                        pixels: data[..frame_bytes].to_vec(),
+                    })
+            }
+        } else {
+            staging_buf
+                .slice(..frame_bytes_u64)
+                .get_mapped_range()
+                .ok()
+                .map(|data| GpuFrameOutput::Full {
+                    pixels: data[..frame_bytes].to_vec(),
+                })
+        };
+
+        staging_buf.unmap();
+        result
+    }
+
+    /// Read the VRAM-resident `prev_frame` back to CPU memory on demand
+    /// (used only when redrawing a full screen after regaining hardware control).
+    pub fn read_prev_frame(&self, frame_bytes: usize) -> Option<Vec<u8>> {
+        let prev_buf = self.fused_prev_buf.as_ref()?;
+        let staging_buf = self.fused_staging_buf.as_ref()?;
+        let bytes_u64 = frame_bytes as u64;
+        if bytes_u64 == 0 || !bytes_u64.is_multiple_of(4) || prev_buf.size() < bytes_u64 {
+            return None;
+        }
+
+        let mut encoder = self
+            .gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("encdr_read_prev_encoder"),
+            });
+        encoder.copy_buffer_to_buffer(prev_buf, 0, staging_buf, 0, bytes_u64);
+        self.gpu.queue.submit(std::iter::once(encoder.finish()));
+
+        let slice = staging_buf.slice(..bytes_u64);
+        let (tx, rx) = std::sync::mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |res| {
+            tx.send(res).ok();
+        });
+        let _ = self.gpu.device.poll(wgpu::PollType::wait_indefinitely());
+
+        if matches!(rx.recv(), Ok(Ok(()))) {
+            let out = slice
+                .get_mapped_range()
+                .ok()
+                .map(|data| data[..frame_bytes].to_vec());
+            staging_buf.unmap();
+            out
+        } else {
+            None
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1231,6 +1790,84 @@ mod tests {
                 }
                 _ => panic!("Expected Partial dirty rect, got {:?}", dirty),
             }
+        }
+    }
+
+    #[test]
+    fn test_fused_gpu_pipeline_clean_partial_full_and_readback() {
+        let gpu = futures_lite::future::block_on(GpuContext::new());
+        if let Some(gpu) = gpu {
+            let mut pipeline = GpuConvertPipeline::new(Arc::new(gpu));
+            let width = 64u16;
+            let height = 32u16;
+            let pixel_count = width as usize * height as usize;
+
+            // Frame 1: solid blue RGBA, force_full = true
+            let mut frame1 = vec![0u8; pixel_count * 4];
+            for px in frame1.chunks_exact_mut(4) {
+                px.copy_from_slice(&[0, 0, 255, 255]);
+            }
+            let expected1 = super::super::rgba8_to_bgr565_be(&frame1, width as usize, height as usize);
+            let out1 = pipeline
+                .submit_frame_fused(&frame1, PixelFormat::Rgba8888, width, height, 4, 4, true, true)
+                .expect("fused frame 1");
+            assert_eq!(out1, GpuFrameOutput::Full { pixels: expected1.clone() });
+
+            // Frame 2: identical RGBA, force_full = false -> Clean (zero pixels read back)
+            let out2 = pipeline
+                .submit_frame_fused(&frame1, PixelFormat::Rgba8888, width, height, 4, 4, true, false)
+                .expect("fused frame 2");
+            assert_eq!(out2, GpuFrameOutput::Clean);
+
+            // Frame 3: paint a red 12x8 rect at (16, 8) -> Partial
+            let mut frame3 = frame1.clone();
+            for y in 8..16 {
+                for x in 16..28 {
+                    let off = (y * width as usize + x) * 4;
+                    frame3[off..off + 4].copy_from_slice(&[255, 0, 0, 255]);
+                }
+            }
+            let expected3_full =
+                super::super::rgba8_to_bgr565_be(&frame3, width as usize, height as usize);
+            let expected3_region =
+                super::super::extract_region(&expected3_full, width, 2, 16, 8, 12, 8);
+            let out3 = pipeline
+                .submit_frame_fused(&frame3, PixelFormat::Rgba8888, width, height, 4, 4, true, false)
+                .expect("fused frame 3");
+            assert_eq!(
+                out3,
+                GpuFrameOutput::Partial {
+                    x: 16,
+                    y: 8,
+                    w: 12,
+                    h: 8,
+                    pixels: expected3_region,
+                }
+            );
+
+            // Frame 4: identical to Frame 3 -> Clean (verifies VRAM prev_buf updated!)
+            let out4 = pipeline
+                .submit_frame_fused(&frame3, PixelFormat::Rgba8888, width, height, 4, 4, true, false)
+                .expect("fused frame 4");
+            assert_eq!(out4, GpuFrameOutput::Clean);
+
+            // On-demand VRAM prev_frame readback matches expected3_full byte-for-byte
+            let vram_prev = pipeline
+                .read_prev_frame(expected3_full.len())
+                .expect("read_prev_frame");
+            assert_eq!(vram_prev, expected3_full);
+
+            // Frame 5: full green change (>85% dirty) -> Full
+            let mut frame5 = vec![0u8; pixel_count * 4];
+            for px in frame5.chunks_exact_mut(4) {
+                px.copy_from_slice(&[0, 255, 0, 255]);
+            }
+            let expected5 =
+                super::super::rgba8_to_bgr565_be(&frame5, width as usize, height as usize);
+            let out5 = pipeline
+                .submit_frame_fused(&frame5, PixelFormat::Rgba8888, width, height, 4, 4, true, false)
+                .expect("fused frame 5");
+            assert_eq!(out5, GpuFrameOutput::Full { pixels: expected5 });
         }
     }
 }

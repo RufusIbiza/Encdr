@@ -1,7 +1,8 @@
 // GPU compute shader for dirty-rect diffing between current and previous frames.
 //
-// Compares BGR565BE pixels packed as u32 (2 pixels per u32) and atomically
-// updates the bounding box of modified pixels.
+// Compares BGR565BE pixels packed as u32 (2 pixels per u32) and performs a
+// workgroup-local shared-memory reduction before updating the global bounding
+// box, cutting global atomic contention by 256x.
 
 struct DiffBounds {
     min_x: atomic<u32>,
@@ -22,39 +23,68 @@ struct DiffParams {
 @group(0) @binding(2) var<storage, read_write> bounds: DiffBounds;
 @group(0) @binding(3) var<uniform> params: DiffParams;
 
+var<workgroup> wg_min_x: atomic<u32>;
+var<workgroup> wg_max_x: atomic<u32>;
+var<workgroup> wg_min_y: atomic<u32>;
+var<workgroup> wg_max_y: atomic<u32>;
+var<workgroup> wg_dirty: atomic<u32>;
+
 @compute @workgroup_size(256)
-fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+fn main(
+    @builtin(global_invocation_id) gid: vec3<u32>,
+    @builtin(local_invocation_id) lid: vec3<u32>,
+) {
+    if (lid.x == 0u) {
+        atomicStore(&wg_min_x, params.width);
+        atomicStore(&wg_max_x, 0u);
+        atomicStore(&wg_min_y, params.height);
+        atomicStore(&wg_max_y, 0u);
+        atomicStore(&wg_dirty, 0u);
+    }
+    workgroupBarrier();
+
     let pair_idx = gid.x;
     let total_pairs = (params.pixel_count + 1u) / 2u;
-    if (pair_idx >= total_pairs) {
-        return;
+    if (pair_idx < total_pairs) {
+        let c = curr_pixels[pair_idx];
+        let p = prev_pixels[pair_idx];
+
+        if (c != p) {
+            let px0 = pair_idx * 2u;
+            let px1 = px0 + 1u;
+
+            if ((c & 0xFFFFu) != (p & 0xFFFFu)) {
+                let x0 = px0 % params.width;
+                let y0 = px0 / params.width;
+                atomicMin(&wg_min_x, x0);
+                atomicMax(&wg_max_x, x0);
+                atomicMin(&wg_min_y, y0);
+                atomicMax(&wg_max_y, y0);
+                atomicAdd(&wg_dirty, 1u);
+            }
+
+            if (px1 < params.pixel_count && ((c >> 16u) & 0xFFFFu) != ((p >> 16u) & 0xFFFFu)) {
+                let x1 = px1 % params.width;
+                let y1 = px1 / params.width;
+                atomicMin(&wg_min_x, x1);
+                atomicMax(&wg_max_x, x1);
+                atomicMin(&wg_min_y, y1);
+                atomicMax(&wg_max_y, y1);
+                atomicAdd(&wg_dirty, 1u);
+            }
+        }
     }
 
-    let c = curr_pixels[pair_idx];
-    let p = prev_pixels[pair_idx];
+    workgroupBarrier();
 
-    if (c != p) {
-        let px0 = pair_idx * 2u;
-        let px1 = px0 + 1u;
-
-        if ((c & 0xFFFFu) != (p & 0xFFFFu)) {
-            let x0 = px0 % params.width;
-            let y0 = px0 / params.width;
-            atomicMin(&bounds.min_x, x0);
-            atomicMax(&bounds.max_x, x0);
-            atomicMin(&bounds.min_y, y0);
-            atomicMax(&bounds.max_y, y0);
-            atomicAdd(&bounds.dirty_count, 1u);
-        }
-
-        if (px1 < params.pixel_count && ((c >> 16u) & 0xFFFFu) != ((p >> 16u) & 0xFFFFu)) {
-            let x1 = px1 % params.width;
-            let y1 = px1 / params.width;
-            atomicMin(&bounds.min_x, x1);
-            atomicMax(&bounds.max_x, x1);
-            atomicMin(&bounds.min_y, y1);
-            atomicMax(&bounds.max_y, y1);
-            atomicAdd(&bounds.dirty_count, 1u);
+    if (lid.x == 0u) {
+        let dirty = atomicLoad(&wg_dirty);
+        if (dirty > 0u) {
+            atomicMin(&bounds.min_x, atomicLoad(&wg_min_x));
+            atomicMax(&bounds.max_x, atomicLoad(&wg_max_x));
+            atomicMin(&bounds.min_y, atomicLoad(&wg_min_y));
+            atomicMax(&bounds.max_y, atomicLoad(&wg_max_y));
+            atomicAdd(&bounds.dirty_count, dirty);
         }
     }
 }

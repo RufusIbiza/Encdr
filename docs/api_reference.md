@@ -1164,6 +1164,6 @@ Both `SkiaScreenView` and `SkiaDualScreenView` provide `set_device_id(&mut self,
 When using `SkiaDualScreenView::submit` or `SkiaScreenView::submit`:
 1. Skia rasterizes directly to an offscreen Vulkan render target in GPU memory (or CPU raster surface if Vulkan is unavailable/disabled).
 2. The rendered surface is read into Encdr's `run_screens` worker (coalescing any queued stale frames).
-3. Encdr converts pixels (and splits dual frames) to `BGR565_BE` using the GPU compute pipeline (`wgpu`, when the `gpu` feature is enabled) or CPU fallback.
-4. Encdr computes the dirty bounding box and extracts the changed sub-rectangle directly on CPU-resident buffers without extra GPU readback stalls.
+3. Encdr runs a single fused VRAM-resident GPU submission (`convert -> diff -> extract_bounds -> prev_frame update`) with `prev_frame` kept permanently in VRAM (or falls back to CPU if the `gpu` feature is disabled or no GPU is available).
+4. Static frames read back only 20 bytes (zero pixel copies); partial updates read back only the aligned dirty sub-rectangle.
 5. The full or partial blit bytes are transferred directly to the controller's USB endpoint.
