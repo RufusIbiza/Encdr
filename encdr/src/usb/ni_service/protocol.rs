@@ -117,7 +117,8 @@ pub fn display_message(display: u8, width: u16, height: u16, commands: &[u8]) ->
 }
 
 fn le32(d: &[u8], at: usize) -> Option<u32> {
-    d.get(at..at + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+    let end = at.checked_add(4)?;
+    d.get(at..end).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
 }
 
 fn text(raw: &[u8]) -> String {
@@ -140,9 +141,12 @@ pub fn parse_connect_reply(d: &[u8]) -> Result<Ports, String> {
         ));
     }
     let req_len = le32(d, 4).ok_or("short reply")? as usize;
-    let request = d.get(8..8 + req_len).ok_or("short reply (request port)")?;
-    let note_len = le32(d, 8 + req_len).ok_or("short reply (notification length)")? as usize;
-    let notification = d.get(12 + req_len..12 + req_len + note_len).ok_or("short reply (notification port)")?;
+    let req_end = 8usize.checked_add(req_len).ok_or("reply length overflow")?;
+    let request = d.get(8..req_end).ok_or("short reply (request port)")?;
+    let note_len = le32(d, req_end).ok_or("short reply (notification length)")? as usize;
+    let note_start = req_end.checked_add(4).ok_or("reply length overflow")?;
+    let note_end = note_start.checked_add(note_len).ok_or("reply length overflow")?;
+    let notification = d.get(note_start..note_end).ok_or("short reply (notification port)")?;
     Ok(Ports { request: text(request), notification: text(notification) })
 }
 

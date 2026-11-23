@@ -107,6 +107,17 @@ impl ScreenManager {
             convert_format(pixels, input_format, self.pixel_format, self.width, self.height)
         };
 
+        if native_pixels.len() != self.prev_frame.len() {
+            tracing::warn!(
+                "Screen '{}' frame size mismatch: got {} bytes after conversion (from {:?}), expected {} bytes",
+                screen_desc.name,
+                native_pixels.len(),
+                input_format,
+                self.prev_frame.len()
+            );
+            return None;
+        }
+
         self.frame_count += 1;
 
         // Step 2: Determine if we need a keyframe (full blit on frame 1 and every ~60 frames / ~2s at 30fps)
@@ -509,7 +520,9 @@ fn compute_dirty_rect(
         return DirtyRect::Clean;
     }
 
-    // Align the bounding box
+    // Align the bounding box (guard against 0 alignment in malformed descriptors)
+    let x_align = x_align.max(1);
+    let y_align = y_align.max(1);
     let aligned_x = (min_x as u16 / x_align) * x_align;
     let aligned_y = (min_y as u16 / y_align) * y_align;
     let aligned_right = ((max_x as u16 + x_align) / x_align) * x_align;

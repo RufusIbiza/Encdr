@@ -138,6 +138,10 @@ impl ScreenView {
             return Ok(());
         }
 
+        // Clear before capturing so any `__encdr_frame_ready` IPC received while
+        // pumping the event loop during capture is preserved for the next poll.
+        self.inner.clear_frame_ready();
+
         #[cfg(target_os = "linux")]
         let (_w, _h, rgba) = capture::capture_webview_pixels(
             &self.inner.webkit_view,
@@ -166,7 +170,6 @@ impl ScreenView {
             PixelFormat::Rgba8888,
         );
 
-        self.inner.clear_frame_ready();
         Ok(())
     }
 
@@ -344,6 +347,10 @@ impl DualScreenView {
             return Ok(());
         }
 
+        // Clear before capturing so any `__encdr_frame_ready` IPC received while
+        // pumping the event loop during capture is preserved for the next poll.
+        self.inner.clear_frame_ready();
+
         #[cfg(target_os = "linux")]
         let (_w, _h, rgba) = capture::capture_webview_pixels(
             &self.inner.webkit_view,
@@ -373,7 +380,6 @@ impl DualScreenView {
             PixelFormat::Rgba8888,
         );
 
-        self.inner.clear_frame_ready();
         Ok(())
     }
 

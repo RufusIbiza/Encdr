@@ -51,7 +51,7 @@ impl EncoderState {
         if new_val == self.value {
             return None;
         }
-        let delta = new_val as f32 - self.value as f32;
+        let delta = new_val.wrapping_sub(self.value) as i16 as f32;
         self.value = new_val;
         Some(delta)
     }
@@ -350,5 +350,13 @@ mod tests {
         let mut enc = EncoderState::default();
         enc.update_wrap16_wide(500);
         assert_eq!(enc.update_wrap16_wide(500), None);
+    }
+
+    #[test]
+    fn signed16_wraparound() {
+        let mut enc = EncoderState::default();
+        assert_eq!(enc.update_signed16(65534), None);
+        assert_eq!(enc.update_signed16(2), Some(4.0));
+        assert_eq!(enc.update_signed16(65534), Some(-4.0));
     }
 }

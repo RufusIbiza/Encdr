@@ -14,8 +14,10 @@ use crate::gpu::SkiaGpuContext;
 /// and submits the double-width frame to encdr, which splits the frame horizontally and updates both
 /// controller screens independently.
 pub struct SkiaDualScreenView {
-    gpu: Arc<Mutex<SkiaGpuContext>>,
+    /// Skia surface (must drop BEFORE `gpu` so the Vulkan render target is released
+    /// while the `DirectContext` and `VkDevice` are still alive).
     surface: Surface,
+    gpu: Arc<Mutex<SkiaGpuContext>>,
     device_id: DeviceId,
     left_screen: String,
     right_screen: String,

@@ -1,17 +1,22 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::core::descriptor::DeviceDescriptor;
 use crate::core::error::{EncdrError, Result};
+
+/// Process-wide string interning pool for control names so repeated
+/// `DescriptorRegistry` / `Encdr` instances share the same `'static` slices
+/// instead of leaking duplicates.
+fn global_intern_pool() -> &'static Mutex<HashSet<&'static str>> {
+    static POOL: OnceLock<Mutex<HashSet<&'static str>>> = OnceLock::new();
+    POOL.get_or_init(|| Mutex::new(HashSet::new()))
+}
 
 /// Registry of loaded device descriptors, keyed by (vendor_id, product_id).
 #[derive(Debug, Default)]
 pub struct DescriptorRegistry {
     descriptors: HashMap<(u16, u16), Arc<DeviceDescriptor>>,
-    /// Interned strings: control names → &'static str.
-    /// We leak these because descriptors live for the program lifetime.
-    interned: HashMap<String, &'static str>,
 }
 
 impl DescriptorRegistry {
@@ -138,14 +143,14 @@ impl DescriptorRegistry {
     }
 
     /// Intern a string, returning a &'static str. If the string was already
-    /// interned, returns the same pointer. The leaked memory is tiny (a few KB
-    /// for all control names) and lives for the program lifetime.
+    /// interned anywhere in the process, returns the exact same pointer.
     pub fn intern(&mut self, s: &str) -> &'static str {
-        if let Some(&interned) = self.interned.get(s) {
+        let mut pool = global_intern_pool().lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(&interned) = pool.get(s) {
             return interned;
         }
         let leaked: &'static str = Box::leak(s.to_owned().into_boxed_str());
-        self.interned.insert(s.to_owned(), leaked);
+        pool.insert(leaked);
         leaked
     }
 

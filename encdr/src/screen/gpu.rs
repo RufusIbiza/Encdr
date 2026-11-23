@@ -24,6 +24,10 @@ impl GpuContext {
             .await
             .ok()?;
 
+        device.on_uncaptured_error(Arc::new(|err| {
+            tracing::error!("wgpu uncaptured error: {err}");
+        }));
+
         Some(Self {
             device: Arc::new(device),
             queue: Arc::new(queue),

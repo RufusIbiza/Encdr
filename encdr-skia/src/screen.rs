@@ -13,8 +13,10 @@ use crate::gpu::SkiaGpuContext;
 /// Drawing commands rendered to the canvas are flushed on the GPU, transferred to the pixel buffer,
 /// and submitted directly to encdr's USB screen transfer pipeline.
 pub struct SkiaScreenView {
-    gpu: Arc<Mutex<SkiaGpuContext>>,
+    /// Skia surface (must drop BEFORE `gpu` so the Vulkan render target is released
+    /// while the `DirectContext` and `VkDevice` are still alive).
     surface: Surface,
+    gpu: Arc<Mutex<SkiaGpuContext>>,
     device_id: DeviceId,
     screen_name: String,
     width: u32,

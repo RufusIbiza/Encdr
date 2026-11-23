@@ -122,7 +122,12 @@ fn decode_png_to_rgba(
     target_width: u32,
     target_height: u32,
 ) -> Result<(u32, u32, Vec<u8>), String> {
-    let decoder = png::Decoder::new(Cursor::new(png_bytes));
+    if target_width == 0 || target_height == 0 {
+        return Err(format!("Invalid target dimensions: {}x{}", target_width, target_height));
+    }
+
+    let mut decoder = png::Decoder::new(Cursor::new(png_bytes));
+    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
     let mut reader = decoder
         .read_info()
         .map_err(|e| format!("PNG decode failed: {}", e))?;
@@ -132,10 +137,15 @@ fn decode_png_to_rgba(
     let src_height = info.height;
     let color_type = info.color_type;
 
+    if src_width == 0 || src_height == 0 {
+        return Err(format!("Invalid PNG dimensions: {}x{}", src_width, src_height));
+    }
+
     let mut src_buf = vec![0u8; reader.output_buffer_size()];
-    reader
+    let out_info = reader
         .next_frame(&mut src_buf)
         .map_err(|e| format!("PNG frame read failed: {}", e))?;
+    src_buf.truncate(out_info.buffer_size());
 
     // Convert to RGBA if needed
     let src_rgba = match color_type {
@@ -147,6 +157,20 @@ fn decode_png_to_rgba(
                 rgba.push(chunk[1]);
                 rgba.push(chunk[2]);
                 rgba.push(255);
+            }
+            rgba
+        }
+        png::ColorType::Grayscale => {
+            let mut rgba = Vec::with_capacity((src_width * src_height * 4) as usize);
+            for &v in &src_buf {
+                rgba.extend_from_slice(&[v, v, v, 255]);
+            }
+            rgba
+        }
+        png::ColorType::GrayscaleAlpha => {
+            let mut rgba = Vec::with_capacity((src_width * src_height * 4) as usize);
+            for chunk in src_buf.chunks_exact(2) {
+                rgba.extend_from_slice(&[chunk[0], chunk[0], chunk[0], chunk[1]]);
             }
             rgba
         }

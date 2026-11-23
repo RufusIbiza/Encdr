@@ -100,9 +100,10 @@ impl JogRing {
     /// - `head_value`: Brightness / palette byte for the head segment.
     pub fn spinner(head_index: usize, tail_length: usize, head_value: u8) -> Self {
         let mut ring = Self::new();
-        let tail_len = tail_length.max(1).min(Self::SEGMENTS);
+        let tail_len = tail_length.clamp(1, Self::SEGMENTS);
+        let head = head_index % Self::SEGMENTS;
         for i in 0..tail_len {
-            let idx = (head_index + Self::SEGMENTS - i) % Self::SEGMENTS;
+            let idx = (head + Self::SEGMENTS - i) % Self::SEGMENTS;
             let factor = 1.0 - (i as f32 / tail_len as f32);
             let val = ((head_value as f32) * factor).round() as u8;
             ring.set(idx, val);
@@ -158,11 +159,17 @@ impl JogWheelTracker {
 
     /// Sets the position from a normalized rotation value (0.0..1.0).
     pub fn set_normalized(&mut self, normalized: f32) {
+        if !normalized.is_finite() {
+            return;
+        }
         self.ticks = (normalized.rem_euclid(1.0) * JogRing::TICKS_PER_REV as f32).rem_euclid(JogRing::TICKS_PER_REV as f32);
     }
 
     /// Sets the position from an angle in radians (0.0 .. 2*PI).
     pub fn set_radians(&mut self, radians: f32) {
+        if !radians.is_finite() {
+            return;
+        }
         let normalized = radians / (2.0 * std::f32::consts::PI);
         self.set_normalized(normalized);
     }
@@ -172,7 +179,11 @@ impl JogWheelTracker {
     /// - `delta`: Delta amount from an encoder event or motor step.
     /// - `ticks_per_unit`: Scale factor converting delta to 0..2879 ticks.
     pub fn advance(&mut self, delta: f32, ticks_per_unit: f32) {
-        self.ticks = (self.ticks + delta * ticks_per_unit).rem_euclid(JogRing::TICKS_PER_REV as f32);
+        let step = delta * ticks_per_unit;
+        if !step.is_finite() {
+            return;
+        }
+        self.ticks = (self.ticks + step).rem_euclid(JogRing::TICKS_PER_REV as f32);
     }
 
     /// Returns the current absolute position in ticks (0..2879).
@@ -266,5 +277,15 @@ mod tests {
         tracker.set_normalized(0.25);
         assert_eq!(tracker.current_ticks(), 720);
         assert_eq!(tracker.current_segment(), 8);
+
+        // Non-finite inputs must not poison tracker state
+        tracker.set_normalized(f32::NAN);
+        tracker.set_radians(f32::INFINITY);
+        tracker.advance(f32::NAN, 100.0);
+        assert_eq!(tracker.current_ticks(), 720);
+
+        // Large head_index must not overflow in spinner
+        let ring = JogRing::spinner(usize::MAX, 4, 200);
+        assert_eq!(ring.as_bytes()[usize::MAX % JogRing::SEGMENTS], 200);
     }
 }

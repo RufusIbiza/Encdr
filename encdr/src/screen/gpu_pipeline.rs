@@ -454,7 +454,7 @@ impl GpuConvertPipeline {
         let staging_buf = self.staging_buf.as_ref().unwrap();
         let convert_bg = self.convert_bg.as_ref().unwrap();
 
-        self.gpu.queue.write_buffer(input_buf, 0, rgba);
+        self.gpu.queue.write_buffer(input_buf, 0, &rgba[..pixel_count * 4]);
         let params = ConvertParams {
             pixel_count: pixel_count as u32,
             width: width.max(1),
@@ -498,11 +498,12 @@ impl GpuConvertPipeline {
         let _ = self.gpu.device.poll(wgpu::PollType::wait_indefinitely());
 
         if let Ok(Ok(())) = rx.recv() {
-            if let Ok(data) = buffer_slice.get_mapped_range() {
+            let out = buffer_slice.get_mapped_range().ok().map(|data| {
                 let result_bytes = pixel_count * 2;
-                let out = data[..result_bytes].to_vec();
-                drop(data);
-                staging_buf.unmap();
+                data[..result_bytes].to_vec()
+            });
+            staging_buf.unmap();
+            if let Some(out) = out {
                 return out;
             }
         }
@@ -620,7 +621,11 @@ impl GpuConvertPipeline {
         let right_staging = self.dual_right_staging.as_ref().unwrap();
         let split_bg = self.split_bg.as_ref().unwrap();
 
-        self.gpu.queue.write_buffer(input_buf, 0, rgba);
+        let input_bytes = total_pixels * 4;
+        if rgba.len() < input_bytes {
+            return (Vec::new(), Vec::new());
+        }
+        self.gpu.queue.write_buffer(input_buf, 0, &rgba[..input_bytes]);
         let params = SplitParams {
             total_width: total_w,
             left_width: left_w,
@@ -639,6 +644,8 @@ impl GpuConvertPipeline {
 
         let left_bytes = (left_w * h * 2) as u64;
         let right_bytes = (right_w * h * 2) as u64;
+        let left_copy_bytes = left_bytes.next_multiple_of(4);
+        let right_copy_bytes = right_bytes.next_multiple_of(4);
 
         let mut encoder = self
             .gpu
@@ -657,12 +664,12 @@ impl GpuConvertPipeline {
             pass.dispatch_workgroups(wg_x, wg_y, 1);
         }
 
-        encoder.copy_buffer_to_buffer(left_buf, 0, left_staging, 0, left_bytes);
-        encoder.copy_buffer_to_buffer(right_buf, 0, right_staging, 0, right_bytes);
+        encoder.copy_buffer_to_buffer(left_buf, 0, left_staging, 0, left_copy_bytes);
+        encoder.copy_buffer_to_buffer(right_buf, 0, right_staging, 0, right_copy_bytes);
         self.gpu.queue.submit(std::iter::once(encoder.finish()));
 
-        let left_slice = left_staging.slice(..left_bytes);
-        let right_slice = right_staging.slice(..right_bytes);
+        let left_slice = left_staging.slice(..left_copy_bytes);
+        let right_slice = right_staging.slice(..right_copy_bytes);
 
         let (tx_l, rx_l) = std::sync::mpsc::channel();
         let (tx_r, rx_r) = std::sync::mpsc::channel();
@@ -677,32 +684,50 @@ impl GpuConvertPipeline {
         let _ = self.gpu.device.poll(wgpu::PollType::wait_indefinitely());
 
         let left_out = if let Ok(Ok(())) = rx_l.recv() {
-            if let Ok(data) = left_slice.get_mapped_range() {
-                let v = data[..left_bytes as usize].to_vec();
-                drop(data);
-                left_staging.unmap();
-                v
-            } else {
-                Vec::new()
-            }
+            let v = left_slice
+                .get_mapped_range()
+                .ok()
+                .map(|data| data[..left_bytes as usize].to_vec());
+            left_staging.unmap();
+            v
         } else {
-            Vec::new()
+            None
         };
 
         let right_out = if let Ok(Ok(())) = rx_r.recv() {
-            if let Ok(data) = right_slice.get_mapped_range() {
-                let v = data[..right_bytes as usize].to_vec();
-                drop(data);
-                right_staging.unmap();
-                v
-            } else {
-                Vec::new()
-            }
+            let v = right_slice
+                .get_mapped_range()
+                .ok()
+                .map(|data| data[..right_bytes as usize].to_vec());
+            right_staging.unmap();
+            v
         } else {
-            Vec::new()
+            None
         };
 
-        (left_out, right_out)
+        match (left_out, right_out) {
+            (Some(l), Some(r)) => (l, r),
+            _ => {
+                tracing::warn!("GPU dual-screen readback failed, falling back to CPU");
+                let lw = left_w as usize;
+                let rw = right_w as usize;
+                let hh = h as usize;
+                let total_stride = (lw + rw) * 4;
+                let mut left_rgba = Vec::with_capacity(lw * hh * 4);
+                let mut right_rgba = Vec::with_capacity(rw * hh * 4);
+                for row in 0..hh {
+                    let row_start = row * total_stride;
+                    if row_start + total_stride <= rgba.len() {
+                        left_rgba.extend_from_slice(&rgba[row_start..row_start + lw * 4]);
+                        right_rgba.extend_from_slice(&rgba[row_start + lw * 4..row_start + total_stride]);
+                    }
+                }
+                (
+                    super::rgba8_to_bgr565_be(&left_rgba, lw, hh),
+                    super::rgba8_to_bgr565_be(&right_rgba, rw, hh),
+                )
+            }
+        }
     }
 
     /// Compute dirty-rect bounding box between current and previous BGR565 frames on the GPU.
@@ -717,6 +742,9 @@ impl GpuConvertPipeline {
     ) -> DirtyRect {
         if curr_bgr565.len() != prev_bgr565.len() || curr_bgr565.is_empty() {
             return DirtyRect::Full;
+        }
+        if !curr_bgr565.len().is_multiple_of(4) {
+            return super::compute_dirty_rect(curr_bgr565, prev_bgr565, width, height, 2, x_align, y_align);
         }
 
         let pixel_count = curr_bgr565.len() / 2;
@@ -862,14 +890,12 @@ impl GpuConvertPipeline {
         let _ = self.gpu.device.poll(wgpu::PollType::wait_indefinitely());
 
         let bounds: Option<GpuDiffBounds> = if let Ok(Ok(())) = rx.recv() {
-            if let Ok(data) = slice.get_mapped_range() {
-                let res = *bytemuck::from_bytes::<GpuDiffBounds>(&data);
-                drop(data);
-                bounds_staging.unmap();
-                Some(res)
-            } else {
-                None
-            }
+            let res = slice
+                .get_mapped_range()
+                .ok()
+                .map(|data| *bytemuck::from_bytes::<GpuDiffBounds>(&data));
+            bounds_staging.unmap();
+            res
         } else {
             None
         };
@@ -938,7 +964,26 @@ impl GpuConvertPipeline {
         let region_bytes = (w as usize * h as usize * 2) as u64;
         let src_bytes = src_bgr565.len() as u64;
 
-        if self.extract_capacity_bytes < region_bytes as usize || self.extract_src_buf.is_none() {
+        // WGSL extract shader operates on packed u32 pixel pairs (2 pixels / 4 bytes)
+        // and wgpu requires 4-byte alignment for write_buffer and copy_buffer_to_buffer.
+        if w == 0
+            || h == 0
+            || src_bytes == 0
+            || !src_bytes.is_multiple_of(4)
+            || !region_bytes.is_multiple_of(4)
+            || !src_width.is_multiple_of(2)
+            || !x.is_multiple_of(2)
+            || !w.is_multiple_of(2)
+        {
+            return super::extract_region(src_bgr565, src_width, 2, x, y, w, h);
+        }
+
+        let src_needs_realloc = self
+            .extract_src_buf
+            .as_ref()
+            .is_none_or(|b| b.size() < src_bytes);
+
+        if self.extract_capacity_bytes < region_bytes as usize || src_needs_realloc {
             let src_buf = self.gpu.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("encdr_extract_src"),
                 size: src_bytes,
@@ -1049,10 +1094,12 @@ impl GpuConvertPipeline {
         let _ = self.gpu.device.poll(wgpu::PollType::wait_indefinitely());
 
         if let Ok(Ok(())) = rx.recv() {
-            if let Ok(data) = slice.get_mapped_range() {
-                let out = data[..region_bytes as usize].to_vec();
-                drop(data);
-                staging_buf.unmap();
+            let out = slice
+                .get_mapped_range()
+                .ok()
+                .map(|data| data[..region_bytes as usize].to_vec());
+            staging_buf.unmap();
+            if let Some(out) = out {
                 return out;
             }
         }

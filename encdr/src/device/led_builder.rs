@@ -49,6 +49,11 @@ impl LedBuilder {
                     );
                 }
                 LedItemDesc::Indexed(i) => {
+                    if let Some(value) = i.default {
+                        if let Some(slot) = buffer.get_mut(i.offset) {
+                            *slot = value;
+                        }
+                    }
                     led_map.insert(
                         i.name.clone(),
                         LedMapping::Indexed { offset: i.offset },
@@ -152,10 +157,10 @@ impl LedBuilder {
                     self.dirty = true;
                 }
             }
-            (LedMapping::Single { offset }, LedValue::Rgb { r, .. }) => {
+            (LedMapping::Single { offset }, LedValue::Rgb { r, g, b }) => {
                 // Single LED can only take brightness, use max channel
                 if *offset < self.buffer.len() {
-                    self.buffer[*offset] = r;
+                    self.buffer[*offset] = r.max(g).max(b);
                     self.dirty = true;
                 }
             }
@@ -495,5 +500,19 @@ mod tests {
             assert_eq!(out[40 + (3 - pad / 4) * 4 + pad % 4], 4 + pad as u8);
         }
         assert_eq!(&out[56..], &[71; 25]);
+    }
+
+    #[test]
+    fn single_led_uses_max_rgb_channel() {
+        let mut r = DescriptorRegistry::new();
+        r.load_builtins().unwrap();
+        let d = r.find(0x17cc, 0x1700).unwrap();
+        let mut b = LedBuilder::new(&d.leds[0], &d.interfaces[0]);
+        b.set("maschine", LedValue::Rgb { r: 0, g: 200, b: 50 });
+        let out = b.flush().unwrap();
+        assert_eq!(out[1], 200);
+        b.set("maschine", LedValue::Rgb { r: 10, g: 20, b: 255 });
+        let out = b.flush().unwrap();
+        assert_eq!(out[1], 255);
     }
 }

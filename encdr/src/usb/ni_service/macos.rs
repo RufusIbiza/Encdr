@@ -71,6 +71,9 @@ impl Drop for RemotePort {
 impl RemotePort {
     fn open(name: &str, attempts: u32) -> Result<Self, String> {
         let cf_name = cf_string(name);
+        if cf_name.is_null() {
+            return Err(format!("could not allocate CFString for '{name}'"));
+        }
         let mut port = ptr::null_mut();
         for attempt in 0..attempts.max(1) {
             port = unsafe { CFMessagePortCreateRemote(kCFAllocatorDefault, cf_name) };
@@ -139,11 +142,13 @@ unsafe extern "C" fn on_notification(
     data: CFDataRef,
     info: *mut c_void,
 ) -> CFDataRef {
-    // SAFETY: `info` is the `Sender` the serving thread keeps alive for as long as the port exists.
-    let events = unsafe { &*(info as *const Sender<Vec<u8>>) };
-    let bytes = copy_data(data);
-    tracing::trace!("NI service notification: {} bytes {:02x?}", bytes.len(), &bytes[..bytes.len().min(128)]);
-    let _ = events.send(bytes);
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        // SAFETY: `info` is the `Sender` the serving thread keeps alive for as long as the port exists.
+        let events = unsafe { &*(info as *const Sender<Vec<u8>>) };
+        let bytes = copy_data(data);
+        tracing::trace!("NI service notification: {} bytes {:02x?}", bytes.len(), &bytes[..bytes.len().min(128)]);
+        let _ = events.send(bytes);
+    }));
     ptr::null()
 }
 
@@ -160,6 +165,10 @@ fn serve_notifications(name: String, events: Sender<Vec<u8>>) -> Result<Notifica
             let context =
                 CFMessagePortContext { version: 0, info, retain: None, release: None, copyDescription: None };
             let cf_name = cf_string(&name);
+            if cf_name.is_null() {
+                let _ = ready_tx.send(Err(format!("could not allocate CFString for '{name}'")));
+                return;
+            }
             let mut should_free: Boolean = 0;
             let port = unsafe {
                 CFMessagePortCreateLocal(kCFAllocatorDefault, cf_name, Some(on_notification), &context, &mut should_free)

@@ -275,7 +275,15 @@ pub fn scan_devices(registry: &DescriptorRegistry) -> Vec<DetectedDevice> {
             #[cfg(target_os = "linux")]
             let bus = info.busnum();
             #[cfg(not(target_os = "linux"))]
-            let bus = info.bus_id().parse::<u8>().unwrap_or(0);
+            let bus = info.bus_id().parse::<u8>().unwrap_or_else(|_| {
+                // On Windows/macOS, bus_id() is a device path or hex location ID.
+                // Hash it into a u8 so devices on different buses don't collide on 0.
+                let mut h: u8 = 0x81;
+                for b in info.bus_id().bytes() {
+                    h = h.wrapping_mul(31).wrapping_add(b);
+                }
+                h
+            });
 
             let device_id = DeviceId::from_usb(
                 bus,

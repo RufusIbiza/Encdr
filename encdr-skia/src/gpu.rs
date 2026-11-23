@@ -34,7 +34,10 @@ impl VulkanContext {
             .map_err(|e| format!("Failed to create Vulkan instance: {e}"))?;
 
         let pdevices = unsafe { instance.enumerate_physical_devices() }
-            .map_err(|e| format!("Failed to enumerate physical devices: {e}"))?;
+            .map_err(|e| {
+                unsafe { instance.destroy_instance(None) };
+                format!("Failed to enumerate physical devices: {e}")
+            })?;
 
         if pdevices.is_empty() {
             unsafe { instance.destroy_instance(None) };
@@ -98,6 +101,7 @@ impl VulkanContext {
 impl Drop for VulkanContext {
     fn drop(&mut self) {
         unsafe {
+            let _ = self.device.device_wait_idle();
             self.device.destroy_device(None);
             self.instance.destroy_instance(None);
         }

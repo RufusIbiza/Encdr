@@ -1189,10 +1189,13 @@ impl PacketParser {
                         if let Some(_changed) = sl_state.update_slider(raw_val) {
                             if active {
                                 let value = if desc.normalize {
-                                    let max = desc
-                                        .max_value
-                                        .unwrap_or((1u32 << desc.bits) - 1);
-                                    raw_val as f32 / max as f32
+                                    let default_max = if desc.bits >= 32 {
+                                        u32::MAX
+                                    } else {
+                                        (1u32 << desc.bits) - 1
+                                    };
+                                    let max = desc.max_value.unwrap_or(default_max).max(1);
+                                    (raw_val as f32 / max as f32).clamp(0.0, 1.0)
                                 } else {
                                     raw_val as f32
                                 };
@@ -1200,7 +1203,7 @@ impl PacketParser {
                                     events.push(Event::Slider {
                                         device: device_id,
                                         name,
-                                        value: value.clamp(0.0, 1.0),
+                                        value,
                                     });
                                 }
                             }

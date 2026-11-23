@@ -1,8 +1,9 @@
 //! Named-pipe client for the NI hardware service (Windows).
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Sender};
-use std::sync::Mutex;
-use std::thread;
+use std::sync::{Arc, Mutex};
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use windows_sys::Win32::Foundation::{
@@ -12,6 +13,7 @@ use windows_sys::Win32::Foundation::{
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, ReadFile, WriteFile, OPEN_EXISTING, PIPE_ACCESS_DUPLEX,
 };
+use windows_sys::Win32::System::IO::CancelIoEx;
 use windows_sys::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, PeekNamedPipe, SetNamedPipeHandleState,
     WaitNamedPipeW, PIPE_READMODE_MESSAGE, PIPE_TYPE_MESSAGE, PIPE_WAIT,
@@ -102,6 +104,7 @@ impl ClientPipe {
                     buf.truncate(read as usize);
                     return Ok(Some(buf));
                 }
+                return Err(format!("ReadFile failed on NI service pipe (Windows error {})", unsafe { GetLastError() }));
             }
             let waited = start.elapsed();
             if waited >= timeout {
@@ -134,9 +137,29 @@ impl ClientPipe {
     }
 }
 
+/// A notification pipe served on a background thread; cancelled and joined on drop.
+struct NotificationServer {
+    stop: Arc<AtomicBool>,
+    handle: isize,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl Drop for NotificationServer {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        // Unblock any pending ConnectNamedPipe / ReadFile on the worker thread.
+        unsafe {
+            CancelIoEx(self.handle as HANDLE, std::ptr::null());
+        }
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+    }
+}
+
 /// Serve a notification pipe the service connects back to. Messages are
 /// forwarded to `events`; each is acknowledged with an empty reply.
-fn serve_notifications(name: String, events: Sender<Vec<u8>>) -> Result<(), String> {
+fn serve_notifications(name: String, events: Sender<Vec<u8>>) -> Result<NotificationServer, String> {
     let path = pipe_path(&name);
     let h = unsafe {
         CreateNamedPipeW(
@@ -153,58 +176,69 @@ fn serve_notifications(name: String, events: Sender<Vec<u8>>) -> Result<(), Stri
     if h == INVALID_HANDLE_VALUE {
         return Err(format!(r"could not create \\.\pipe\{name} (Windows error {})", unsafe { GetLastError() }));
     }
-    let h = h as isize;
-    thread::Builder::new()
-        .name("encdr-ni-notify".to_string())
-        .spawn(move || {
-            let h = h as HANDLE;
-            loop {
-                let connected = unsafe { ConnectNamedPipe(h, std::ptr::null_mut()) };
-                if connected == 0 && unsafe { GetLastError() } != ERROR_PIPE_CONNECTED {
+    let handle = h as isize;
+    let stop = Arc::new(AtomicBool::new(false));
+    let thread_stop = stop.clone();
+    let thread = match thread::Builder::new().name("encdr-ni-notify".to_string()).spawn(move || {
+        let h = handle as HANDLE;
+        let mut buf = vec![0u8; 65536];
+        while !thread_stop.load(Ordering::Relaxed) {
+            let connected = unsafe { ConnectNamedPipe(h, std::ptr::null_mut()) };
+            if connected == 0 && unsafe { GetLastError() } != ERROR_PIPE_CONNECTED {
+                break;
+            }
+            while !thread_stop.load(Ordering::Relaxed) {
+                let mut read: u32 = 0;
+                let ok = unsafe { ReadFile(h, buf.as_mut_ptr().cast(), buf.len() as u32, &mut read, std::ptr::null_mut()) };
+                if ok == 0 || read == 0 {
                     break;
                 }
-                loop {
-                    let mut buf = vec![0u8; 65536];
-                    let mut read: u32 = 0;
-                    let ok = unsafe { ReadFile(h, buf.as_mut_ptr().cast(), buf.len() as u32, &mut read, std::ptr::null_mut()) };
-                    if ok == 0 || read == 0 {
-                        break;
-                    }
-                    buf.truncate(read as usize);
-                    tracing::trace!(
-                        "NI service notification on '{name}': {} bytes {:02x?}",
-                        buf.len(),
-                        &buf[..buf.len().min(128)]
-                    );
-                    let _ = events.send(buf);
-                    let mut written: u32 = 0;
-                    let acked = unsafe { WriteFile(h, [0u8; 1].as_ptr().cast(), 0, &mut written, std::ptr::null_mut()) };
-                    if acked == 0 {
-                        break;
-                    }
+                let slice = &buf[..read as usize];
+                tracing::trace!(
+                    "NI service notification on '{name}': {} bytes {:02x?}",
+                    slice.len(),
+                    &slice[..slice.len().min(128)]
+                );
+                if events.send(slice.to_vec()).is_err() {
+                    break;
                 }
-                unsafe { DisconnectNamedPipe(h) };
+                let mut written: u32 = 0;
+                let acked = unsafe { WriteFile(h, [0u8; 1].as_ptr().cast(), 0, &mut written, std::ptr::null_mut()) };
+                if acked == 0 {
+                    break;
+                }
             }
+            unsafe { DisconnectNamedPipe(h) };
+        }
+        unsafe { CloseHandle(h) };
+    }) {
+        Ok(t) => t,
+        Err(e) => {
             unsafe { CloseHandle(h) };
-        })
-        .map_err(|e| e.to_string())?;
-    Ok(())
+            return Err(e.to_string());
+        }
+    };
+    Ok(NotificationServer { stop, handle, thread: Some(thread) })
 }
 
 /// Register with the service for the bootstrap step shared by device and
-/// instance connects, returning the request pipe.
-fn register(bootstrap_name: &str, request: &[u8], events: &Sender<Vec<u8>>) -> Result<ClientPipe, String> {
+/// instance connects, returning the request pipe and notification server.
+fn register(
+    bootstrap_name: &str,
+    request: &[u8],
+    events: &Sender<Vec<u8>>,
+) -> Result<(ClientPipe, NotificationServer), String> {
     let bootstrap = ClientPipe::open(bootstrap_name, 10)?;
     let reply = bootstrap.transact(request).map_err(|e| format!("connect request: {e}"))?;
     drop(bootstrap);
     let ports = protocol::parse_connect_reply(&reply)?;
-    serve_notifications(ports.notification.clone(), events.clone())?;
+    let server = serve_notifications(ports.notification.clone(), events.clone())?;
     let request_pipe = ClientPipe::open(&ports.request, 10)?;
     request_pipe
         .write(&protocol::ack_notification_port(&ports.notification))
         .map_err(|e| format!("notification port ack: {e}"))?;
     request_pipe.read_reply(Duration::from_millis(500)).map_err(|e| format!("notification port ack reply: {e}"))?;
-    Ok(request_pipe)
+    Ok((request_pipe, server))
 }
 
 /// A registered client session for one physical device.
@@ -212,6 +246,7 @@ pub struct ServiceSession {
     /// Held open so the service keeps the device-level registration.
     _device: Mutex<ClientPipe>,
     instance: Mutex<ClientPipe>,
+    _servers: Vec<NotificationServer>,
     control: async_channel::Receiver<bool>,
 }
 
@@ -243,20 +278,25 @@ impl ServiceSession {
         timeout: Duration,
     ) -> Result<Self, String> {
         let (tx, rx) = channel::<Vec<u8>>();
-        let device = register(bootstrap_name, &protocol::device_connect(product_id), &tx)?;
+        let (device, device_server) = register(bootstrap_name, &protocol::device_connect(product_id), &tx)?;
         device.write(&protocol::device_state_request()).map_err(|e| format!("device state request: {e}"))?;
 
         let serial = super::pick_serial(&rx, serial, timeout)?;
         tracing::info!("NI service ('{bootstrap_name}') reports device {serial}; registering for its screens");
         let control = super::watch_control(rx);
 
-        let instance = register(bootstrap_name, &protocol::instance_connect(product_id, &serial), &tx)?;
+        let (instance, instance_server) = register(bootstrap_name, &protocol::instance_connect(product_id, &serial), &tx)?;
         for (i, message) in protocol::instance_setup(product_id).into_iter().enumerate() {
             instance.write(&message).map_err(|e| format!("setup message {i}: {e}"))?;
             instance.read_reply(Duration::from_millis(40)).map_err(|e| format!("setup message {i} reply: {e}"))?;
         }
 
-        Ok(Self { _device: Mutex::new(device), instance: Mutex::new(instance), control })
+        Ok(Self {
+            _device: Mutex::new(device),
+            instance: Mutex::new(instance),
+            _servers: vec![device_server, instance_server],
+            control,
+        })
     }
 
     /// Changes in whether this client has the hardware: `true` when it became

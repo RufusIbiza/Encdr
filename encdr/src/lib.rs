@@ -157,29 +157,35 @@ impl Encdr {
         drop(reg);
 
         let mut connected = Vec::new();
-        let mut devs = self.devices.write().unwrap();
 
-        // Clean up disconnected handles
-        let mut reaped = Vec::new();
-        for (&id, handle) in devs.iter() {
-            if !handle.is_connected() {
-                reaped.push(id);
-            }
-        }
-        for id in reaped {
-            if let Some(handle) = devs.remove(&id) {
-                handle.disconnect();
+        // Clean up disconnected handles (release write lock before spawning new handles)
+        {
+            let mut devs = self.devices.write().unwrap();
+            let reaped: Vec<DeviceId> = devs
+                .iter()
+                .filter(|(_, h)| !h.is_connected())
+                .map(|(&id, _)| id)
+                .collect();
+            for id in reaped {
+                if let Some(handle) = devs.remove(&id) {
+                    handle.disconnect();
+                }
             }
         }
 
         for det in detected {
-            if devs.contains_key(&det.device_id) && devs.get(&det.device_id).unwrap().is_connected() {
-                continue; // Already connected
+            let already_connected = {
+                let devs = self.devices.read().unwrap();
+                devs.get(&det.device_id).is_some_and(|h| h.is_connected())
+            };
+            if already_connected {
+                continue;
             }
 
-            let mut reg = self.registry.write().unwrap();
-            let names = reg.intern_descriptor_names(&det.descriptor);
-            drop(reg);
+            let names = {
+                let mut reg = self.registry.write().unwrap();
+                reg.intern_descriptor_names(&det.descriptor)
+            };
 
             match DeviceHandle::spawn(
                 det.device_id,
@@ -190,6 +196,15 @@ impl Encdr {
                 self.gpu.clone(),
             ) {
                 Ok(handle) => {
+                    let mut devs = self.devices.write().unwrap();
+                    if devs.get(&det.device_id).is_some_and(|h| h.is_connected()) {
+                        drop(devs);
+                        handle.disconnect();
+                        continue;
+                    }
+                    devs.insert(det.device_id, handle);
+                    drop(devs);
+
                     self.event_tx
                         .send(Event::DeviceConnected {
                             id: det.device_id,
@@ -197,7 +212,6 @@ impl Encdr {
                         })
                         .ok();
 
-                    devs.insert(det.device_id, handle);
                     connected.push(det.device_id);
                     tracing::info!("Connected to: {}", det.descriptor.name);
                 }
@@ -682,7 +696,7 @@ impl Encdr {
         format: PixelFormat,
     ) {
         if let Some(handle) = self.devices.read().unwrap().get(&device_id) {
-            if handle.has_control() {
+            if handle.is_connected() {
                 handle.send(DeviceCmd::SubmitScreen {
                     screen: screen.to_string(),
                     pixels: pixels.to_vec(),
@@ -724,7 +738,7 @@ impl Encdr {
         format: PixelFormat,
     ) {
         if let Some(handle) = self.devices.read().unwrap().get(&device_id) {
-            if handle.has_control() {
+            if handle.is_connected() {
                 handle.send(DeviceCmd::SubmitDualScreen {
                     left_screen: left_screen.to_string(),
                     right_screen: right_screen.to_string(),
@@ -845,14 +859,18 @@ fn run_hotplug_monitor(
                 }
             }
 
-            let mut devs = devices.write().unwrap();
-            if devs.contains_key(&det.device_id) && devs.get(&det.device_id).unwrap().is_connected() {
+            let already_connected = {
+                let devs = devices.read().unwrap();
+                devs.get(&det.device_id).is_some_and(|h| h.is_connected())
+            };
+            if already_connected {
                 continue;
             }
 
-            let mut reg = registry.write().unwrap();
-            let names = reg.intern_descriptor_names(&det.descriptor);
-            drop(reg);
+            let names = {
+                let mut reg = registry.write().unwrap();
+                reg.intern_descriptor_names(&det.descriptor)
+            };
 
             match DeviceHandle::spawn(
                 det.device_id,
@@ -863,6 +881,15 @@ fn run_hotplug_monitor(
                 gpu.clone(),
             ) {
                 Ok(handle) => {
+                    let mut devs = devices.write().unwrap();
+                    if devs.get(&det.device_id).is_some_and(|h| h.is_connected()) {
+                        drop(devs);
+                        handle.disconnect();
+                        continue;
+                    }
+                    devs.insert(det.device_id, handle);
+                    drop(devs);
+
                     event_tx
                         .send(Event::DeviceConnected {
                             id: det.device_id,
@@ -870,7 +897,6 @@ fn run_hotplug_monitor(
                         })
                         .ok();
                     tracing::info!("Hotplug connected to: {}", det.descriptor.name);
-                    devs.insert(det.device_id, handle);
                 }
                 Err(e) => {
                     tracing::debug!("Hotplug connection to {} failed: {}", det.descriptor.name, e);

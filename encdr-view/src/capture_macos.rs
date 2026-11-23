@@ -34,9 +34,14 @@ pub fn capture_webview_pixels(
     // ^(NSImage *snapshotImage, NSError *error)
     let block = RcBlock::new(move |image: *mut NSImage, error: *mut NSError| {
         if !image.is_null() {
-            let retained: Retained<NSImage> = unsafe { Retained::retain(image) }
-                .expect("Failed to retain NSImage");
-            let _ = tx.send(Ok(retained));
+            match unsafe { Retained::retain(image) } {
+                Some(retained) => {
+                    let _ = tx.send(Ok(retained));
+                }
+                None => {
+                    let _ = tx.send(Err("Failed to retain NSImage from WKWebView snapshot".to_string()));
+                }
+            }
         } else {
             let msg = if !error.is_null() {
                 let err: &NSError = unsafe { &*error };
@@ -84,7 +89,11 @@ fn extract_rgba_from_nsimage(
     target_width: u32,
     target_height: u32,
 ) -> Result<(u32, u32, Vec<u8>), String> {
-    unsafe {
+    if target_width == 0 || target_height == 0 {
+        return Err(format!("Invalid target dimensions: {}x{}", target_width, target_height));
+    }
+
+    objc2::rc::autoreleasepool(|_| unsafe {
         // Get TIFF representation: NSData *tiff = [image TIFFRepresentation]
         let tiff_data: *mut AnyObject = msg_send![ns_image, TIFFRepresentation];
         if tiff_data.is_null() {
@@ -102,13 +111,26 @@ fn extract_rgba_from_nsimage(
         let src_height: isize = msg_send![&bitmap_rep, pixelsHigh];
         let bytes_per_row: isize = msg_send![&bitmap_rep, bytesPerRow];
         let samples_per_pixel: isize = msg_send![&bitmap_rep, samplesPerPixel];
+        let bits_per_sample: isize = msg_send![&bitmap_rep, bitsPerSample];
+        let is_planar: bool = msg_send![&bitmap_rep, isPlanar];
         let bitmap_data: *const u8 = msg_send![&bitmap_rep, bitmapData];
 
-        if bitmap_data.is_null() || src_width <= 0 || src_height <= 0 {
+        if bitmap_data.is_null()
+            || src_width <= 0
+            || src_height <= 0
+            || bytes_per_row <= 0
+            || samples_per_pixel < 3
+            || bits_per_sample != 8
+            || is_planar
+        {
             return Err(format!(
-                "Invalid bitmap: {}x{}, data null={}",
+                "Unsupported bitmap format: {}x{}, bpr={}, spp={}, bps={}, planar={}, data null={}",
                 src_width,
                 src_height,
+                bytes_per_row,
+                samples_per_pixel,
+                bits_per_sample,
+                is_planar,
                 bitmap_data.is_null()
             ));
         }
@@ -147,5 +169,5 @@ fn extract_rgba_from_nsimage(
         }
 
         Ok((w, h, rgba))
-    }
+    })
 }

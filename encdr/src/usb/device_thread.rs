@@ -111,7 +111,6 @@ pub struct DeviceHandle {
     /// Cleared when the device is disconnected physically or shut down.
     is_connected: Arc<AtomicBool>,
     thread: Option<thread::JoinHandle<()>>,
-    screen_thread: Option<thread::JoinHandle<()>>,
 }
 
 impl DeviceHandle {
@@ -223,7 +222,6 @@ impl DeviceHandle {
             has_control,
             is_connected,
             thread: Some(thread),
-            screen_thread: None,
         })
     }
 
@@ -276,9 +274,6 @@ impl DeviceHandle {
         if let Some(thread) = self.thread.take() {
             thread.join().ok();
         }
-        if let Some(thread) = self.screen_thread.take() {
-            thread.join().ok();
-        }
     }
 }
 
@@ -288,9 +283,6 @@ impl Drop for DeviceHandle {
         self.has_control.store(false, Ordering::SeqCst);
         self.send(DeviceCmd::Disconnect);
         if let Some(thread) = self.thread.take() {
-            thread.join().ok();
-        }
-        if let Some(thread) = self.screen_thread.take() {
             thread.join().ok();
         }
     }
@@ -316,7 +308,7 @@ mod tests {
             cmd_tx, led_tx: Some(led_tx), screen_tx: Some(screen_tx),
             has_control: Arc::new(AtomicBool::new(true)),
             is_connected: Arc::new(AtomicBool::new(true)),
-            thread: None, screen_thread: None,
+            thread: None,
         };
         handle.send(DeviceCmd::Disconnect);
         for rx in [cmd_rx, led_rx, screen_rx] {
@@ -391,6 +383,8 @@ fn run_device(
 
     if interfaces.is_empty() {
         tracing::error!("No interfaces of '{}' could be claimed; device thread exiting", descriptor.name);
+        is_connected.store(false, Ordering::SeqCst);
+        has_control.store(false, Ordering::SeqCst);
         return;
     }
     let unclaimed: Vec<&str> = descriptor
@@ -604,6 +598,10 @@ fn run_device(
         }
     }
 
+    // Tracks actual physical USB loss (as opposed to user-initiated clean shutdown)
+    // so run_screens / run_leds still draw the exit screensaver and clear LEDs on shutdown.
+    let physically_disconnected = Arc::new(AtomicBool::new(false));
+
     // If device has screens, delegate them entirely to a dedicated screen thread
     // so that screen bulk transfers never stall the interrupt input loop.
     let screen_thread = if !descriptor.screens.is_empty() && screen_rx.is_some() {
@@ -622,7 +620,7 @@ fn run_device(
         }
 
         let screen_has_control = has_control.clone();
-        let screen_is_connected = is_connected.clone();
+        let screen_phys_disconnected = physically_disconnected.clone();
         let screen_gpu = gpu.clone();
         let screen_input_ctl_tx = input_ctl_tx.clone();
         let screen_led_ctl_tx = led_ctl_tx.clone();
@@ -637,7 +635,7 @@ fn run_device(
                     screen_input_ctl_tx,
                     screen_led_ctl_tx,
                     screen_has_control,
-                    screen_is_connected,
+                    screen_phys_disconnected,
                     screen_gpu,
                     shared_screen_eps,
                 );
@@ -656,7 +654,7 @@ fn run_device(
         let display_brightness = descriptor.quirks.display_brightness.clone();
         let iface_desc = descriptor.interface_by_id("control");
         let physical_num = iface_desc.map(|i| i.number).unwrap_or(0);
-        let led_is_connected = is_connected.clone();
+        let led_phys_disconnected = physically_disconnected.clone();
         thread::Builder::new()
             .name(format!("encdr-led-{}", descriptor.name.replace(' ', "-").to_lowercase()))
             .spawn(move || {
@@ -667,7 +665,7 @@ fn run_device(
                     display_brightness,
                     physical_num as usize,
                     led_rx,
-                    led_is_connected,
+                    led_phys_disconnected,
                     shared_led_eps,
                 );
             })
@@ -820,6 +818,7 @@ fn run_device(
                         }
                         Err(e) => {
                             tracing::warn!("USB read error for {:?}: {}", device_id, e);
+                            physically_disconnected.store(true, Ordering::SeqCst);
                             is_connected.store(false, Ordering::SeqCst);
                             has_control.store(false, Ordering::SeqCst);
 
@@ -886,6 +885,10 @@ fn run_device(
 
 /// Upper bound on a single connect-time init write.
 const INIT_WRITE_TIMEOUT: Duration = Duration::from_millis(500);
+
+/// Upper bound on a single USB OUT transfer (bulk or interrupt) so a stalled
+/// device can never deadlock worker shutdown or `DeviceHandle::disconnect()`.
+const OUT_TRANSFER_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// An input endpoint plus the descriptor interface id its packets belong to.
 struct InputSource {
@@ -1253,11 +1256,39 @@ impl OutEndpoint {
             }
             Self::Bulk(ep) => {
                 ep.submit(data.into());
-                ep.next_complete().await.status.map_err(|e| e.to_string())
+                let res = futures_lite::future::or(
+                    async { Some(ep.next_complete().await) },
+                    async {
+                        Timer::after(OUT_TRANSFER_TIMEOUT).await;
+                        None
+                    },
+                )
+                .await;
+                match res {
+                    Some(c) => c.status.map_err(|e| e.to_string()),
+                    None => {
+                        ep.cancel_all();
+                        Err("USB bulk OUT transfer timed out".to_string())
+                    }
+                }
             }
             Self::Interrupt(ep) => {
                 ep.submit(data.into());
-                ep.next_complete().await.status.map_err(|e| e.to_string())
+                let res = futures_lite::future::or(
+                    async { Some(ep.next_complete().await) },
+                    async {
+                        Timer::after(OUT_TRANSFER_TIMEOUT).await;
+                        None
+                    },
+                )
+                .await;
+                match res {
+                    Some(c) => c.status.map_err(|e| e.to_string()),
+                    None => {
+                        ep.cancel_all();
+                        Err("USB interrupt OUT transfer timed out".to_string())
+                    }
+                }
             }
             Self::Hid(hid) => hid.write(&data),
             Self::Service { session, display, width, height } => session.send_display(*display, *width, *height, &data),
@@ -1407,7 +1438,7 @@ fn run_screens(
     input_ctl_tx: async_channel::Sender<DeviceCmd>,
     led_ctl_tx: Option<async_channel::Sender<DeviceCmd>>,
     has_control: Arc<AtomicBool>,
-    is_connected: Arc<AtomicBool>,
+    physically_disconnected: Arc<AtomicBool>,
     gpu: Option<Arc<crate::screen::GpuContext>>,
     shared_endpoints: HashMap<(String, u8), OutEndpoint>,
 ) {
@@ -1518,6 +1549,7 @@ fn run_screens(
             endpoints: &mut HashMap<(String, u8), OutEndpoint>,
             control: &mut ScreenControl,
             input_ctl_tx: &async_channel::Sender<DeviceCmd>,
+            physically_disconnected: &AtomicBool,
         ) {
             let Some(sm) = screen_managers.get_mut(screen) else {
                 tracing::warn!("ScreenManager for '{}' not found", screen);
@@ -1545,6 +1577,7 @@ fn run_screens(
                 Err(e) if ni_service::is_rejected_frame(&e) => control.lose().await,
                 Err(e) => {
                     tracing::warn!("Screen transfer for '{}' failed: {}", screen, e);
+                    physically_disconnected.store(true, Ordering::SeqCst);
                     signal_disconnect(input_ctl_tx);
                 }
             }
@@ -1620,6 +1653,7 @@ fn run_screens(
                         &mut endpoints,
                         &mut control,
                         &input_ctl_tx,
+                        &physically_disconnected,
                     )
                     .await;
                 }
@@ -1676,6 +1710,7 @@ fn run_screens(
                         &mut endpoints,
                         &mut control,
                         &input_ctl_tx,
+                        &physically_disconnected,
                     )
                     .await;
 
@@ -1689,6 +1724,7 @@ fn run_screens(
                         &mut endpoints,
                         &mut control,
                         &input_ctl_tx,
+                        &physically_disconnected,
                     )
                     .await;
                 }
@@ -1705,7 +1741,7 @@ fn run_screens(
         }
 
         // If the device is physically disconnected, do not attempt to write screensaver to dead USB
-        if !is_connected.load(Ordering::Relaxed) {
+        if physically_disconnected.load(Ordering::Relaxed) {
             tracing::debug!("Controller disconnected physically: skipping exit screensaver transfer");
             return;
         }
@@ -1763,7 +1799,7 @@ fn run_leds(
     display_brightness: Option<DisplayBrightnessQuirkDesc>,
     interface_num: usize,
     led_rx: async_channel::Receiver<DeviceCmd>,
-    is_connected: Arc<AtomicBool>,
+    physically_disconnected: Arc<AtomicBool>,
     shared_endpoints: HashMap<u8, OutEndpoint>,
 ) {
     block_on(async {
@@ -1986,7 +2022,7 @@ fn run_leds(
         }
 
         // If the device is physically disconnected, skip attempting to clear LEDs
-        if !is_connected.load(Ordering::Relaxed) {
+        if physically_disconnected.load(Ordering::Relaxed) {
             tracing::debug!("Controller disconnected physically: skipping LED clear");
             return;
         }
