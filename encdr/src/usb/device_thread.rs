@@ -1647,50 +1647,20 @@ fn run_screens(
                         );
                         continue;
                     }
-                    let (left_pixels, right_pixels, send_format) = if let Some(ref mut d_gpu) = dual_gpu {
-                        if format == PixelFormat::Rgba8888
+                    let (left_pixels, right_pixels, send_format) = if let Some(d_gpu) = dual_gpu.as_mut().filter(|_| {
+                        format == PixelFormat::Rgba8888
                             && left_desc.pixel_format == PixelFormat::Bgr565Be
                             && right_desc.pixel_format == PixelFormat::Bgr565Be
-                        {
-                            let (l, r) = d_gpu
-                                .split_convert_dual(
-                                    &pixels,
-                                    left_desc.width as u32,
-                                    right_desc.width as u32,
-                                    left_desc.height as u32,
-                                )
-                                .await;
-                            (l, r, PixelFormat::Bgr565Be)
-                        } else {
-                            let bpp = format.bytes_per_pixel();
-                            let Some((l, r)) = crate::screen::split_horizontal(
-                                &pixels,
-                                left_desc.width as usize,
-                                right_desc.width as usize,
-                                left_desc.height as usize,
-                                bpp,
-                            ) else {
-                                tracing::warn!("SubmitDualScreen: pixel buffer size mismatch");
-                                continue;
-                            };
-                            (l, r, format)
-                        }
+                    }) {
+                        let (l, r) = d_gpu.split_convert_dual(
+                            &pixels, left_desc.width.into(), right_desc.width.into(), left_desc.height.into(),
+                        ).await;
+                        (l, r, PixelFormat::Bgr565Be)
                     } else {
-                        let bpp = format.bytes_per_pixel();
-                        let Some((l, r)) = crate::screen::split_horizontal(
-                            &pixels,
-                            left_desc.width as usize,
-                            right_desc.width as usize,
-                            left_desc.height as usize,
-                            bpp,
+                        let Some((l, r)) = crate::screen::split_dual_frame(
+                            &pixels, left_desc, right_desc, format,
                         ) else {
-                            tracing::warn!(
-                                "SubmitDualScreen: pixel buffer size mismatch (expected {} bytes, got {})",
-                                (left_desc.width as usize + right_desc.width as usize)
-                                    * left_desc.height as usize
-                                    * bpp,
-                                pixels.len()
-                            );
+                            tracing::warn!("SubmitDualScreen: incompatible frame format or size");
                             continue;
                         };
                         (l, r, format)

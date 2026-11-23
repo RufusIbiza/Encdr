@@ -602,6 +602,59 @@ pub fn split_horizontal(
     Some((left, right))
 }
 
+pub(crate) fn split_dual_frame(
+    pixels: &[u8], left: &ScreenDesc, right: &ScreenDesc, format: PixelFormat,
+) -> Option<(Vec<u8>, Vec<u8>)> {
+    let (lw, rw, h) = (usize::from(left.width), usize::from(right.width), usize::from(left.height));
+    let (group, bytes) = match format {
+        PixelFormat::Mono => (8, 1),
+        PixelFormat::St7529Gray5 => (3, 2),
+        _ => return split_horizontal(pixels, lw, rw, h, format.bytes_per_pixel()),
+    };
+    if ![left, right].iter().all(|s| matches!(s.pixel_format, PixelFormat::Mono | PixelFormat::St7529Gray5)) {
+        return None;
+    }
+    if lw % group == 0 {
+        return split_horizontal(pixels, lw / group, rw.div_ceil(group), h, bytes);
+    }
+    let stride = (lw + rw).div_ceil(group) * bytes;
+    if h == 0 || rw == 0 || pixels.len() != stride * h {
+        return None;
+    }
+    // A packing group crosses the seam. Start each destination row with a fresh group.
+    let extract = |start: usize, width: usize| {
+        let out_stride = width.div_ceil(group) * bytes;
+        let mut out = vec![0; out_stride * h];
+        for (src, dst) in pixels.chunks_exact(stride).zip(out.chunks_exact_mut(out_stride)) {
+            if format == PixelFormat::Mono {
+                for x in 0..width {
+                    let i = start + x;
+                    let bit = (src[i / 8] >> (7 - i % 8)) & 1;
+                    dst[x / 8] |= bit << (7 - x % 8);
+                }
+            } else {
+                // ST7529 packs three 5-bit levels into bits 15..11, 10..6 and 4..0.
+                for (g, pair) in dst.chunks_exact_mut(2).enumerate() {
+                    let mut word = 0u16;
+                    for (j, shift) in [11, 6, 0].into_iter().enumerate() {
+                        let x = g * 3 + j;
+                        let level = if x < width {
+                            let i = start + x;
+                            let offset = i / 3 * 2;
+                            let packed = u16::from_be_bytes([src[offset], src[offset + 1]]);
+                            (packed >> [11, 6, 0][i % 3]) & 31
+                        } else { 31 };
+                        word |= level << shift;
+                    }
+                    pair.copy_from_slice(&word.to_be_bytes());
+                }
+            }
+        }
+        out
+    };
+    Some((extract(0, lw), extract(lw, rw)))
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -787,6 +840,46 @@ mod tests {
         // The current frame can be redrawn in full at any time, even when it
         // was only ever sent as a partial update.
         assert_eq!(sm.current_blit(&desc), protocol::build_full_blit(&desc, &frame_red));
+    }
+
+    #[test]
+    fn split_native_maschine_frames() {
+        let mut registry = crate::device::loader::DescriptorRegistry::new();
+        registry.load_builtins().unwrap();
+        for pid in [0x0808, 0x1140] {
+            let screens = &registry.find(0x17cc, pid).unwrap().screens;
+            let (l, r) = (&screens[0], &screens[1]);
+            let row = l.byte_size() / usize::from(l.height);
+            let mut frame = Vec::new();
+            let mut left = Vec::new();
+            let mut right = Vec::new();
+            for y in 0..l.height as u8 {
+                for (value, expected) in [(y, &mut left), (!y, &mut right)] {
+                    expected.extend(std::iter::repeat_n(value, row));
+                    frame.extend(std::iter::repeat_n(value, row));
+                }
+            }
+            assert_eq!(split_dual_frame(&frame, l, r, l.pixel_format), Some((left, right)));
+            frame.pop();
+            assert!(split_dual_frame(&frame, l, r, l.pixel_format).is_none());
+        }
+    }
+
+    #[test]
+    fn split_packed_frames_inside_a_group() {
+        let mut registry = crate::device::loader::DescriptorRegistry::new();
+        registry.load_builtins().unwrap();
+        let mut screen = registry.find(0x17cc, 0x1140).unwrap().screens[0].clone();
+        screen.width = 2;
+        screen.height = 2;
+        assert_eq!(screen.byte_size(), 2);
+        assert_eq!(split_dual_frame(&[0xb0, 0x60], &screen, &screen, PixelFormat::Mono),
+                   Some((vec![0x80, 0x40], vec![0xc0, 0x80])));
+        screen.pixel_format = PixelFormat::St7529Gray5;
+        screen.height = 1;
+        // Levels 1, 2, 3, 4. Each half needs its own black padding pixel.
+        assert_eq!(split_dual_frame(&[0x08, 0x83, 0x27, 0xdf], &screen, &screen, screen.pixel_format),
+                   Some((vec![0x08, 0x9f], vec![0x19, 0x1f])));
     }
 
     #[test]
