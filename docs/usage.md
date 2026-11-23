@@ -80,13 +80,13 @@ let device_id = encdr.wait_for_controller(&["Maschine Mk3", "Maschine Plus"]).un
 let device_id = encdr.wait_for_any_controller().unwrap();
 ```
 
-If the controller is already connected, `wait_for_controller` returns immediately. If it is not yet connected, Encdr prints a console message:
+If the controller is already connected, `wait_for_controller` returns immediately. If it is not yet connected, Encdr logs via `tracing::info!`:
 
 ```text
 Waiting for a compatible controller to be connected (supported: NI Maschine Mk3)...
 ```
 
-Once the user plugs in the controller, Encdr detects it, prints:
+Once the user plugs in the controller, Encdr detects it, logs:
 
 ```text
 Controller connected: NI Maschine Mk3 (0x17cc:0x1600)

@@ -231,8 +231,8 @@ impl Encdr {
     /// Wait for a controller matching the filter to be connected.
     ///
     /// If a matching controller is already connected, returns its [`DeviceId`] immediately.
-    /// Otherwise, displays a console message stating that it is waiting for a compatible
-    /// controller to be connected, and blocks until a compatible controller is connected
+    /// Otherwise, logs a status message via `tracing::info!` stating that it is waiting for a
+    /// compatible controller to be connected, and blocks until a compatible controller is connected
     /// (or until interrupted). Once connected, emits [`Event::DeviceConnected`] on the event
     /// receiver and returns the [`DeviceId`].
     pub fn wait_for_controller(&mut self, filter: impl Into<ControllerFilter>) -> Result<DeviceId> {

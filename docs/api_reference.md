@@ -62,10 +62,10 @@ println!("Discovered {} new controllers", new_devices.len());
 Waits until a controller matching the specified [`ControllerFilter`](#controllerfilter) is connected.
 
 - If a compatible controller is already connected at the time of call, returns its `DeviceId` immediately without blocking.
-- If not connected, displays a user-facing console message specifying which controllers are supported:
+- If not connected, logs an informational message via `tracing::info!` specifying which controllers are supported:
   `Waiting for a compatible controller to be connected (supported: NI Maschine Mk3)...`
 - Blocks gracefully (yielding the CPU) while monitoring USB hotplug events until a matching controller is plugged in.
-- Once connected, prints `Controller connected: <Name> (<VID>:<PID>)`, emits [`Event::DeviceConnected`](#4-hardware-events-event) onto the event channel, and returns the new [`DeviceId`].
+- Once connected, logs `Controller connected: <Name> (<VID>:<PID>)` via `tracing::info!`, emits [`Event::DeviceConnected`](#4-hardware-events-event) onto the event channel, and returns the new [`DeviceId`].
 
 ```rust
 // Match by name or substring:
@@ -341,10 +341,14 @@ let bgr_pixels = vec![0u8; 480 * 272 * 2]; // Native BGR565-BE
 encdr.submit_screen_with_format(device_id, "left", &bgr_pixels, PixelFormat::Bgr565Be);
 ```
 
+#### `pub fn submit_screen_owned(&self, device_id: DeviceId, screen: &str, pixels: Vec<u8>)`
+#### `pub fn submit_screen_owned_with_format(&self, device_id: DeviceId, screen: &str, pixels: Vec<u8>, format: PixelFormat)`
+Zero-copy variants of `submit_screen` / `submit_screen_with_format` that accept an owned `Vec<u8>`, avoiding an extra per-frame buffer copy when the caller already owns the pixel buffer.
+
 #### `pub fn submit_dual_screen(&self, device_id: DeviceId, left_screen: &str, right_screen: &str, pixels: &[u8])`
 Submits a single combined double-width frame of `RGBA8888` pixels (e.g. `960x272` for dual `480x272` screens or `640x240` for dual `320x240` screens).
 
-Encdr splits the frame horizontally before feeding each half independently through GPU format conversion, frame diffing, and USB transfer. If one display's content is unchanged, zero USB packets are transmitted for that screen.
+Encdr splits the frame horizontally before feeding each half independently through format conversion, frame diffing, and USB transfer. If one display's content is unchanged, zero USB packets are transmitted for that screen.
 
 ```rust
 let dual_rgba = vec![0u8; 960 * 272 * 4]; // 960x272 double-width canvas
@@ -360,6 +364,12 @@ use encdr::PixelFormat;
 let dual_bgr = vec![0u8; 960 * 272 * 2];
 encdr.submit_dual_screen_with_format(device_id, "left", "right", &dual_bgr, PixelFormat::Bgr565Be);
 ```
+
+#### `pub fn submit_dual_screen_owned(&self, device_id: DeviceId, left_screen: &str, right_screen: &str, pixels: Vec<u8>)`
+#### `pub fn submit_dual_screen_owned_with_format(&self, device_id: DeviceId, left_screen: &str, right_screen: &str, pixels: Vec<u8>, format: PixelFormat)`
+Zero-copy variants of `submit_dual_screen` / `submit_dual_screen_with_format` taking an owned `Vec<u8>` pixel buffer.
+
+> **Cargo features**: `encdr` enables the `gpu` feature (`wgpu` + `bytemuck`) by default. For headless, MIDI-bridge, or LED-only apps that do not need GPU acceleration, build with `default-features = false` to drop `wgpu` completely and use the CPU conversion fallback.
 
 #### `pub fn load_descriptor_dir(&mut self, path: impl AsRef<Path>) -> Result<()>`
 Loads all JSON device descriptors located in a directory.
@@ -1052,12 +1062,15 @@ Creates a new double-width WebView renderer with custom screen identifiers.
 #### `pub fn capture_and_submit(&self, encdr: &Encdr) -> Result<(), String>`
 Captures the double-width surface and dispatches it via `encdr.submit_dual_screen_with_format`. Does nothing while another client has the hardware (see [`Encdr::has_control`](#pub-fn-has_controlself-device_id-deviceid---bool)); a pending frame stays flagged, so the next call after control returns captures the page as it is then.
 
+#### `pub fn pump_events() -> bool`
+Pumps the platform event loop (equivalent to `ScreenView::pump_events()`). Call regularly in your main loop.
+
 #### `pub fn poll(&self, encdr: &Encdr)`
 Checks `is_frame_ready()`, and if new content was composited, captures and submits the dual-screen frame to Encdr.
 
 ```rust
 // Application loop:
-ScreenView::pump_events();
+DualScreenView::pump_events();
 dual_view.poll(&encdr);
 ```
 
@@ -1138,12 +1151,19 @@ canvas.clear(Color::BLACK);
 dual_screen.submit(&encdr)?;
 ```
 
-### End-to-End GPU Pipeline Execution
+### Reconnecting Devices
+
+Both `SkiaScreenView` and `SkiaDualScreenView` provide `set_device_id(&mut self, device_id: DeviceId)` to re-target an existing Skia surface after a controller disconnects and reconnects under a new USB address.
+
+### Cargo Features
+
+`encdr-skia` enables the `vulkan` feature (`ash` + `skia-safe/vulkan`) by default. Build with `default-features = false` for CPU-only Skia rasterization without Vulkan dependencies.
+
+### End-to-End Pipeline Execution
 
 When using `SkiaDualScreenView::submit` or `SkiaScreenView::submit`:
-1. Skia rasterizes directly to an offscreen Vulkan render target in GPU memory.
-2. The double-width surface is read into Encdr's `run_screens` worker.
-3. Encdr executes the `split_convert.wgsl` compute pass, splitting and converting pixels to `BGR565_BE` format directly on the GPU.
-4. Encdr executes `diff.wgsl` to compute the dirty bounding box on the GPU.
-5. If partial, `extract_region.wgsl` packs the changed sub-rectangle on the GPU.
-6. The dirty rectangle bytes are transferred directly to the controller's USB endpoint.
+1. Skia rasterizes directly to an offscreen Vulkan render target in GPU memory (or CPU raster surface if Vulkan is unavailable/disabled).
+2. The rendered surface is read into Encdr's `run_screens` worker (coalescing any queued stale frames).
+3. Encdr converts pixels (and splits dual frames) to `BGR565_BE` using the GPU compute pipeline (`wgpu`, when the `gpu` feature is enabled) or CPU fallback.
+4. Encdr computes the dirty bounding box and extracts the changed sub-rectangle directly on CPU-resident buffers without extra GPU readback stalls.
+5. The full or partial blit bytes are transferred directly to the controller's USB endpoint.

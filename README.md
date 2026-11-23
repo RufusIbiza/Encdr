@@ -48,6 +48,8 @@ If you're a developer, you can add it to your project using Cargo:
 
 ```bash
 cargo add encdr
+# Or without wgpu (CPU-only / headless / LED-only builds):
+cargo add encdr --no-default-features
 ```
 
 And additionally, if you want to use the WebView-based screen implementation:
