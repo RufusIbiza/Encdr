@@ -695,11 +695,27 @@ impl Encdr {
         pixels: &[u8],
         format: PixelFormat,
     ) {
+        self.submit_screen_owned_with_format(device_id, screen, pixels.to_vec(), format);
+    }
+
+    /// Submit an owned RGBA8888 pixel buffer without copying it.
+    pub fn submit_screen_owned(&self, device_id: DeviceId, screen: &str, pixels: Vec<u8>) {
+        self.submit_screen_owned_with_format(device_id, screen, pixels, PixelFormat::Rgba8888);
+    }
+
+    /// Submit an owned pixel buffer with an explicit pixel format without copying it.
+    pub fn submit_screen_owned_with_format(
+        &self,
+        device_id: DeviceId,
+        screen: &str,
+        pixels: Vec<u8>,
+        format: PixelFormat,
+    ) {
         if let Some(handle) = self.devices.read().unwrap().get(&device_id) {
             if handle.is_connected() {
                 handle.send(DeviceCmd::SubmitScreen {
                     screen: screen.to_string(),
-                    pixels: pixels.to_vec(),
+                    pixels,
                     format,
                 });
             }
@@ -737,12 +753,47 @@ impl Encdr {
         pixels: &[u8],
         format: PixelFormat,
     ) {
+        self.submit_dual_screen_owned_with_format(
+            device_id,
+            left_screen,
+            right_screen,
+            pixels.to_vec(),
+            format,
+        );
+    }
+
+    /// Submit an owned double-width RGBA8888 frame without copying it.
+    pub fn submit_dual_screen_owned(
+        &self,
+        device_id: DeviceId,
+        left_screen: &str,
+        right_screen: &str,
+        pixels: Vec<u8>,
+    ) {
+        self.submit_dual_screen_owned_with_format(
+            device_id,
+            left_screen,
+            right_screen,
+            pixels,
+            PixelFormat::Rgba8888,
+        );
+    }
+
+    /// Submit an owned double-width frame with an explicit pixel format without copying it.
+    pub fn submit_dual_screen_owned_with_format(
+        &self,
+        device_id: DeviceId,
+        left_screen: &str,
+        right_screen: &str,
+        pixels: Vec<u8>,
+        format: PixelFormat,
+    ) {
         if let Some(handle) = self.devices.read().unwrap().get(&device_id) {
             if handle.is_connected() {
                 handle.send(DeviceCmd::SubmitDualScreen {
                     left_screen: left_screen.to_string(),
                     right_screen: right_screen.to_string(),
-                    pixels: pixels.to_vec(),
+                    pixels,
                     format,
                 });
             }

@@ -23,6 +23,7 @@ pub struct LedBuilder {
     dirty: bool,
 }
 
+#[derive(Clone, Copy)]
 enum LedMapping {
     Single { offset: usize },
     Rgb { r: usize, g: usize, b: usize },
@@ -121,191 +122,112 @@ impl LedBuilder {
         self.bright_byte
     }
 
+    #[inline]
+    fn write_byte(&mut self, offset: usize, value: u8) {
+        if let Some(slot) = self.buffer.get_mut(offset) {
+            if *slot != value {
+                *slot = value;
+                self.dirty = true;
+            }
+        }
+    }
+
     /// Set an LED by name.
     pub fn set(&mut self, name: &str, value: LedValue) -> bool {
-        let Some(mapping) = self.led_map.get(name) else {
+        let Some(&mapping) = self.led_map.get(name) else {
             return false;
         };
         match (mapping, value) {
             (LedMapping::Single { offset }, LedValue::Off) => {
-                if *offset < self.buffer.len() {
-                    self.buffer[*offset] = 0;
-                    self.dirty = true;
-                }
+                self.write_byte(offset, 0);
             }
             (LedMapping::Single { offset }, LedValue::Backlight) => {
-                if *offset < self.buffer.len() {
-                    self.buffer[*offset] = self.backlight_byte;
-                    self.dirty = true;
-                }
+                self.write_byte(offset, self.backlight_byte);
             }
             (LedMapping::Single { offset }, LedValue::Dim) => {
-                if *offset < self.buffer.len() {
-                    self.buffer[*offset] = self.dim_byte;
-                    self.dirty = true;
-                }
+                self.write_byte(offset, self.dim_byte);
             }
             (LedMapping::Single { offset }, LedValue::Bright) => {
-                if *offset < self.buffer.len() {
-                    self.buffer[*offset] = self.bright_byte;
-                    self.dirty = true;
-                }
+                self.write_byte(offset, self.bright_byte);
             }
             (LedMapping::Single { offset }, LedValue::Single(b)) => {
-                if *offset < self.buffer.len() {
-                    self.buffer[*offset] = b;
-                    self.dirty = true;
-                }
+                self.write_byte(offset, b);
             }
             (LedMapping::Single { offset }, LedValue::Rgb { r, g, b }) => {
                 // Single LED can only take brightness, use max channel
-                if *offset < self.buffer.len() {
-                    self.buffer[*offset] = r.max(g).max(b);
-                    self.dirty = true;
-                }
+                self.write_byte(offset, r.max(g).max(b));
             }
             (LedMapping::Rgb { r, g, b }, LedValue::Off) => {
-                if *r < self.buffer.len() {
-                    self.buffer[*r] = 0;
-                }
-                if *g < self.buffer.len() {
-                    self.buffer[*g] = 0;
-                }
-                if *b < self.buffer.len() {
-                    self.buffer[*b] = 0;
-                }
-                self.dirty = true;
+                self.write_byte(r, 0);
+                self.write_byte(g, 0);
+                self.write_byte(b, 0);
             }
             (LedMapping::Rgb { r: ro, g: go, b: bo }, LedValue::Backlight) => {
-                let val = 18;
-                if *ro < self.buffer.len() {
-                    self.buffer[*ro] = val;
-                }
-                if *go < self.buffer.len() {
-                    self.buffer[*go] = val;
-                }
-                if *bo < self.buffer.len() {
-                    self.buffer[*bo] = val;
-                }
-                self.dirty = true;
+                self.write_byte(ro, 18);
+                self.write_byte(go, 18);
+                self.write_byte(bo, 18);
             }
             (LedMapping::Rgb { r: ro, g: go, b: bo }, LedValue::Dim) => {
-                let val = 64;
-                if *ro < self.buffer.len() {
-                    self.buffer[*ro] = val;
-                }
-                if *go < self.buffer.len() {
-                    self.buffer[*go] = val;
-                }
-                if *bo < self.buffer.len() {
-                    self.buffer[*bo] = val;
-                }
-                self.dirty = true;
+                self.write_byte(ro, 64);
+                self.write_byte(go, 64);
+                self.write_byte(bo, 64);
             }
             (LedMapping::Rgb { r: ro, g: go, b: bo }, LedValue::Bright) => {
-                let val = 255;
-                if *ro < self.buffer.len() {
-                    self.buffer[*ro] = val;
-                }
-                if *go < self.buffer.len() {
-                    self.buffer[*go] = val;
-                }
-                if *bo < self.buffer.len() {
-                    self.buffer[*bo] = val;
-                }
-                self.dirty = true;
+                self.write_byte(ro, 255);
+                self.write_byte(go, 255);
+                self.write_byte(bo, 255);
             }
             (LedMapping::Rgb { r: ro, g: go, b: bo }, LedValue::Rgb { r, g, b }) => {
-                if *ro < self.buffer.len() {
-                    self.buffer[*ro] = r;
-                }
-                if *go < self.buffer.len() {
-                    self.buffer[*go] = g;
-                }
-                if *bo < self.buffer.len() {
-                    self.buffer[*bo] = b;
-                }
-                self.dirty = true;
+                self.write_byte(ro, r);
+                self.write_byte(go, g);
+                self.write_byte(bo, b);
             }
             (LedMapping::Rgb { r: ro, g: go, b: bo }, LedValue::Single(brightness)) => {
-                if *ro < self.buffer.len() {
-                    self.buffer[*ro] = brightness;
-                }
-                if *go < self.buffer.len() {
-                    self.buffer[*go] = brightness;
-                }
-                if *bo < self.buffer.len() {
-                    self.buffer[*bo] = brightness;
-                }
-                self.dirty = true;
+                self.write_byte(ro, brightness);
+                self.write_byte(go, brightness);
+                self.write_byte(bo, brightness);
             }
             (LedMapping::Indexed { offset }, LedValue::Off) => {
-                if *offset < self.buffer.len() {
-                    self.buffer[*offset] = 0;
-                    self.dirty = true;
-                }
+                self.write_byte(offset, 0);
             }
             (LedMapping::Indexed { offset }, LedValue::Backlight) => {
-                if *offset < self.buffer.len() {
-                    // White (index 17 in 1-based palette), intensity 0 (faint backlight / dimmest shade)
-                    self.buffer[*offset] = (17 << 2) | 0;
-                    self.dirty = true;
-                }
+                // White (index 17 in 1-based palette), intensity 0 (faint backlight / dimmest shade)
+                self.write_byte(offset, 17 << 2);
             }
             (LedMapping::Indexed { offset }, LedValue::Dim) => {
-                if *offset < self.buffer.len() {
-                    // White (index 17 in 1-based palette), intensity 1 (dim)
-                    self.buffer[*offset] = (17 << 2) | 1;
-                    self.dirty = true;
-                }
+                // White (index 17 in 1-based palette), intensity 1 (dim)
+                self.write_byte(offset, (17 << 2) | 1);
             }
             (LedMapping::Indexed { offset }, LedValue::Bright) => {
-                if *offset < self.buffer.len() {
-                    // White (index 17 in 1-based palette), intensity 3 (bright)
-                    self.buffer[*offset] = (17 << 2) | 3;
-                    self.dirty = true;
-                }
+                // White (index 17 in 1-based palette), intensity 3 (bright)
+                self.write_byte(offset, (17 << 2) | 3);
             }
             (LedMapping::Indexed { offset }, LedValue::Single(b)) => {
                 // Direct raw palette/intensity byte
-                if *offset < self.buffer.len() {
-                    self.buffer[*offset] = b;
-                    self.dirty = true;
-                }
+                self.write_byte(offset, b);
             }
             (LedMapping::Indexed { offset }, LedValue::Rgb { r, g, b }) => {
                 // Convert RGB to NI packed palette byte
-                if *offset < self.buffer.len() {
-                    self.buffer[*offset] = LedValue::to_ni_palette_byte(r, g, b);
-                    self.dirty = true;
-                }
+                self.write_byte(offset, LedValue::to_ni_palette_byte(r, g, b));
             }
             (LedMapping::Strip { .. }, _) => {
                 // Strips are set via set_strip()
+                return false;
             }
         }
         true
     }
 
-
     /// Set a strip LED array by name.
     pub fn set_strip(&mut self, name: &str, values: &[u8]) -> bool {
-        let Some(mapping) = self.led_map.get(name) else {
+        let Some(&LedMapping::Strip { offset, count }) = self.led_map.get(name) else {
             return false;
         };
-        if let LedMapping::Strip { offset, count } = mapping {
-            let n = values.len().min(*count);
-            for i in 0..n {
-                let idx = offset + i;
-                if idx < self.buffer.len() {
-                    self.buffer[idx] = values[i];
-                }
-            }
-            self.dirty = true;
-            true
-        } else {
-            false
+        let n = values.len().min(count);
+        for (i, &val) in values[..n].iter().enumerate() {
+            self.write_byte(offset + i, val);
         }
+        true
     }
 
     /// Returns true if the LED buffer has changed since last flush.

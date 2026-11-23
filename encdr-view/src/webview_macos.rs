@@ -1,5 +1,6 @@
 use std::cell::RefCell;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use tao::event::Event;
 use tao::event_loop::{ControlFlow, EventLoop};
@@ -33,7 +34,7 @@ pub struct ManagedWebView {
     _window: tao::window::Window,
     pub width: u32,
     pub height: u32,
-    pub frame_ready: Arc<Mutex<bool>>,
+    pub frame_ready: Arc<AtomicBool>,
 }
 
 impl ManagedWebView {
@@ -43,7 +44,7 @@ impl ManagedWebView {
         html: &str,
         visible: bool,
     ) -> Result<Self, String> {
-        let frame_ready = Arc::new(Mutex::new(false));
+        let frame_ready = Arc::new(AtomicBool::new(false));
         let frame_ready_ipc = frame_ready.clone();
         let html_owned = html.to_string();
 
@@ -71,9 +72,7 @@ impl ManagedWebView {
                                 .with_initialization_script(bridge::BRIDGE_INIT_JS)
                                 .with_ipc_handler(move |request| {
                                     if request.body() == "__encdr_frame_ready" {
-                                        if let Ok(mut ready) = fr.lock() {
-                                            *ready = true;
-                                        }
+                                        fr.store(true, Ordering::Release);
                                     }
                                 })
                                 .with_bounds(wry::Rect {
@@ -130,13 +129,11 @@ impl ManagedWebView {
     }
 
     pub fn is_frame_ready(&self) -> bool {
-        self.frame_ready.lock().map(|r| *r).unwrap_or(false)
+        self.frame_ready.load(Ordering::Acquire)
     }
 
     pub fn clear_frame_ready(&self) {
-        if let Ok(mut r) = self.frame_ready.lock() {
-            *r = false;
-        }
+        self.frame_ready.store(false, Ordering::Release);
     }
 
     pub fn eval(&self, js: &str) -> Result<(), String> {

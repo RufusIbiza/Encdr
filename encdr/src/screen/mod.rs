@@ -123,79 +123,37 @@ impl ScreenManager {
         // Step 2: Determine if we need a keyframe (full blit on frame 1 and every ~60 frames / ~2s at 30fps)
         let force_full = self.frame_count == 1 || self.frame_count % 60 == 0;
 
-        // Step 3: Frame diff
+        // Step 3: Frame diff & region extraction on CPU-resident native buffers.
+        // Both `native_pixels` and `self.prev_frame` are already in host memory (~261 KB for 480x272),
+        // so diffing (~30 us) and row-memcpy extraction (~10 us) on CPU avoids two extra PCIe
+        // round-trips and synchronous GPU device.poll stalls per frame.
         if !force_full {
             if let Some(partial_blit) = &screen_desc.partial_blit {
                 if partial_blit.supported {
-                    let dirty = if let Some(ref mut gpu) = self.gpu_pipeline {
-                        if self.pixel_format == PixelFormat::Bgr565Be {
-                            futures_lite::future::block_on(gpu.compute_dirty_rect_gpu(
-                                &native_pixels,
-                                &self.prev_frame,
-                                self.width,
-                                self.height,
-                                partial_blit.x_align,
-                                partial_blit.y_align,
-                            ))
-                        } else {
-                            compute_dirty_rect(
-                                &self.prev_frame,
-                                &native_pixels,
-                                self.width,
-                                self.height,
-                                self.pixel_format.bytes_per_pixel(),
-                                partial_blit.x_align,
-                                partial_blit.y_align,
-                            )
-                        }
-                    } else {
-                        compute_dirty_rect(
-                            &self.prev_frame,
-                            &native_pixels,
-                            self.width,
-                            self.height,
-                            self.pixel_format.bytes_per_pixel(),
-                            partial_blit.x_align,
-                            partial_blit.y_align,
-                        )
-                    };
+                    let bpp = self.pixel_format.bytes_per_pixel();
+                    let dirty = compute_dirty_rect(
+                        &self.prev_frame,
+                        &native_pixels,
+                        self.width,
+                        self.height,
+                        bpp,
+                        partial_blit.x_align,
+                        partial_blit.y_align,
+                    );
 
                     match dirty {
                         DirtyRect::Clean => return None,
                         DirtyRect::Partial { x, y, w, h } => {
                             self.prev_frame.copy_from_slice(&native_pixels);
-                            let region_pixels = if let Some(ref mut gpu) = self.gpu_pipeline {
-                                if self.pixel_format == PixelFormat::Bgr565Be {
-                                    futures_lite::future::block_on(gpu.extract_region_gpu(
-                                        &native_pixels,
-                                        self.width,
-                                        x,
-                                        y,
-                                        w,
-                                        h,
-                                    ))
-                                } else {
-                                    extract_region(
-                                        &native_pixels,
-                                        self.width,
-                                        self.pixel_format.bytes_per_pixel(),
-                                        x,
-                                        y,
-                                        w,
-                                        h,
-                                    )
-                                }
-                            } else {
-                                extract_region(
-                                    &native_pixels,
-                                    self.width,
-                                    self.pixel_format.bytes_per_pixel(),
-                                    x,
-                                    y,
-                                    w,
-                                    h,
-                                )
-                            };
+                            let region_pixels = extract_region(
+                                &native_pixels,
+                                self.width,
+                                bpp,
+                                x,
+                                y,
+                                w,
+                                h,
+                            );
                             return Some(protocol::build_partial_blit(
                                 screen_desc,
                                 x,
@@ -267,19 +225,26 @@ pub fn convert_format(
 pub(crate) fn rgba8_to_bgr565_be(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
     let pixel_count = width * height;
     let dither = dithering();
-    let mut out = Vec::with_capacity(pixel_count * 2);
+    let mut out = vec![0u8; pixel_count * 2];
+    let row_in_bytes = width * 4;
+    let row_out_bytes = width * 2;
 
-    for i in 0..pixel_count {
-        let offset = i * 4;
-        if offset + 2 >= rgba.len() {
-            out.extend_from_slice(&[0, 0]);
-            continue;
+    for y in 0..height {
+        let in_start = y * row_in_bytes;
+        if in_start + 3 > rgba.len() {
+            break;
         }
-        let bgr565 = quantize_565(rgba[offset], rgba[offset + 1], rgba[offset + 2], i % width.max(1), i / width.max(1), dither);
-
-        // Big-endian
-        out.push((bgr565 >> 8) as u8);
-        out.push((bgr565 & 0xff) as u8);
+        let in_end = (in_start + row_in_bytes).min(rgba.len());
+        let out_row = &mut out[y * row_out_bytes..(y + 1) * row_out_bytes];
+        for (x, (px, dst)) in rgba[in_start..in_end]
+            .chunks_exact(4)
+            .zip(out_row.chunks_exact_mut(2))
+            .enumerate()
+        {
+            let bgr565 = quantize_565(px[0], px[1], px[2], x, y, dither);
+            dst[0] = (bgr565 >> 8) as u8;
+            dst[1] = (bgr565 & 0xff) as u8;
+        }
     }
 
     out
@@ -289,18 +254,26 @@ pub(crate) fn rgba8_to_bgr565_be(rgba: &[u8], width: usize, height: usize) -> Ve
 fn rgb8_to_bgr565_be(rgb: &[u8], width: usize, height: usize) -> Vec<u8> {
     let pixel_count = width * height;
     let dither = dithering();
-    let mut out = Vec::with_capacity(pixel_count * 2);
+    let mut out = vec![0u8; pixel_count * 2];
+    let row_in_bytes = width * 3;
+    let row_out_bytes = width * 2;
 
-    for i in 0..pixel_count {
-        let offset = i * 3;
-        if offset + 2 >= rgb.len() {
-            out.extend_from_slice(&[0, 0]);
-            continue;
+    for y in 0..height {
+        let in_start = y * row_in_bytes;
+        if in_start + 3 > rgb.len() {
+            break;
         }
-        let bgr565 = quantize_565(rgb[offset], rgb[offset + 1], rgb[offset + 2], i % width.max(1), i / width.max(1), dither);
-
-        out.push((bgr565 >> 8) as u8);
-        out.push((bgr565 & 0xff) as u8);
+        let in_end = (in_start + row_in_bytes).min(rgb.len());
+        let out_row = &mut out[y * row_out_bytes..(y + 1) * row_out_bytes];
+        for (x, (px, dst)) in rgb[in_start..in_end]
+            .chunks_exact(3)
+            .zip(out_row.chunks_exact_mut(2))
+            .enumerate()
+        {
+            let bgr565 = quantize_565(px[0], px[1], px[2], x, y, dither);
+            dst[0] = (bgr565 >> 8) as u8;
+            dst[1] = (bgr565 & 0xff) as u8;
+        }
     }
 
     out

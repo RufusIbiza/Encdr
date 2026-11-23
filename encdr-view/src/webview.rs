@@ -1,4 +1,5 @@
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use gtk::prelude::*;
 use wry::{WebView, WebViewBuilder, WebViewBuilderExtUnix, WebViewExtUnix};
@@ -17,7 +18,7 @@ pub struct ManagedWebView {
     pub width: u32,
     pub height: u32,
     /// Shared flag: set by IPC when JS signals a dirty frame
-    pub frame_ready: Arc<Mutex<bool>>,
+    pub frame_ready: Arc<AtomicBool>,
 }
 
 impl ManagedWebView {
@@ -68,7 +69,7 @@ impl ManagedWebView {
         window.show_all();
 
         // Build the WebView inside the GTK container
-        let frame_ready = Arc::new(Mutex::new(false));
+        let frame_ready = Arc::new(AtomicBool::new(false));
         let frame_ready_ipc = frame_ready.clone();
 
         let webview = WebViewBuilder::new()
@@ -77,9 +78,7 @@ impl ManagedWebView {
             .with_ipc_handler(move |request| {
                 let body = request.body();
                 if body == "__encdr_frame_ready" {
-                    if let Ok(mut ready) = frame_ready_ipc.lock() {
-                        *ready = true;
-                    }
+                    frame_ready_ipc.store(true, Ordering::Release);
                 }
             })
             .with_bounds(wry::Rect {
@@ -112,17 +111,12 @@ impl ManagedWebView {
 
     /// Check if the JS side has signaled that a new frame is ready.
     pub fn is_frame_ready(&self) -> bool {
-        self.frame_ready
-            .lock()
-            .map(|ready| *ready)
-            .unwrap_or(false)
+        self.frame_ready.load(Ordering::Acquire)
     }
 
     /// Clear the frame-ready flag after capture.
     pub fn clear_frame_ready(&self) {
-        if let Ok(mut ready) = self.frame_ready.lock() {
-            *ready = false;
-        }
+        self.frame_ready.store(false, Ordering::Release);
     }
 
     /// Execute JavaScript in the WebView.

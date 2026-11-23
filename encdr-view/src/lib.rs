@@ -163,10 +163,10 @@ impl ScreenView {
             self.inner.height,
         )?;
 
-        encdr.submit_screen_with_format(
+        encdr.submit_screen_owned_with_format(
             self.device_id,
             &self.screen_name,
-            &rgba,
+            rgba,
             PixelFormat::Rgba8888,
         );
 
@@ -372,11 +372,11 @@ impl DualScreenView {
             self.inner.height,
         )?;
 
-        encdr.submit_dual_screen_with_format(
+        encdr.submit_dual_screen_owned_with_format(
             self.device_id,
             &self.left_screen,
             &self.right_screen,
-            &rgba,
+            rgba,
             PixelFormat::Rgba8888,
         );
 

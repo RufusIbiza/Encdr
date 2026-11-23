@@ -1640,95 +1640,129 @@ fn run_screens(
                     continue;
                 }
             };
-            match cmd {
-                DeviceCmd::Disconnect => break,
-                DeviceCmd::SubmitScreen { screen, pixels, format } => {
-                    process_and_send_screen(
-                        &screen,
-                        &pixels,
-                        format,
-                        &descriptor,
-                        &mut screen_managers,
-                        &screen_to_ep,
-                        &mut endpoints,
-                        &mut control,
-                        &input_ctl_tx,
-                        &physically_disconnected,
-                    )
-                    .await;
-                }
-                DeviceCmd::SubmitDualScreen {
-                    left_screen,
-                    right_screen,
-                    pixels,
-                    format,
-                } => {
-                    let left_desc = descriptor.screens.iter().find(|s| s.name == left_screen);
-                    let right_desc = descriptor.screens.iter().find(|s| s.name == right_screen);
-                    let (Some(left_desc), Some(right_desc)) = (left_desc, right_desc) else {
-                        tracing::warn!(
-                            "SubmitDualScreen: could not find screens '{}' and/or '{}'",
-                            left_screen,
-                            right_screen
-                        );
-                        continue;
-                    };
-                    if left_desc.height != right_desc.height {
-                        tracing::warn!(
-                            "SubmitDualScreen: left height ({}) != right height ({})",
-                            left_desc.height,
-                            right_desc.height
-                        );
-                        continue;
+            // Coalesce any additional frames already queued so a producer faster than
+            // USB bulk transfer speed never builds up multi-frame latency.
+            let mut pending_single: Vec<(String, Vec<u8>, PixelFormat)> = Vec::new();
+            let mut pending_dual: Vec<(String, String, Vec<u8>, PixelFormat)> = Vec::new();
+            let mut disconnected = false;
+            let mut next_cmd = Some(cmd);
+            while let Some(c) = next_cmd.take() {
+                match c {
+                    DeviceCmd::Disconnect => {
+                        disconnected = true;
+                        break;
                     }
-                    let (left_pixels, right_pixels, send_format) = if let Some(d_gpu) = dual_gpu.as_mut().filter(|_| {
-                        format == PixelFormat::Rgba8888
-                            && left_desc.pixel_format == PixelFormat::Bgr565Be
-                            && right_desc.pixel_format == PixelFormat::Bgr565Be
-                    }) {
-                        let (l, r) = d_gpu.split_convert_dual(
-                            &pixels, left_desc.width.into(), right_desc.width.into(), left_desc.height.into(),
-                        ).await;
-                        (l, r, PixelFormat::Bgr565Be)
-                    } else {
-                        let Some((l, r)) = crate::screen::split_dual_frame(
-                            &pixels, left_desc, right_desc, format,
-                        ) else {
-                            tracing::warn!("SubmitDualScreen: incompatible frame format or size");
-                            continue;
-                        };
-                        (l, r, format)
-                    };
-
-                    process_and_send_screen(
-                        &left_screen,
-                        &left_pixels,
-                        send_format,
-                        &descriptor,
-                        &mut screen_managers,
-                        &screen_to_ep,
-                        &mut endpoints,
-                        &mut control,
-                        &input_ctl_tx,
-                        &physically_disconnected,
-                    )
-                    .await;
-
-                    process_and_send_screen(
-                        &right_screen,
-                        &right_pixels,
-                        send_format,
-                        &descriptor,
-                        &mut screen_managers,
-                        &screen_to_ep,
-                        &mut endpoints,
-                        &mut control,
-                        &input_ctl_tx,
-                        &physically_disconnected,
-                    )
-                    .await;
+                    DeviceCmd::SubmitScreen { screen, pixels, format } => {
+                        if let Some(slot) = pending_single.iter_mut().find(|(s, _, _)| *s == screen) {
+                            *slot = (screen, pixels, format);
+                        } else {
+                            pending_single.push((screen, pixels, format));
+                        }
+                    }
+                    DeviceCmd::SubmitDualScreen {
+                        left_screen,
+                        right_screen,
+                        pixels,
+                        format,
+                    } => {
+                        if let Some(slot) = pending_dual
+                            .iter_mut()
+                            .find(|(l, r, _, _)| *l == left_screen && *r == right_screen)
+                        {
+                            *slot = (left_screen, right_screen, pixels, format);
+                        } else {
+                            pending_dual.push((left_screen, right_screen, pixels, format));
+                        }
+                    }
+                    _ => {}
                 }
-                _ => continue,
+                next_cmd = screen_rx.try_recv().ok();
+            }
+            if disconnected {
+                break;
+            }
+
+            for (screen, pixels, format) in pending_single {
+                process_and_send_screen(
+                    &screen,
+                    &pixels,
+                    format,
+                    &descriptor,
+                    &mut screen_managers,
+                    &screen_to_ep,
+                    &mut endpoints,
+                    &mut control,
+                    &input_ctl_tx,
+                    &physically_disconnected,
+                )
+                .await;
+            }
+
+            for (left_screen, right_screen, pixels, format) in pending_dual {
+                let left_desc = descriptor.screens.iter().find(|s| s.name == left_screen);
+                let right_desc = descriptor.screens.iter().find(|s| s.name == right_screen);
+                let (Some(left_desc), Some(right_desc)) = (left_desc, right_desc) else {
+                    tracing::warn!(
+                        "SubmitDualScreen: could not find screens '{}' and/or '{}'",
+                        left_screen,
+                        right_screen
+                    );
+                    continue;
+                };
+                if left_desc.height != right_desc.height {
+                    tracing::warn!(
+                        "SubmitDualScreen: left height ({}) != right height ({})",
+                        left_desc.height,
+                        right_desc.height
+                    );
+                    continue;
+                }
+                let (left_pixels, right_pixels, send_format) = if let Some(d_gpu) = dual_gpu.as_mut().filter(|_| {
+                    format == PixelFormat::Rgba8888
+                        && left_desc.pixel_format == PixelFormat::Bgr565Be
+                        && right_desc.pixel_format == PixelFormat::Bgr565Be
+                }) {
+                    let (l, r) = d_gpu.split_convert_dual(
+                        &pixels, left_desc.width.into(), right_desc.width.into(), left_desc.height.into(),
+                    ).await;
+                    (l, r, PixelFormat::Bgr565Be)
+                } else {
+                    let Some((l, r)) = crate::screen::split_dual_frame(
+                        &pixels, left_desc, right_desc, format,
+                    ) else {
+                        tracing::warn!("SubmitDualScreen: incompatible frame format or size");
+                        continue;
+                    };
+                    (l, r, format)
+                };
+
+                process_and_send_screen(
+                    &left_screen,
+                    &left_pixels,
+                    send_format,
+                    &descriptor,
+                    &mut screen_managers,
+                    &screen_to_ep,
+                    &mut endpoints,
+                    &mut control,
+                    &input_ctl_tx,
+                    &physically_disconnected,
+                )
+                .await;
+
+                process_and_send_screen(
+                    &right_screen,
+                    &right_pixels,
+                    send_format,
+                    &descriptor,
+                    &mut screen_managers,
+                    &screen_to_ep,
+                    &mut endpoints,
+                    &mut control,
+                    &input_ctl_tx,
+                    &physically_disconnected,
+                )
+                .await;
             }
 
             try_regain_screens(&descriptor, &screen_managers, &screen_to_ep, &mut endpoints, &mut control).await;
