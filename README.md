@@ -146,10 +146,10 @@ fn main() {
        │               │            │  └──────────┬────────────┘ │
        │               │            │             │ OR raw pixels│
        └───────────────┘            │  ┌──────────▼────────────┐ │
-               │                    │  │ encdr::screen (wgpu)  │ │
-               │                    │  │ GPU dual split/conv   │ │
-               │                    │  │ GPU frame diff        │ │
-               │                    │  │ GPU partial extract   │ │
+               │                    │  │ encdr::screen         │ │
+               │                    │  │ GPU/CPU split & conv  │ │
+               │                    │  │ CPU dirty-rect diff   │ │
+               │                    │  │ CPU partial extract   │ │
                │                    │  └──────────┬────────────┘ │
                │                    │        USB bulk write      │
                │                    └─────────────┬──────────────┘
