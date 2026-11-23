@@ -344,6 +344,17 @@ encdr/
 
 ## Changelog
 
+### v0.9.6 (contributed by [ybelonozhkin](https://github.com/ybelonozhkin))
+- **Graceful Disconnect on Full Worker Queues** (contributed by [@ybelonozhkin](https://github.com/ybelonozhkin) in [#11](https://github.com/RufusIbiza/Encdr/pull/11)):
+  - Prevented shutdown deadlocks when bounded input, LED, or screen command queues are full by closing the sender channel (`signal_disconnect`), ensuring worker threads drain pending commands and exit cleanly.
+  - Added regression test `disconnect_wakes_full_worker_queues`.
+- **Packed Monochrome & Grayscale Dual-Screen Splitting** (contributed by [@ybelonozhkin](https://github.com/ybelonozhkin) in [#13](https://github.com/RufusIbiza/Encdr/pull/13)):
+  - Added `split_dual_frame` to properly split native 1bpp monochrome (`PixelFormat::Mono`, e.g., Maschine Mk2) and 5-bit grayscale (`PixelFormat::St7529Gray5`, e.g., Maschine Mk1) dual-screen frames, including bit/word repacking when screen boundaries cross packing groups and strict format validation.
+  - Fixed `ScreenDesc::byte_size()` for `PixelFormat::Mono` to account for row-end byte padding (`width.div_ceil(8) * height`).
+  - Added unit tests `split_native_maschine_frames` and `split_packed_frames_inside_a_group`.
+- **Maschine Mikro Mk3 Vegas Example Discovery Fix** (contributed by [@ybelonozhkin](https://github.com/ybelonozhkin) in [#12](https://github.com/RufusIbiza/Encdr/pull/12)):
+  - Updated `mikro_mk3_vegas` to check `encdr.connected_devices()` after `scan()`, fixing a race condition where the background hotplug thread connected the controller before `scan()` ran.
+
 ### v0.9.5 (contributed by [demastri](https://github.com/demastri))
 - **Maschine Mk1 Windows Support & Hardware Documentation** (contributed by [@demastri](https://github.com/demastri) in [#9](https://github.com/RufusIbiza/Encdr/pull/9), closing [#8](https://github.com/RufusIbiza/Encdr/issues/8)):
   - **Windows Setup Guide**: Added detailed Windows setup instructions for the original non-HID Maschine Mk1 (`0x17cc:0x0808`) using WinUSB via Zadig, noting reversibility through Device Manager and coexistence with NI background helper processes.
