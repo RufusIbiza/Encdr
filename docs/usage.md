@@ -18,7 +18,7 @@ encdr-view = { path = "path/to/encdr/encdr-view" }
 encdr-skia = { path = "path/to/encdr/encdr-skia" }
 ```
 
-Encdr requires a GPU that supports wgpu (Vulkan, Metal, or DX12). The GPU is used for screen format conversion and frame diffing.
+Encdr uses `wgpu` (Vulkan, Metal, or DX12) by default for GPU-accelerated screen conversion, diffing, and region extraction, with an automatic CPU fallback. For headless, MIDI-bridge, or LED-only apps, you can build with `default-features = false` to drop `wgpu` completely.
 
 ### Platform Prerequisites
 
@@ -31,14 +31,12 @@ sudo apt install libudev-dev
 sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev
 ```
 
-You'll also need a udev rule to access NI hardware without root:
+Install the bundled udev rules (`assets/50-encdr.rules`) for plug-and-play non-root access to all Native Instruments controllers (`VID 0x17cc`, covering both raw USB and `hidraw`):
 
+```bash
+sudo cp assets/50-encdr.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
-# /etc/udev/rules.d/99-ni-controllers.rules
-SUBSYSTEM=="usb", ATTR{idVendor}=="17cc", MODE="0666"
-```
-
-Then reload: `sudo udevadm control --reload-rules && sudo udevadm trigger`
 
 **macOS:**
 - No additional system dependencies — `encdr-view` uses the built-in WKWebView via `tao` + `wry`.

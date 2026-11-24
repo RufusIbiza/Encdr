@@ -61,9 +61,30 @@ Or if you want to use the GPU-accelerated Skia 2D canvas renderer:
 ```bash
 cargo add encdr-skia
 ```
-> [!NOTE]
-> **Platform Prerequisites**: On Linux, compiling requires `libudev-dev` (plus `libwebkit2gtk-4.1-dev` and `libgtk-3-dev` if using `encdr-view`), and non-root hardware access requires setting up a udev rule ([see here](docs/usage.md#platform-prerequisites)). 
->On **macOS and Windows**, the OS keeps its own driver bound to HID-class interfaces (e.g. the Maschine Mk3's control surface), so Encdr opens those through the native HID stack (`hidapi`) automatically. On the **Maschine Mk3**, the NI hardware service should stay running: Encdr draws the screens through it and uses the controller's instance button to hand inputs, LEDs, and screens back and forth with NI's software. On other controllers, NI background services may still need to be stopped if they hold non-HID USB interfaces (e.g. screens). If an interface can't be opened, Encdr carries on with the ones that can (for example screens without controls) instead of exiting. On Linux the same HID path can be tested with `--features hid` and `ENCDR_FORCE_HID=1`.
+### Platform Prerequisites
+
+#### Linux
+- **Build dependencies**: `libudev-dev` for USB access (plus `libwebkit2gtk-4.1-dev` and `libgtk-3-dev` if using `encdr-view`).
+- **Non-root USB access**: Install the bundled udev rules ([`assets/50-encdr.rules`](assets/50-encdr.rules)), which grant unprivileged access to all Native Instruments controllers (`VID 0x17cc`) via `uaccess`:
+  ```bash
+  sudo cp assets/50-encdr.rules /etc/udev/rules.d/
+  sudo udevadm control --reload-rules && sudo udevadm trigger
+  ```
+- **USB transport**: Encdr claims raw USB interfaces directly via `nusb`. To test the OS HID fallback path on Linux, build with `--features hid` and run with `ENCDR_FORCE_HID=1`.
+
+#### macOS
+- **Build dependencies**: None — `encdr-view` uses the built-in `WKWebView` automatically.
+- **Controls & LEDs**: macOS keeps HID-class interfaces bound to its own driver, so Encdr opens them automatically via the native HID stack (`hidapi` / `IOHIDManager`).
+- **Color screens & instance switching**: For **Maschine Mk3 / Plus / Studio**, **Komplete Kontrol S-Series Mk2 (S49/S61/S88)**, and **Traktor Kontrol S8 / S5 / D2 / S4 Mk3**, **keep NI's background hardware services running** (`NIHostIntegrationAgent` / `NIHardwareAgent`). Encdr draws screens directly through them via `CFMessagePort` and supports live hand-off with NI software via the controller's instance button — no driver swaps required.
+- **Other controllers**: If an NI background daemon holds a non-HID interface on a controller without a service route, stop/suspend the daemon before running your app. If one interface can't be claimed, Encdr continues with the remaining interfaces rather than exiting.
+
+#### Windows
+- **Build dependencies**: None — `encdr-view` uses the built-in WebView2 runtime (included with Windows 10/11).
+- **Controls & LEDs**: Windows keeps HID-class interfaces bound to `HidUsb`, so Encdr opens them automatically via the native Windows HID stack (`hidapi`).
+- **Color screens & instance switching**: For **Maschine Mk3 / Plus / Studio**, **Komplete Kontrol S-Series Mk2 (S49/S61/S88)**, and **Traktor Kontrol S8 / S5 / D2 / S4 Mk3**, **no Zadig / WinUSB driver swap is needed — keep NI's background hardware services running** (`NIHostIntegrationAgent` / `NIHardwareService`). Encdr routes screen frames through them over named pipes and supports instance-button switching with NI software.
+- **Older non-HID controllers (e.g. Maschine Mk1)**: Require a WinUSB driver via Zadig (see the [Maschine Mk1 guide](docs/hardware/ni_maschine_mk1.md) and [Usage Guide](docs/usage.md#platform-prerequisites) for details).
+
+See [docs/usage.md](docs/usage.md#platform-prerequisites) for full platform setup notes.
 
 ### How can I support this project? 
 - **By contributing code** - Feel free to open an issue or submit a pull request.
