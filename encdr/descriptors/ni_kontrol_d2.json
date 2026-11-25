@@ -99,10 +99,10 @@
       "interface": "control",
       "size": 25,
       "items": [
-        { "type": "encoder_fine", "name": "screen_encoder_1", "bytes": [1, 2], "encoding": "signed16", "scale": 999.0 },
-        { "type": "encoder_fine", "name": "screen_encoder_2", "bytes": [3, 4], "encoding": "signed16", "scale": 999.0 },
-        { "type": "encoder_fine", "name": "screen_encoder_3", "bytes": [5, 6], "encoding": "signed16", "scale": 999.0 },
-        { "type": "encoder_fine", "name": "screen_encoder_4", "bytes": [7, 8], "encoding": "signed16", "scale": 999.0 },
+        { "type": "encoder_fine", "name": "screen_encoder_1", "bytes": [1, 2], "encoding": "wrap1000", "scale": 999.0 },
+        { "type": "encoder_fine", "name": "screen_encoder_2", "bytes": [3, 4], "encoding": "wrap1000", "scale": 999.0 },
+        { "type": "encoder_fine", "name": "screen_encoder_3", "bytes": [5, 6], "encoding": "wrap1000", "scale": 999.0 },
+        { "type": "encoder_fine", "name": "screen_encoder_4", "bytes": [7, 8], "encoding": "wrap1000", "scale": 999.0 },
 
         { "type": "slider", "name": "fader_1",   "bytes": [9, 10],  "bits": 12, "normalize": true, "max_value": 4078 },
         { "type": "slider", "name": "fader_2",   "bytes": [11, 12], "bits": 12, "normalize": true, "max_value": 4078 },

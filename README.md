@@ -373,7 +373,9 @@ encdr/
   - **Service-First Initialization & Raw USB Skip**: Updated `DeviceHandle::spawn`, `run_device`, and `claim_interface` (`Option<&nusb::Device>`) so service+HID devices on macOS/Windows (when NI background services are running or `ENCDR_FORCE_SERVICE=1` is set) skip opening the raw composite USB device and register the NI-service instance *before* opening the HID control interface and reader — preventing instance ownership changes from silencing HID input.
   - **Physically Verified Input Descriptor**: Added the complete 32-byte control report button map (`auto`, `quantize`, `arp`, `scale`, `loop` renamed from `restart`, `undo`, `shift`, `tempo`, `pattern`, `track`, `key_mode`, `mixer`, `browser`, `instance`, `octave_down`, `octave_up`, `fixed_velocity`), moved `encoder_1`–`encoder_8` into the 32-byte report as 16-bit `wrap1000` `encoder_fine` controls (`bytes: [10, 11]`..`[24, 25]`, `scale: 1000.0`), and cleared the old 8-bit encoder entries from the 51-byte packet (keeping the 51-byte packet entry for pitch/mod/touchstrip data).
   - **Corrected Raw LED Offsets**: Fixed the off-by-one NHL2 button LED offsets (`top_1`–`top_8` at `2..9`, plus corroborated transport, page, browser, mixer, plugin, instance, midi, setup, and fixed-velocity offsets).
-  - **`kk_mk2_vegas` Example Fix**: Switched `kk_mk2_vegas` from a single racy `scan()` to deterministic `wait_for_controller()`, and added a `--telemetry-only` flag to disable LED animations during hardware testing.
+  - **`kk_mk2_vegas` & Example Discovery Fixes**: Switched `kk_mk2_vegas` (plus `plus_vegas`, `studio_vegas`, `d2_vegas`, `s4_mk3_vegas`, `s5_vegas`, `s8_vegas`, `kk_mk1_vegas`, and `kk_mk3_vegas`) from a single racy `scan()` to deterministic `wait_for_controller()`, and added `--telemetry-only` to `kk_mk2_vegas` to disable LED animations during hardware testing.
+- **Traktor Kontrol D2 Screen Encoder Wrap-Around Fix**:
+  - Updated `screen_encoder_1`–`screen_encoder_4` in `ni_kontrol_d2.json` from `signed16` to `wrap1000` (matching their 0..999 ring) to prevent direction-reversal jumps across the boundary.
 
 ### v0.9.9
 - **Stability, Memory Safety & FFI Hardening**:

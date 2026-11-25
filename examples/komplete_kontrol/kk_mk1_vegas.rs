@@ -23,16 +23,12 @@ fn main() {
     println!("Scanning for connected devices...\n");
 
     let mut encdr = Encdr::new(EncdrConfig::default()).expect("Failed to initialize encdr");
-    let ids = encdr.scan().expect("Scan failed");
-
-    let device_id = ids.into_iter().find(|&id| {
-        encdr.device_descriptor(id).map(|d| {
-            d.vendor_id.0 == 0x17cc && (d.product_id.0 == 0x1340 || d.product_id.0 == 0x1350 || d.product_id.0 == 0x1360 || d.product_id.0 == 0x1410)
-        }).unwrap_or(false)
-    }).unwrap_or_else(|| {
-        eprintln!("❌ NI Komplete Kontrol S-Series Mk1 (0x17cc:0x1340/0x1350/0x1360/0x1410) not found.");
-        std::process::exit(1);
-    });
+    let device_id = encdr
+        .wait_for_controller(&[(0x17cc, 0x1340), (0x17cc, 0x1350), (0x17cc, 0x1360), (0x17cc, 0x1410)])
+        .unwrap_or_else(|e| {
+            eprintln!("❌ NI Komplete Kontrol S-Series Mk1 not found: {e}");
+            std::process::exit(1);
+        });
 
     let desc = encdr.device_descriptor(device_id).unwrap().clone();
     println!(" Connected: {} (VID:PID 0x{:04x}:0x{:04x})", desc.name, desc.vendor_id.0, desc.product_id.0);
