@@ -11,7 +11,7 @@ keywords = ["native-instruments", "ni", "skia", "vulkan", "display"]
 categories = ["hardware-support", "gui"]
 
 [dependencies]
-encdr = { version = "0.9.9", path = "../encdr" }
+encdr = { version = "0.9.10", path = "../encdr" }
 skia-safe = "0.153"
 ash = { version = "0.38", optional = true }
 tracing = "0.1"

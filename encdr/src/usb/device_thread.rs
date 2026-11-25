@@ -158,14 +158,42 @@ impl DeviceHandle {
             (None, None)
         };
 
+        let force_service = std::env::var_os("ENCDR_FORCE_SERVICE").is_some();
+        let service_and_hid_eligible = is_service_and_hid_only(&descriptor);
+        let skip_raw_usb_open = service_and_hid_eligible
+            && (force_service
+                || (cfg!(any(target_os = "macos", target_os = "windows"))
+                    && !crate::usb::service_detector::detect_active_services().is_empty()));
+
         #[cfg(target_os = "linux")]
-        let tids_before = {
+        let tids_before = if skip_raw_usb_open {
+            None
+        } else {
             let mut captured = None;
             NUSB_EVENT_THREAD_CHECK.call_once(|| captured = Some(task_tids()));
             captured
         };
 
-        let usb_device = usb_info.open().wait()?;
+        let usb_device = if skip_raw_usb_open {
+            tracing::info!(
+                "Using NI screen service and OS HID stack for '{}'; skipping raw USB device open",
+                descriptor.name
+            );
+            None
+        } else {
+            match usb_info.open().wait() {
+                Ok(dev) => Some(dev),
+                Err(e) if service_and_hid_eligible => {
+                    tracing::info!(
+                        "Raw USB device open failed for '{}' ({}); falling back to NI screen service and OS HID stack",
+                        descriptor.name,
+                        e
+                    );
+                    None
+                }
+                Err(e) => return Err(e.into()),
+            }
+        };
 
         #[cfg(target_os = "linux")]
         if let Some(before) = tids_before {
@@ -323,7 +351,7 @@ mod tests {
 fn run_device(
     device_id: DeviceId,
     descriptor: Arc<DeviceDescriptor>,
-    usb_device: nusb::Device,
+    usb_device: Option<nusb::Device>,
     hid_target: HidTarget,
     names: HashMap<String, &'static str>,
     cmd_rx: async_channel::Receiver<DeviceCmd>,
@@ -362,13 +390,41 @@ fn run_device(
     let mut failed_nums: std::collections::HashSet<u8> = std::collections::HashSet::new();
     let mut interfaces: HashMap<String, Iface> = HashMap::new();
 
+    // When using the NI service + OS HID route (macOS/Windows with active NI service,
+    // or ENCDR_FORCE_SERVICE=1), register the NI-service instance *before* opening the
+    // HID control interface and reader. Registering the instance changes hardware
+    // ownership, which can leave an already-opened HID handle silent (observed on KK Mk2).
+    let mut ni_service_attempted = false;
+    if let Some(quirk) = &descriptor.quirks.ni_service
+        && (usb_device.is_none() || force_service)
+    {
+        ni_service_attempted = true;
+        match ni_service::connect_with_retry(quirk.product_id.0, hid_target.serial.as_deref(), Duration::from_secs(5)) {
+            Ok(session) => {
+                tracing::info!(
+                    "Drawing the '{}' screens through the NI hardware service instead of USB",
+                    quirk.screen_interface
+                );
+                interfaces.insert(quirk.screen_interface.clone(), Iface::Service(Arc::new(session)));
+            }
+            Err(e) => tracing::warn!(
+                "NI hardware service route for '{}' failed: {}; its screens are unavailable",
+                quirk.screen_interface,
+                e
+            ),
+        }
+    }
+
     for iface_desc in &descriptor.interfaces {
         let num = iface_desc.number;
-        if force_service && service_screen_iface == Some(iface_desc.id.as_str()) {
+        if interfaces.contains_key(&iface_desc.id) {
+            continue;
+        }
+        if (force_service || usb_device.is_none()) && service_screen_iface == Some(iface_desc.id.as_str()) {
             failed_nums.insert(num);
         }
         if !claimed_by_num.contains_key(&num) && !failed_nums.contains(&num) {
-            match claim_interface(&usb_device, &hid_target, &descriptor, iface_desc, force_hid) {
+            match claim_interface(usb_device.as_ref(), &hid_target, &descriptor, iface_desc, force_hid) {
                 Ok(iface) => {
                     claimed_by_num.insert(num, iface);
                 }
@@ -525,7 +581,8 @@ fn run_device(
 
     // Screens whose USB interface couldn't be claimed (Windows keeps NI's driver
     // on it) can still be drawn by the NI hardware service.
-    if let Some(quirk) = &descriptor.quirks.ni_service
+    if !ni_service_attempted
+        && let Some(quirk) = &descriptor.quirks.ni_service
         && !interfaces.contains_key(&quirk.screen_interface) {
             match ni_service::connect_with_retry(quirk.product_id.0, hid_target.serial.as_deref(), Duration::from_secs(5)) {
                 Ok(session) => {
@@ -1047,10 +1104,23 @@ fn hid_eligible(iface: &InterfaceDesc) -> bool {
         && eps.into_iter().flatten().all(|e| e.transfer_type == TransferType::Interrupt)
 }
 
+/// Whether every interface in `descriptor` can be served without opening the
+/// raw composite USB device (screens via `ni_service`, everything else via HID).
+fn is_service_and_hid_only(descriptor: &DeviceDescriptor) -> bool {
+    let Some(quirk) = &descriptor.quirks.ni_service else {
+        return false;
+    };
+    crate::usb::hid::AVAILABLE
+        && descriptor.interfaces.iter().all(|iface| {
+            iface.id == quirk.screen_interface || hid_eligible(iface)
+        })
+}
+
 /// Claim one USB interface, falling back to the HID backend for HID-shaped
-/// interfaces the OS won't release. Logs and returns `Err(())` on failure.
+/// interfaces the OS won't release (or opening HID directly when `usb_device` is `None`).
+/// Logs and returns `Err(())` on failure.
 fn claim_interface(
-    usb_device: &nusb::Device,
+    usb_device: Option<&nusb::Device>,
     hid_target: &HidTarget,
     descriptor: &DeviceDescriptor,
     iface_desc: &InterfaceDesc,
@@ -1061,6 +1131,31 @@ fn claim_interface(
             .map(|h| Iface::Hid(Arc::new(h)))
     };
     let eligible = hid_eligible(iface_desc);
+
+    let Some(usb_device) = usb_device else {
+        if eligible && crate::usb::hid::AVAILABLE {
+            return match open_hid() {
+                Ok(iface) => {
+                    tracing::info!(
+                        "Opened interface {} ('{}') through the OS HID stack without a raw USB device handle",
+                        iface_desc.number,
+                        iface_desc.id
+                    );
+                    Ok(iface)
+                }
+                Err(hid_err) => {
+                    tracing::warn!(
+                        "HID open for interface {} ('{}') failed: {}",
+                        iface_desc.number,
+                        iface_desc.id,
+                        hid_err
+                    );
+                    Err(())
+                }
+            };
+        }
+        return Err(());
+    };
 
     if force_hid && eligible {
         match open_hid() {

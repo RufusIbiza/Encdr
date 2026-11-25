@@ -251,14 +251,42 @@ mod tests {
         let s61 = reg.find(0x17cc, 0x1620).expect("S61 Mk2 not found");
         assert_eq!(s61.name, "NI Komplete Kontrol S61 Mk2");
         let s61_ni = s61.quirks.ni_service.as_ref().expect("ni_service quirk missing on S61 Mk2");
-        assert_eq!(s61_ni.product_id.0, 0x1620);
+        // NIHostIntegrationAgent identifies the entire S-Series Mk2 family as 0x1610.
+        assert_eq!(s61_ni.product_id.0, 0x1610);
         assert_eq!(s61_ni.screen_interface, "screen");
 
         let s88 = reg.find(0x17cc, 0x1630).expect("S88 Mk2 not found");
         assert_eq!(s88.name, "NI Komplete Kontrol S88 Mk2");
         let s88_ni = s88.quirks.ni_service.as_ref().expect("ni_service quirk missing on S88 Mk2");
-        assert_eq!(s88_ni.product_id.0, 0x1630);
+        assert_eq!(s88_ni.product_id.0, 0x1610);
         assert_eq!(s88_ni.screen_interface, "screen");
+
+        // Verify 32-byte control report carries browser, loop, and 8 wrap1000 fine encoders,
+        // while the 51-byte packet remains present without the old 8-bit encoder items.
+        for desc in [s49, s61, s88] {
+            let buttons = desc.input_packets.iter().find(|p| p.size == 32).unwrap();
+            assert!(buttons.items.iter().any(|i| i.name() == "browser"));
+            assert!(buttons.items.iter().any(|i| i.name() == "loop"));
+            assert!(buttons.items.iter().any(|i| matches!(
+                i,
+                crate::core::descriptor::InputItemDesc::EncoderFine(e)
+                    if e.name == "encoder_1"
+                        && e.bytes == [10, 11]
+                        && e.encoding == crate::core::descriptor::EncoderEncoding::Wrap1000
+            )));
+            let knobs = desc.input_packets.iter().find(|p| p.size == 51).unwrap();
+            assert!(knobs.items.is_empty());
+
+            let button_leds = desc.leds.iter().find(|l| l.id == "button_leds").unwrap();
+            assert!(button_leds.items.iter().any(|i| matches!(
+                i,
+                crate::core::descriptor::LedItemDesc::Single(s) if s.name == "top_1" && s.offset == 2
+            )));
+            assert!(button_leds.items.iter().any(|i| matches!(
+                i,
+                crate::core::descriptor::LedItemDesc::Single(s) if s.name == "top_8" && s.offset == 9
+            )));
+        }
     }
 
     #[test]

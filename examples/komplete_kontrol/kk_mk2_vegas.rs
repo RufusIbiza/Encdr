@@ -7,11 +7,14 @@
 //!
 //! Run with:
 //!   cargo run -p encdr-examples --bin kk_mk2_vegas
+//!   cargo run -p encdr-examples --bin kk_mk2_vegas -- --telemetry-only
 
 use std::time::{Duration, Instant};
 use encdr::{Encdr, EncdrConfig, Event, LedValue};
 
 fn main() {
+    let telemetry_only = std::env::args().any(|a| a == "--telemetry-only");
+
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "warn".parse().unwrap()))
         .init();
@@ -19,19 +22,18 @@ fn main() {
     println!("╔══════════════════════════════════════════════════════════════╗");
     println!("║     NI Komplete Kontrol Mk2 — Vegas Mode & Telemetry         ║");
     println!("╚══════════════════════════════════════════════════════════════╝");
-    println!("Scanning for connected devices...\n");
+    if telemetry_only {
+        println!("Running in --telemetry-only mode (LED animations disabled).\n");
+    }
+    println!("Waiting for NI Komplete Kontrol S-Series Mk2 (S49 / S61 / S88)...\n");
 
     let mut encdr = Encdr::new(EncdrConfig::default()).expect("Failed to initialize encdr");
-    let ids = encdr.scan().expect("Scan failed");
-
-    let device_id = ids.into_iter().find(|&id| {
-        encdr.device_descriptor(id).map(|d| {
-            d.vendor_id.0 == 0x17cc && (d.product_id.0 == 0x1610 || d.product_id.0 == 0x1620 || d.product_id.0 == 0x1630)
-        }).unwrap_or(false)
-    }).unwrap_or_else(|| {
-        eprintln!("❌ NI Komplete Kontrol S-Series Mk2 (0x17cc:0x1610/0x1620/0x1630) not found.");
-        std::process::exit(1);
-    });
+    let device_id = encdr
+        .wait_for_controller(&[(0x17cc, 0x1610), (0x17cc, 0x1620), (0x17cc, 0x1630)])
+        .unwrap_or_else(|e| {
+            eprintln!("❌ NI Komplete Kontrol S-Series Mk2 not found: {e}");
+            std::process::exit(1);
+        });
 
     let desc = encdr.device_descriptor(device_id).unwrap().clone();
     println!(" Connected: {} (VID:PID 0x{:04x}:0x{:04x})", desc.name, desc.vendor_id.0, desc.product_id.0);
@@ -76,7 +78,7 @@ fn main() {
             }
         }
 
-        if last_led_update.elapsed() >= Duration::from_millis(30) {
+        if !telemetry_only && last_led_update.elapsed() >= Duration::from_millis(30) {
             last_led_update = Instant::now();
 
             // 1. Light Guide animation

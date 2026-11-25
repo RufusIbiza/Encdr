@@ -37,11 +37,18 @@
         { "type": "button", "name": "top_7",               "byte": 1, "mask": "0x04" },
         { "type": "button", "name": "top_8",               "byte": 1, "mask": "0x08" },
 
+        { "type": "button", "name": "auto",                "byte": 2, "mask": "0x01" },
+        { "type": "button", "name": "quantize",            "byte": 2, "mask": "0x02" },
+        { "type": "button", "name": "arp",                 "byte": 2, "mask": "0x04" },
+        { "type": "button", "name": "scale",               "byte": 2, "mask": "0x08" },
         { "type": "button", "name": "play",                "byte": 2, "mask": "0x10" },
-        { "type": "button", "name": "restart",             "byte": 2, "mask": "0x20" },
+        { "type": "button", "name": "loop",                "byte": 2, "mask": "0x20" },
+        { "type": "button", "name": "undo",                "byte": 2, "mask": "0x40" },
+        { "type": "button", "name": "shift",               "byte": 2, "mask": "0x80" },
 
         { "type": "button", "name": "stop",                "byte": 3, "mask": "0x01" },
         { "type": "button", "name": "rec",                 "byte": 3, "mask": "0x02" },
+        { "type": "button", "name": "tempo",               "byte": 3, "mask": "0x04" },
         { "type": "button", "name": "metro",               "byte": 3, "mask": "0x08" },
         { "type": "button", "name": "preset_up",           "byte": 3, "mask": "0x10" },
         { "type": "button", "name": "page_right",          "byte": 3, "mask": "0x20" },
@@ -51,10 +58,16 @@
         { "type": "button", "name": "mute",                "byte": 4, "mask": "0x01" },
         { "type": "button", "name": "solo",                "byte": 4, "mask": "0x02" },
         { "type": "button", "name": "scene",               "byte": 4, "mask": "0x04" },
+        { "type": "button", "name": "pattern",             "byte": 4, "mask": "0x08" },
+        { "type": "button", "name": "track",               "byte": 4, "mask": "0x10" },
         { "type": "button", "name": "clear",               "byte": 4, "mask": "0x20" },
+        { "type": "button", "name": "key_mode",            "byte": 4, "mask": "0x40" },
 
+        { "type": "button", "name": "mixer",               "byte": 5, "mask": "0x01" },
         { "type": "button", "name": "plugin",              "byte": 5, "mask": "0x02" },
+        { "type": "button", "name": "browser",             "byte": 5, "mask": "0x04" },
         { "type": "button", "name": "setup",               "byte": 5, "mask": "0x08" },
+        { "type": "button", "name": "instance",            "byte": 5, "mask": "0x10" },
         { "type": "button", "name": "midi",                "byte": 5, "mask": "0x20" },
 
         { "type": "button", "name": "encoder_main_left",   "byte": 6, "mask": "0x10" },
@@ -63,6 +76,19 @@
         { "type": "button", "name": "encoder_main_right",  "byte": 6, "mask": "0x80" },
         { "type": "button", "name": "encoder_main_press",  "byte": 6, "mask": "0x08" },
 
+        { "type": "button", "name": "octave_down",         "byte": 8, "mask": "0x01" },
+        { "type": "button", "name": "octave_up",           "byte": 8, "mask": "0x02" },
+        { "type": "button", "name": "fixed_velocity",      "byte": 8, "mask": "0x04" },
+
+        { "type": "encoder_fine", "name": "encoder_1", "bytes": [10, 11], "encoding": "wrap1000", "scale": 1000.0 },
+        { "type": "encoder_fine", "name": "encoder_2", "bytes": [12, 13], "encoding": "wrap1000", "scale": 1000.0 },
+        { "type": "encoder_fine", "name": "encoder_3", "bytes": [14, 15], "encoding": "wrap1000", "scale": 1000.0 },
+        { "type": "encoder_fine", "name": "encoder_4", "bytes": [16, 17], "encoding": "wrap1000", "scale": 1000.0 },
+        { "type": "encoder_fine", "name": "encoder_5", "bytes": [18, 19], "encoding": "wrap1000", "scale": 1000.0 },
+        { "type": "encoder_fine", "name": "encoder_6", "bytes": [20, 21], "encoding": "wrap1000", "scale": 1000.0 },
+        { "type": "encoder_fine", "name": "encoder_7", "bytes": [22, 23], "encoding": "wrap1000", "scale": 1000.0 },
+        { "type": "encoder_fine", "name": "encoder_8", "bytes": [24, 25], "encoding": "wrap1000", "scale": 1000.0 },
+
         { "type": "encoder", "name": "encoder_main",       "byte": 30, "bits": 4, "bit_offset": 0, "encoding": "wrap16" }
       ]
     },
@@ -70,16 +96,7 @@
       "id": "knobs",
       "interface": "control",
       "size": 51,
-      "items": [
-        { "type": "encoder", "name": "encoder_1", "byte": 17, "bits": 8, "encoding": "wrap16" },
-        { "type": "encoder", "name": "encoder_2", "byte": 19, "bits": 8, "encoding": "wrap16" },
-        { "type": "encoder", "name": "encoder_3", "byte": 21, "bits": 8, "encoding": "wrap16" },
-        { "type": "encoder", "name": "encoder_4", "byte": 23, "bits": 8, "encoding": "wrap16" },
-        { "type": "encoder", "name": "encoder_5", "byte": 25, "bits": 8, "encoding": "wrap16" },
-        { "type": "encoder", "name": "encoder_6", "byte": 27, "bits": 8, "encoding": "wrap16" },
-        { "type": "encoder", "name": "encoder_7", "byte": 29, "bits": 8, "encoding": "wrap16" },
-        { "type": "encoder", "name": "encoder_8", "byte": 31, "bits": 8, "encoding": "wrap16" }
-      ]
+      "items": []
     }
   ],
 
@@ -91,26 +108,32 @@
       "prefix_byte": "0x80",
       "protocol": "nhl2",
       "items": [
-        { "type": "single", "name": "top_1",        "offset": 3 },
-        { "type": "single", "name": "top_2",        "offset": 4 },
-        { "type": "single", "name": "top_3",        "offset": 5 },
-        { "type": "single", "name": "top_4",        "offset": 6 },
-        { "type": "single", "name": "top_5",        "offset": 7 },
-        { "type": "single", "name": "top_6",        "offset": 8 },
-        { "type": "single", "name": "top_7",        "offset": 9 },
-        { "type": "single", "name": "top_8",        "offset": 10 },
-        { "type": "single", "name": "shift",        "offset": 15 },
-        { "type": "single", "name": "page_left",    "offset": 23 },
-        { "type": "single", "name": "mute",         "offset": 25 },
-        { "type": "single", "name": "solo",         "offset": 26 },
-        { "type": "single", "name": "page_right",   "offset": 28 },
-        { "type": "single", "name": "play",         "offset": 30 },
-        { "type": "single", "name": "rec",          "offset": 31 },
-        { "type": "single", "name": "stop",         "offset": 32 },
-        { "type": "single", "name": "preset_up",    "offset": 33 },
-        { "type": "single", "name": "preset_down",  "offset": 34 },
-        { "type": "single", "name": "plugin",       "offset": 37 },
-        { "type": "single", "name": "midi",         "offset": 40 }
+        { "type": "single", "name": "top_1",          "offset": 2 },
+        { "type": "single", "name": "top_2",          "offset": 3 },
+        { "type": "single", "name": "top_3",          "offset": 4 },
+        { "type": "single", "name": "top_4",          "offset": 5 },
+        { "type": "single", "name": "top_5",          "offset": 6 },
+        { "type": "single", "name": "top_6",          "offset": 7 },
+        { "type": "single", "name": "top_7",          "offset": 8 },
+        { "type": "single", "name": "top_8",          "offset": 9 },
+        { "type": "single", "name": "shift",          "offset": 14 },
+        { "type": "single", "name": "preset_up",      "offset": 22 },
+        { "type": "single", "name": "mute",           "offset": 24 },
+        { "type": "single", "name": "solo",           "offset": 25 },
+        { "type": "single", "name": "preset_down",    "offset": 27 },
+        { "type": "single", "name": "play",           "offset": 29 },
+        { "type": "single", "name": "rec",            "offset": 30 },
+        { "type": "single", "name": "stop",           "offset": 31 },
+        { "type": "single", "name": "page_left",      "offset": 32 },
+        { "type": "single", "name": "page_right",     "offset": 33 },
+        { "type": "single", "name": "clear",          "offset": 34 },
+        { "type": "single", "name": "browser",        "offset": 35 },
+        { "type": "single", "name": "plugin",         "offset": 36 },
+        { "type": "single", "name": "mixer",          "offset": 37 },
+        { "type": "single", "name": "instance",       "offset": 38 },
+        { "type": "single", "name": "midi",           "offset": 39 },
+        { "type": "single", "name": "setup",          "offset": 40 },
+        { "type": "single", "name": "fixed_velocity", "offset": 41 }
       ]
     },
     {
@@ -176,7 +199,7 @@
     "dual_handle": true,
     "detach_kernel_driver": true,
     "ni_service": {
-      "product_id": "0x1630",
+      "product_id": "0x1610",
       "screen_interface": "screen"
     }
   }

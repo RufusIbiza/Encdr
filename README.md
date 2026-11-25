@@ -367,6 +367,14 @@ encdr/
 
 ## Changelog
 
+### v0.9.10 (reported, tested, and contributed by [TVBene](https://github.com/TVBene))
+- **Komplete Kontrol S-Series Mk2 macOS Service & Descriptor Fixes**:
+  - **NI Service Family ID (`0x1610`)**: Updated `quirks.ni_service.product_id` to `0x1610` across `ni_komplete_kontrol_s49_mk2.json`, `ni_komplete_kontrol_s61_mk2.json`, and `ni_komplete_kontrol_s88_mk2.json` (while preserving each model's real top-level USB PID), matching `NIHostIntegrationAgent`'s family registration ID.
+  - **Service-First Initialization & Raw USB Skip**: Updated `DeviceHandle::spawn`, `run_device`, and `claim_interface` (`Option<&nusb::Device>`) so service+HID devices on macOS/Windows (when NI background services are running or `ENCDR_FORCE_SERVICE=1` is set) skip opening the raw composite USB device and register the NI-service instance *before* opening the HID control interface and reader — preventing instance ownership changes from silencing HID input.
+  - **Physically Verified Input Descriptor**: Added the complete 32-byte control report button map (`auto`, `quantize`, `arp`, `scale`, `loop` renamed from `restart`, `undo`, `shift`, `tempo`, `pattern`, `track`, `key_mode`, `mixer`, `browser`, `instance`, `octave_down`, `octave_up`, `fixed_velocity`), moved `encoder_1`–`encoder_8` into the 32-byte report as 16-bit `wrap1000` `encoder_fine` controls (`bytes: [10, 11]`..`[24, 25]`, `scale: 1000.0`), and cleared the old 8-bit encoder entries from the 51-byte packet (keeping the 51-byte packet entry for pitch/mod/touchstrip data).
+  - **Corrected Raw LED Offsets**: Fixed the off-by-one NHL2 button LED offsets (`top_1`–`top_8` at `2..9`, plus corroborated transport, page, browser, mixer, plugin, instance, midi, setup, and fixed-velocity offsets).
+  - **`kk_mk2_vegas` Example Fix**: Switched `kk_mk2_vegas` from a single racy `scan()` to deterministic `wait_for_controller()`, and added a `--telemetry-only` flag to disable LED animations during hardware testing.
+
 ### v0.9.9
 - **Stability, Memory Safety & FFI Hardening**:
   - **Clean-Exit Screensaver & LED Clear Fix**: Separated physical USB disconnect tracking (`physically_disconnected`) from user-initiated shutdown in `device_thread.rs`, fixing a bug where `Encdr::shutdown()` / `Drop` skipped the exit screensaver and LED clear. Added a 2-second timeout with `cancel_all()` on USB OUT transfers so a stalled device cannot deadlock shutdown, and marked `is_connected = false` when `interfaces.is_empty()` exits early.
