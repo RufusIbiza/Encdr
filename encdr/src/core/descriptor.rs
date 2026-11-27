@@ -450,6 +450,16 @@ pub struct SingleLedDesc {
     /// (e.g. a display backlight that should start on).
     #[serde(default)]
     pub default: Option<u8>,
+    /// Byte written for `LedValue::Backlight` on this LED, overriding the group's
+    /// (single) or the white palette default (indexed).
+    #[serde(default)]
+    pub backlight_value: Option<u8>,
+    /// Byte written for `LedValue::Dim` on this LED, as `backlight_value`.
+    #[serde(default)]
+    pub dim_value: Option<u8>,
+    /// Byte written for `LedValue::Bright` on this LED, as `backlight_value`.
+    #[serde(default)]
+    pub bright_value: Option<u8>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

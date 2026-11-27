@@ -23,18 +23,45 @@ pub struct LedBuilder {
     dirty: bool,
 }
 
+/// Bytes written for the named levels on one single-byte LED.
+#[derive(Clone, Copy)]
+struct Levels {
+    backlight: u8,
+    dim: u8,
+    bright: u8,
+}
+
+impl Levels {
+    /// White (index 17 in the 1-based palette) at intensities 0, 1 and 3.
+    const INDEXED_WHITE: Levels = Levels { backlight: 17 << 2, dim: (17 << 2) | 1, bright: (17 << 2) | 3 };
+
+    /// These levels with the LED's own descriptor overrides applied.
+    fn with_overrides(self, led: &SingleLedDesc) -> Levels {
+        Levels {
+            backlight: led.backlight_value.unwrap_or(self.backlight),
+            dim: led.dim_value.unwrap_or(self.dim),
+            bright: led.bright_value.unwrap_or(self.bright),
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 enum LedMapping {
-    Single { offset: usize },
+    Single { offset: usize, levels: Levels },
     Rgb { r: usize, g: usize, b: usize },
     Strip { offset: usize, count: usize },
-    Indexed { offset: usize },
+    Indexed { offset: usize, levels: Levels },
 }
 
 impl LedBuilder {
     pub fn new(desc: &LedLayoutDesc, interface: &InterfaceDesc) -> Self {
         let mut led_map = HashMap::new();
         let mut buffer = vec![0u8; desc.buffer_size];
+        let group_levels = Levels {
+            backlight: desc.backlight_byte(),
+            dim: desc.dim_byte(),
+            bright: desc.bright_byte(),
+        };
 
         for item in &desc.items {
             match item {
@@ -45,7 +72,7 @@ impl LedBuilder {
                         }
                     led_map.insert(
                         s.name.clone(),
-                        LedMapping::Single { offset: s.offset },
+                        LedMapping::Single { offset: s.offset, levels: group_levels.with_overrides(s) },
                     );
                 }
                 LedItemDesc::Indexed(i) => {
@@ -55,7 +82,7 @@ impl LedBuilder {
                         }
                     led_map.insert(
                         i.name.clone(),
-                        LedMapping::Indexed { offset: i.offset },
+                        LedMapping::Indexed { offset: i.offset, levels: Levels::INDEXED_WHITE.with_overrides(i) },
                     );
                 }
                 LedItemDesc::Rgb(r) => {
@@ -135,22 +162,22 @@ impl LedBuilder {
             return false;
         };
         match (mapping, value) {
-            (LedMapping::Single { offset }, LedValue::Off) => {
+            (LedMapping::Single { offset, .. }, LedValue::Off) => {
                 self.write_byte(offset, 0);
             }
-            (LedMapping::Single { offset }, LedValue::Backlight) => {
-                self.write_byte(offset, self.backlight_byte);
+            (LedMapping::Single { offset, levels }, LedValue::Backlight) => {
+                self.write_byte(offset, levels.backlight);
             }
-            (LedMapping::Single { offset }, LedValue::Dim) => {
-                self.write_byte(offset, self.dim_byte);
+            (LedMapping::Single { offset, levels }, LedValue::Dim) => {
+                self.write_byte(offset, levels.dim);
             }
-            (LedMapping::Single { offset }, LedValue::Bright) => {
-                self.write_byte(offset, self.bright_byte);
+            (LedMapping::Single { offset, levels }, LedValue::Bright) => {
+                self.write_byte(offset, levels.bright);
             }
-            (LedMapping::Single { offset }, LedValue::Single(b)) => {
+            (LedMapping::Single { offset, .. }, LedValue::Single(b)) => {
                 self.write_byte(offset, b);
             }
-            (LedMapping::Single { offset }, LedValue::Rgb { r, g, b }) => {
+            (LedMapping::Single { offset, .. }, LedValue::Rgb { r, g, b }) => {
                 // Single LED can only take brightness, use max channel
                 self.write_byte(offset, r.max(g).max(b));
             }
@@ -184,26 +211,23 @@ impl LedBuilder {
                 self.write_byte(go, brightness);
                 self.write_byte(bo, brightness);
             }
-            (LedMapping::Indexed { offset }, LedValue::Off) => {
+            (LedMapping::Indexed { offset, .. }, LedValue::Off) => {
                 self.write_byte(offset, 0);
             }
-            (LedMapping::Indexed { offset }, LedValue::Backlight) => {
-                // White (index 17 in 1-based palette), intensity 0 (faint backlight / dimmest shade)
-                self.write_byte(offset, 17 << 2);
+            (LedMapping::Indexed { offset, levels }, LedValue::Backlight) => {
+                self.write_byte(offset, levels.backlight);
             }
-            (LedMapping::Indexed { offset }, LedValue::Dim) => {
-                // White (index 17 in 1-based palette), intensity 1 (dim)
-                self.write_byte(offset, (17 << 2) | 1);
+            (LedMapping::Indexed { offset, levels }, LedValue::Dim) => {
+                self.write_byte(offset, levels.dim);
             }
-            (LedMapping::Indexed { offset }, LedValue::Bright) => {
-                // White (index 17 in 1-based palette), intensity 3 (bright)
-                self.write_byte(offset, (17 << 2) | 3);
+            (LedMapping::Indexed { offset, levels }, LedValue::Bright) => {
+                self.write_byte(offset, levels.bright);
             }
-            (LedMapping::Indexed { offset }, LedValue::Single(b)) => {
+            (LedMapping::Indexed { offset, .. }, LedValue::Single(b)) => {
                 // Direct raw palette/intensity byte
                 self.write_byte(offset, b);
             }
-            (LedMapping::Indexed { offset }, LedValue::Rgb { r, g, b }) => {
+            (LedMapping::Indexed { offset, .. }, LedValue::Rgb { r, g, b }) => {
                 // Convert RGB to NI packed palette byte
                 self.write_byte(offset, LedValue::to_ni_palette_byte(r, g, b));
             }
@@ -433,5 +457,33 @@ mod tests {
         b.set("maschine", LedValue::Rgb { r: 10, g: 20, b: 255 });
         let out = b.flush().unwrap();
         assert_eq!(out[1], 255);
+    }
+
+    #[test]
+    fn per_led_level_overrides() {
+        let desc: LedLayoutDesc = serde_json::from_str(
+            r#"{ "id": "buttons", "interface": "control", "buffer_size": 3, "protocol": "linear_7bit",
+                 "items": [
+                   { "type": "indexed", "name": "sampling", "offset": 0,
+                     "backlight_value": 69, "dim_value": 70, "bright_value": 71 },
+                   { "type": "indexed", "name": "group_a", "offset": 1 },
+                   { "type": "single", "name": "play", "offset": 2, "dim_value": 50 } ] }"#,
+        )
+        .unwrap();
+        let interface: InterfaceDesc = serde_json::from_str(
+            r#"{ "id": "control", "number": 0, "endpoints": {} }"#,
+        )
+        .unwrap();
+        let mut lb = LedBuilder::new(&desc, &interface);
+        for (level, expected) in [
+            (LedValue::Backlight, [69, 68, 9]),
+            (LedValue::Dim, [70, 69, 50]),
+            (LedValue::Bright, [71, 71, 127]),
+        ] {
+            for name in ["sampling", "group_a", "play"] {
+                lb.set(name, level);
+            }
+            assert_eq!(lb.buffer, expected, "{level:?}");
+        }
     }
 }

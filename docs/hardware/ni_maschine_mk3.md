@@ -322,6 +322,17 @@ The controller decodes button LED bytes using a linear 7-bit protocol (`0..127`)
   - Bright (active) $\rightarrow 0\text{x}7\text{F} = 127$ (`LedValue::Bright`)
   - Always use `LedValue::Backlight`, `LedValue::Dim`, `LedValue::Bright`, or direct `LedValue::Single(val)`.
 
+#### Sampling Button (Palette LED)
+`sampling` is an `indexed` LED: its byte is an NI palette value, `(colour << 2) | intensity`, not a PWM level. Measured on hardware (values 0–131):
+
+| Bytes | Colour |
+| :--- | :--- |
+| 0–3 | Off |
+| 4–67 | Colours 1–16, four intensities each. As seen on this LED, in order: red, orange, yellow (colours 3–5), lime, green, teal, light blue, indigo, navy, purple, fuchsia, pink, dark red (colours 15–16) |
+| 68–127 | White; the four intensities repeat every four bytes |
+
+The white intensities are not in brightness order: from dimmest they are 69, 68, 70, 71. The descriptor therefore sets `backlight_value` 69, `dim_value` 70 and `bright_value` 71 for this LED. Byte 68 looks as bright as a single-colour button at 20. Pass `LedValue::Rgb` for a colour; `LedValue::Single(val)` writes the palette byte as it is.
+
 | Name                 | Offset | Description                          |
 | -------------------- | ------ | ------------------------------------ |
 | `top_0`              | 0      | Top button 1 (leftmost)              |

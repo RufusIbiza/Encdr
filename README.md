@@ -367,6 +367,13 @@ encdr/
 
 ## Changelog
 
+### v0.9.11
+- **Maschine Mk3 Sampling Button LED Fix**:
+  - **Palette LED, Not PWM**: `sampling` takes an NI packed palette byte (`(colour << 2) | intensity`), so the linear 7-bit levels lit it in colours instead of white. `ni_maschine_mk3.json` now declares it as `indexed`.
+  - **Measured White Levels**: The white intensities are not in brightness order on this LED (dimmest first: 69, 68, 70, 71), so the descriptor sets `backlight_value` 69, `dim_value` 70 and `bright_value` 71. `LedValue::Single` now writes a palette byte to this LED; 68 matches a single-colour button at 20.
+  - **Per-LED Level Overrides**: `single` and `indexed` LED items accept optional `backlight_value`, `dim_value` and `bright_value`, which take precedence over the group's levels (`single`) or the white palette defaults (`indexed`).
+  - Documented the measured values in [`docs/hardware/ni_maschine_mk3.md`](docs/hardware/ni_maschine_mk3.md).
+
 ### v0.9.10 (reported, tested, and contributed by [TVBene](https://github.com/TVBene))
 - **Komplete Kontrol S-Series Mk2 macOS Service & Descriptor Fixes**:
   - **NI Service Family ID (`0x1610`)**: Updated `quirks.ni_service.product_id` to `0x1610` across `ni_komplete_kontrol_s49_mk2.json`, `ni_komplete_kontrol_s61_mk2.json`, and `ni_komplete_kontrol_s88_mk2.json` (while preserving each model's real top-level USB PID), matching `NIHostIntegrationAgent`'s family registration ID.
